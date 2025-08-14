@@ -168,7 +168,7 @@ class EditGridWrapper():
         """
         Default edit handler that shows a dialog to edit the item.
         """
-        form = ModelForm(item, classes='w-full')
+        form = ModelForm.from_item(item, classes='w-full')
         with ui.dialog().style('width: 400px') as dialog:
             with ui.card().classes('w-full'):
                 form.render()

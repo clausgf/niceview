@@ -29,16 +29,17 @@ class User(pydantic.BaseModel):
     num: int = 0
     is_active: bool = True
     is_admin: Annotated[bool, pydantic.Field(default=True), niceview.Field(widget_type='ui.checkbox', classes='text-red-500')]
-    birthdate: datetime.date = pydantic.Field(default_factory=datetime.date.today, title="Birthdate", description="User's birthdate")
+    birthdate: datetime.date = datetime.date.today()
     birthtime: datetime.time = pydantic.Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).time(), title="Time of birth", description="User's time of birth (UTC)")
     birthdatetime: Annotated[datetime.datetime, pydantic.Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0), title="Birthdate & Time", description="User's birthdate and time (UTC)")]
     gender: Literal['male', 'female', 'other'] = 'other'
-    mag_schnitzel: Literal['Ja', 'Nein', None] = None
+    vegetarian: Literal['Yes', 'No', None] = None
 
+    favorite_dishes: list[str] = []
     groups: Annotated[list[Group], pydantic.Field(default_factory=list, title="Groups", description="List of groups the user belongs to"), niceview.Field()]
 
 
-user = User(name='John Doe', age=30, num=42, is_active=True, is_admin=False, birthdatetime=datetime.datetime(1990, 1, 1, 12, 0), gender='male', mag_schnitzel='Ja', groups=[Group(name='Admin'), Group(name='User')])
+user = User(name='John Doe', age=30, num=42, is_active=True, is_admin=False, birthdatetime=datetime.datetime(1990, 1, 1, 12, 0), gender='male', vegetarian='Yes', favorite_dishes=['Sushi', 'Pizza'], groups=[Group(name='Admin'), Group(name='User')])
 user_list = [
     user, 
     User(name='Jane Doe', age=25, num=43), 
@@ -59,7 +60,7 @@ def form_page():
         groups_label.text = f'Groups: {", ".join(g.name for g in user.groups)}'
 
     with ui.row():
-        user_form = ModelForm(user, classes='w-full')
+        user_form = ModelForm.from_item(user, classes='w-full')
         with ui.card():
             ui.label('Example for a User Form:')
             user_form.render()

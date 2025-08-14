@@ -105,6 +105,7 @@ class ModelGrid:
         # check parameter types
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"cls must be a subclass of BaseModel, got {type(item_type)}")
+
         self._fields = Fields(item_type, kwargs.pop('fields', '__all__'),
                             kwargs.pop('exclude', ''), kwargs.pop('field_infos', {}))
         self._data = data

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import datetime
 from typing import Any, List, Self, Unpack
+import typing
 from zoneinfo import ZoneInfo
 import typing_extensions
 from pydantic import BaseModel, ValidationError
@@ -89,6 +90,9 @@ class ModelForm():
             value = getattr(meta, param, default) if meta else default
             value = kwargs.pop(param, value)  # override with kwargs if provided
             return value
+        
+        if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
+            raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
 
         self._item_type = item_type
         self._item_model = None
@@ -428,11 +432,21 @@ class ModelForm():
             local_tz = ZoneInfo("Europe/Berlin")  #TODO: remove hardcoded timezone
             value = dt.replace(tzinfo=local_tz)
             value = value.astimezone(datetime.timezone.utc)  # convert to UTC
+
+        elif widget_type == 'ui.input' and typing.get_origin(field_type) == list:
+            value = [item.strip() for item in value.split(',')]
+            item_type = self._fields[field_name].item_type
+            if item_type in (int, float, bool, str):
+                value = [item_type(item) for item in value]
+            else:
+                raise ValueError(f"Field '{field_name}' is a list but no allowed item type is specified")
+
         elif widget_type == 'ui.number':
             if field_type == int:
                 value = int(value)
             else:
                 value = float(value)  # convert to float for number fields
+
         elif widget_type == 'modelselect':
             repository = self._model_repositories[self._fields[field_name].item_type.__name__]
             if not repository:

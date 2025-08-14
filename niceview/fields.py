@@ -44,43 +44,33 @@ class Fields(typing.Mapping[str, FieldInfo]):
 
 
     def __init__(self, item_type: type[pydantic.BaseModel], include: str | typing.Iterable[str] = '__all__', exclude: str | typing.Iterable[str] = '', field_infos: dict[str, FieldInfo] = {}):
+
+        def _parse_field_names(field_list: str | typing.Iterable[str], all_fields: set[str], allow_all: bool) -> list[str]:
+            """Parse a include or exclude list of fields from a string or iterable."""
+            if isinstance(field_list, str):
+                result = [f.strip() for f in field_list.split(',') if f.strip()]
+            elif isinstance(field_list, typing.Iterable):
+                result = list(field_list)
+            else:
+                raise ValueError(f"Invalid field list: '{field_list}' must be a string or an iterable of field names")
+
+            if allow_all and result == ['__all__']:
+                return ['__all__']
+
+            invalid = [f for f in result if not isinstance(f, str) or f not in all_fields]
+            if invalid:
+                raise ValueError(f"Invalid field name(s): {invalid} not found in '{self._item_type.__name__}'")
+
+            return result
+
         self._item_type = item_type
-
-        # prepare a list of field name to include (or '__all__')
-        if isinstance(include, str):
-            self._include = [f for f in map(str.strip, include.split(',')) if f]
-        elif isinstance(include, typing.Iterable):
-            self._include = list(include)
-            if not all(isinstance(f, str) for f in self._include):
-                raise ValueError(f"Invalid fields: {include} must be a string or a list of field names")
-        else:
-            raise ValueError(f"Invalid field name: {include} must be '__all__' or a list of field names")
-        # check include fields
-        if not self._include == ['__all__']:
-            for f in self._include:
-                if not isinstance(f, str):
-                    raise ValueError(f"Invalid field name to include: {include} must be '__all__', a string of comma separated field names or a list of field names")
-                if not hasattr(self._item_type, f):
-                    raise ValueError(f"Invalid field name to include: {f} is not '__all__' or a field of {self._item_type.__name__}")
-
-        # prepare a list of fields to exclude
-        if isinstance(exclude, str):
-            self._exclude = [f for f in map(str.strip, exclude.split(',')) if f]
-        elif isinstance(exclude, typing.Iterable):
-            self._exclude = list(exclude)
-        else:
-            raise ValueError(f"Invalid exclude: {exclude} must be a string or a list of field names")
-        # check exclude fields
-        for f in self._exclude:
-            if not isinstance(f, str):
-                raise ValueError(f"Invalid field name to exclude: {exclude} must be a string of comma separated field names or a list of field names")
-            if not hasattr(self._item_type, f):
-                raise ValueError(f"Invalid field name to exclude: {f} is not a field of {self._item_type.__name__}")
-
-        # iterate all field and collect information
+        self._include = _parse_field_names(include, set(item_type.model_fields.keys()), allow_all=True)
+        self._exclude = _parse_field_names(exclude, set(item_type.model_fields.keys()), allow_all=False)
         self._field_names = []
         self._field_infos = {}
+
         pydantic_fields = item_type.model_fields
+        print(self._item_type)
         is_sqlmodel = issubclass(self._item_type, SQLModel)
         for field_name, field_type in self._item_type.__annotations__.items():
             field_info = None
@@ -166,14 +156,20 @@ class Fields(typing.Mapping[str, FieldInfo]):
                     nv_field_info.select_options = list(typing.get_args(field_type))
 
             elif typing.get_origin(field_type) == list:
-                nv_field_info.widget_type = 'editgrid'
                 if nv_field_info.item_type is None:
                     for arg in typing.get_args(field_type):
-                        if isinstance(arg, type) and issubclass(arg, pydantic.BaseModel):
+                        if isinstance(arg, type) and (
+                            issubclass(arg, pydantic.BaseModel) or arg in (int, float, bool, str)
+                        ):
                             nv_field_info.item_type = arg
                             break
                 if nv_field_info.item_type is None:
                     raise ValueError(f"Field '{field_name}' is a list but no item type is specified in FieldInfo or as a pydantic model type")
+                elif issubclass(nv_field_info.item_type, pydantic.BaseModel):
+                    nv_field_info.widget_type = 'editgrid'
+                else:
+                    nv_field_info.widget_type = 'ui.input'
+
             else:
                 nv_field_info.widget_type = 'ui.input'  # default widget type if not specified
 
