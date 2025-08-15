@@ -8,6 +8,7 @@ from nicegui import ui
 from nicegui.events import Handler, ClickEventArguments, ValueChangeEventArguments, handle_event
 from nicegui.dataclasses import KWONLY_SLOTS
 
+from dataadapter import ListModelAdapter
 from niceview.dataadapter import ModelDataAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
@@ -123,6 +124,18 @@ class ModelGrid:
         self.rowSelection = kwargs.pop('rowSelection', None)
         self.cell_renderers = copy(kwargs.pop('cell_renderers', {}))
 
+    @classmethod
+    def form_list(cls, items: list[T], **kwargs: Unpack[_ModelGridOptionInputs]) -> 'ModelGrid':
+        """
+        Create a ModelGrid instance from a list of Pydantic BaseModels.
+        **Beware:** This can only work with a list of items containing at least one element.
+        """
+        if len(items) == 0:
+            raise ValueError("items list is empty")
+        item_type = type(items[0])
+        data = ListModelAdapter(item_type, items)
+        ret = cls(item_type, data, **kwargs)
+        return ret
 
     def on_select(self, callback: Handler[ValueChangeEventArguments]) -> Self:
         """
@@ -131,6 +144,8 @@ class ModelGrid:
         """
         if not callable(callback):
             raise TypeError(f"callback must be callable, got {type(callback)}")
+        if not self.rowSelection == 'single':
+            print(f"on_select is only supported for single row selection, but rowSelection is '{self.rowSelection}'") # TODO logging
         self._selection_handlers.append(callback)
         return self
 

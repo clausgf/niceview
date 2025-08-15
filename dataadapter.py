@@ -20,27 +20,45 @@ class ModelDataAdapter(Generic[T], Protocol):
         raise NotImplementedError
 
     def key_from_item(self, item: T, index: int = -1) -> str:
+        """
+        Get the key for an item in its string representation.
+        """
         raise NotImplementedError
 
     def key_from_str(self, key: str | int) -> Any:
+        """
+        Convert a string representation of a key back to its original form.
+        """
         raise NotImplementedError
 
     def create(self, item: T) -> T:
+        """
+        Add a new (externally created) item to the data store.
+        """
         raise NotImplementedError
 
     def read(self, key: str | int) -> T:
+        """
+        Read an item from the data store by its key.
+        """
         raise NotImplementedError
 
     def update(self, item: T, key: str) -> T:
+        """
+        Update an existing item identified by its key in the data store.
+        """
         raise NotImplementedError
 
     def delete(self, key: str) -> None:
+        """
+        Delete an item from the data store by its key.
+        """
         raise NotImplementedError
 
     def query_all_strs(self) -> Iterator[tuple[str, str]]:
         """
-        Execute a query to retrieve the key and a string representation (__str__) 
-        of all items.
+        Retrieve all items in a (key, string) format. This is needed
+        for populating select widgets.
         """
         raise NotImplementedError("query method is not implemented in this adapter")
 

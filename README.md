@@ -34,6 +34,26 @@ ui.date     | on_change |                 | string formatted according to mask p
 ui.time     | on_change |                 | string formatted according to mask parameter, default 'HH:mm'
 
 
+Development
+-----------
+- The niceview-split branch contains a copy of the niceview directory in its root directory. 
+  This allows easy inclusion in other python projects.
+- Update niceview-split branch according to the main branch:
+  ```bash
+  git fetch origin
+  git checkout main
+  git pull
+
+  git subtree split --prefix=niceview --branch niceview-split main
+
+  git push origin niceview-split --force
+  ```
+- In a python project using niceview, the subtree reference can be updated with these commands:
+  ```bash
+  git fetch niceview
+  git subtree pull --prefix=niceview niceview niceview-split --squash
+  ```
+
 TODO
 ----
 - change handling: Check whether 'blur' event handles relevant edge cases. 'blur' shall trigger pydantic validation on Field and BaseModel level. Validation error shall be reflected in the form. Emit a change event. This shall be suited for saving changes. Outside on_change only for valid states.

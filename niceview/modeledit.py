@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Iterable, Self, Unpack
+from fastapi import HTTPException
 import typing_extensions
 from pydantic import BaseModel, ValidationError
 from nicegui import ui
@@ -11,11 +12,11 @@ from niceview.modelgrid import ModelGridInlineEdit, ModelDataAdapter, ModelGrid,
 
 
 class _EditGridWrapperInputs(typing_extensions.TypedDict, total=False):
-    title: str
-    delete_button: str
-    add_button: str
-    edit_button: str
-    refresh_button: str
+    title: str | None
+    delete_button: str | None
+    add_button: str | None
+    edit_button: str | None
+    refresh_button: str | None
 
 
 class EditGridWrapper():
@@ -23,7 +24,7 @@ class EditGridWrapper():
     A table class that can be used to create editable tables for Pydantic models.
     """
     grid: ModelGrid
-    title: str
+    title: str | None
     description: str | None
     delete_button: str | None
     add_button: str | None
@@ -70,6 +71,23 @@ class EditGridWrapper():
         )
         for handler in self._change_handlers:
             handle_event(handler, tce)
+    
+
+    async def _get_selected_row_key(self) -> str | None:
+        """
+        Get the key of the currently selected row, if any.
+        """
+        selected_row = await self.grid.widget.get_selected_row()
+        return selected_row['__ui_row_key'] if selected_row else None
+
+
+    def _error_msg_from_exception(self, e: Exception) -> str:
+        """
+        Extract a meaningful error message from an exception.
+        """
+        if isinstance(e, HTTPException) and hasattr(e, 'detail'):
+            return e.detail
+        return str(e)
 
 
     def render(self) -> Self:
@@ -79,8 +97,8 @@ class EditGridWrapper():
         # render the title, add and delete buttons
         with ui.row().classes('w-full'):
             if self.title:
-                ui.label(self.title).classes('text-h6')
-            ui.space()
+                ui.label(self.title).classes('text-h6 font-bold')
+                ui.space()
             with ui.button_group():
                 if self.refresh_button is not None:
                     ui.button(self.refresh_button, icon='refresh').tooltip('Refresh').props('dense flat').on_click(self.refresh)
@@ -108,7 +126,7 @@ class EditGridWrapper():
                 ui.notify(f'Item created', color='positive')
             except Exception as e:
                 print(f'Error creating item: {e}')
-                ui.notify(f'Error creating item: {e}', color='negative')
+                ui.notify(f'Error creating item: {self._error_msg_from_exception(e)}', color='negative')
         else:
             ui.notify('Item creation cancelled', color='negative')
 
@@ -117,11 +135,10 @@ class EditGridWrapper():
 
 
     async def update_item(self, event: ClickEventArguments) -> None:
-        selected_row = await self.grid.widget.get_selected_row()
-        if not selected_row:
-            ui.notify('Please select a row for editing', color='negative')
+        row_key = await self._get_selected_row_key()
+        if not row_key:
+            ui.notify('Please select a row first!', color='negative')
             return
-        row_key = selected_row['__ui_row_key']
 
         item = self.grid._data.read(row_key)
         if not item:
@@ -136,7 +153,7 @@ class EditGridWrapper():
                 item = self.grid._data.update(item, row_key)
                 ui.notify(f'Item updated', color='positive')
             except Exception as e:
-                ui.notify(f'Error updating item: {e}', color='negative')
+                ui.notify(f'Error updating item: {self._error_msg_from_exception(e)}', color='negative')
         else:
             ui.notify('Item update cancelled', color='negative')
             return
@@ -146,19 +163,17 @@ class EditGridWrapper():
 
 
     async def delete_item(self, event: ClickEventArguments) -> None:
-        # determine the selected rows to delete from the grid widget
-        selected_row = await self.grid.widget.get_selected_row()
-        if not selected_row:
-            ui.notify('Please select a row for deletion', color='negative')
+        row_key = await self._get_selected_row_key()
+        if not row_key:
+            ui.notify('Please select a row for deletion!', color='negative')
             return
-        row_key = selected_row['__ui_row_key']
 
         # delete the item from the data adapter
         try:
             self.grid._data.delete(row_key)
             ui.notify(f'Item deleted', color='positive')
         except Exception as e:
-            ui.notify(f'Error deleting item {row_key}: {e}', color='negative')
+            ui.notify(f'Error deleting item {row_key}: {self._error_msg_from_exception(e)}', color='negative')
 
         self.grid.update_rows()
         self._invoke_change_handlers(event, row_key, None)
