@@ -9,6 +9,7 @@ from nicegui.dataclasses import KWONLY_SLOTS
 
 from niceview.modelform import ModelForm
 from niceview.modelgrid import ModelGridInlineEdit, ModelDataAdapter, ModelGrid, T, TableItemEventArguments, TableItemFieldEventArguments
+from niceview.util import submit_dialog
 
 
 class _EditGridWrapperInputs(typing_extensions.TypedDict, total=False):
@@ -166,6 +167,12 @@ class EditGridWrapper():
         row_key = await self._get_selected_row_key()
         if not row_key:
             ui.notify('Please select a row for deletion!', color='negative')
+            return
+
+        # confirm deletion
+        confirm = await submit_dialog('Confirm Deletion', f'Are you sure you want to delete the selected item *{row_key}*?')
+        if not confirm:
+            ui.notify('Item deletion cancelled', color='negative')
             return
 
         # delete the item from the data adapter
