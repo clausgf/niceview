@@ -8,8 +8,7 @@ from nicegui import ui
 from nicegui.events import Handler, ClickEventArguments, ValueChangeEventArguments, handle_event
 from nicegui.dataclasses import KWONLY_SLOTS
 
-from dataadapter import ListModelAdapter
-from niceview.dataadapter import ModelDataAdapter
+from niceview.dataadapter import ModelDataAdapter, ListModelAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 
