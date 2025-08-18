@@ -176,3 +176,6 @@ cython_debug/
 
 .nicegui
 data/projects/**
+*.db
+sqlmodel-example.py
+user.json

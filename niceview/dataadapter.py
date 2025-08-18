@@ -1,16 +1,24 @@
 import ast
 import datetime
+from pathlib import Path
 from typing import Any, Generic, TypeVar, Iterator, Protocol
-from pydantic import BaseModel
+from fastapi import HTTPException, status
 from sqlalchemy import Engine
+import pydantic
 import sqlmodel
 
 
-T = TypeVar('T', bound=BaseModel)
+T = TypeVar('T', bound=pydantic.BaseModel)
 class ModelDataAdapter(Generic[T], Protocol):
     """
-    A protocol for a data adapter that can be used with the ModelGrid.
-    It defines the methods that must be implemented by any data adapter.
+    This protocol defines the methods that must be implemented by any data adapter.
+
+    DataAdapters are responsible for managing the data access layer and providing 
+    a consistent collection API for the ModelGrid.
+
+    DataAdapters could also manage single instances instead of collections
+    (e.g. for editing a single item in a ModelForm). Then only the read and update
+    methods need to be implemented, keys can be ignored.
 
     A data adapter could be a pure adapter for a list, or something
     more complex like an adapter for SQLModel similar to a JPA Repository.
@@ -26,6 +34,9 @@ class ModelDataAdapter(Generic[T], Protocol):
         raise NotImplementedError
 
     def create(self, item: T) -> T:
+        """
+        Add a new item to the data store.
+        """
         raise NotImplementedError
 
     def read(self, key: str | int) -> T:
@@ -82,7 +93,7 @@ class SqlModelAdapter(ModelDataAdapter[T]):
                 yield self.key_from_item(item), str(item)
 
 
-    def key_from_item(self, item: BaseModel, index: int = -1) -> str:
+    def key_from_item(self, item: pydantic.BaseModel, index: int = -1) -> str:
         if not isinstance(item, sqlmodel.SQLModel):
             raise TypeError(f"Expected item to be an instance of {self._item_type}, got {type(item)}")
 
@@ -219,7 +230,7 @@ class ListModelAdapter(ModelDataAdapter[T]):
         for index, item in enumerate(self._items):
             yield str(index), str(item)
 
-    def key_from_item(self, item: BaseModel, index: int = -1) -> str:
+    def key_from_item(self, item: pydantic.BaseModel, index: int = -1) -> str:
         key = str(index)
         return key
 
@@ -253,4 +264,51 @@ class ListModelAdapter(ModelDataAdapter[T]):
             raise IndexError(f"Index {index} is out of bounds for the list.")
 
         del self._items[index]
+
+
+class JsonSingleModelAdapter(ModelDataAdapter[T]):
+    """
+    A data adapter for a JSON file containing a single item.
+    """
+    def __init__(self, item_type: type[T], path_name: Path, create_if_not_exist: bool = True) -> None:
+        if not issubclass(item_type, pydantic.BaseModel):
+            raise ValueError(f"item_type must be a subclass of pydantic.BaseModel, got {item_type}")
+        self._item_type = item_type
+        self._path_name = path_name
+        if path_name.exists() and not path_name.is_file():
+            raise ValueError(f"Path {path_name} exists but is not a file.")
+        if create_if_not_exist and not path_name.exists():
+            # create an instance & update
+            instance = self._item_type()
+            self.update(instance, key="0")
+
+    def read(self, key: str | int) -> T:
+        json_data = self._path_name.read_text()
+        item = self._item_type.model_validate_json(json_data)
+        return item
+    
+    def update(self, item: T, key: str) -> T:
+        temp_file = self._path_name.with_suffix('.tmp')
+        json_data = item.model_dump_json(indent=2)
+        temp_file.write_text(json_data)
+        temp_file.rename(self._path_name)
+        return self.read(key)
+
+    def __iter__(self) -> Iterator[T]:
+        raise NotImplementedError
+
+    def key_from_item(self, item: T, index: int = -1) -> str:
+        raise NotImplementedError
+
+    def key_from_str(self, key: str | int) -> Any:
+        raise NotImplementedError
+
+    def create(self, item: T) -> T:
+        raise NotImplementedError
+
+    def delete(self, key: str) -> None:
+        raise NotImplementedError
+
+    def query_all_strs(self) -> Iterator[tuple[str, str]]:
+        raise NotImplementedError
 

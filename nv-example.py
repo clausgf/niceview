@@ -1,4 +1,5 @@
 import datetime
+from pathlib import Path
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 import pydantic
@@ -52,6 +53,7 @@ user_list = [
     User(name='Grace', age=60, num=50)
 ]
 
+USER_PATH: Path = Path('./user.json')
 
 @ui.page('/form')
 def form_page():
@@ -84,6 +86,22 @@ def form_page():
     user_form.on_change(lambda e: print(f'on_change: {e.form=} {e.field_name=} {e.old_value=} {e.new_value=} {e.sender=} {e.client=}'))
 
 
+@ui.page('/form_json_autosave')
+def form_json_page_autosave():
+    with ui.card().classes('w-full'):
+        ui.label('Example for a User Form (JSON file, autosave)').classes('text-h6')
+        user_form_autosave = ModelForm.from_json(User, USER_PATH, autosave=True, classes='w-full')
+        user_form_autosave.render()
+
+
+@ui.page('/form_json_buttons')
+def form_json_page_buttons():
+    with ui.card().classes('w-full'):
+        title = f'User Form with refresh and save buttons (JSON file {USER_PATH}, save button)'
+        user_form_buttons = ModelForm.from_json(User, USER_PATH, title=title, save_button='', classes='w-full')
+        user_form_buttons.render()
+
+
 @ui.page('/grid')
 def grid_page():
     with ui.card().classes('w-full'):
@@ -114,13 +132,21 @@ def grid_page():
         user_grid_edit.on_change(lambda e: print(f'edit on_change: {e.model_table=} {e.row_key=} {e.item=} {e.sender=} {e.client=}'))
 
 
+@ui.page('/grid_json')
+def grid_json_page():
+    with ui.card().classes('w-full'):
+        ui.label('Example for a User Grid (JSON file, autosave)').classes('text-h6')
+
+
 @ui.page('/')
 def main_page():
     ui.label('Welcome to the NiceView Example!').classes('text-h3')
     ui.label('Non-SQLModel Version').classes('text-subtitle2')
     with ui.row():
         ui.button('Form Example', on_click=lambda: ui.navigate.to('/form')).classes('q-mr-sm')
+        ui.button('Form Example (JSON autosave)', on_click=lambda: ui.navigate.to('/form_json_autosave')).classes('q-mr-sm')
+        ui.button('Form Example (JSON Buttons)', on_click=lambda: ui.navigate.to('/form_json_buttons')).classes('q-mr-sm')
         ui.button('ModelGrid Example', on_click=lambda: ui.navigate.to('/grid')).classes('q-mr-sm')
-        # ui.button('ModelTable Example', on_click=lambda: ui.navigate.to('/table')).classes('q-mr-sm')
+        ui.button('ModelGrid JSON Example', on_click=lambda: ui.navigate.to('/grid_json')).classes('q-mr-sm')
 
 ui.run()

@@ -1,8 +1,11 @@
 from dataclasses import dataclass
 import datetime
-from typing import Any, List, Self, Unpack
+from enum import StrEnum
+from typing import Any, List, Literal, Self, Unpack
 import typing
+from pathlib import Path
 from zoneinfo import ZoneInfo
+from sqlalchemy import Enum
 import typing_extensions
 from pydantic import BaseModel, ValidationError
 
@@ -10,7 +13,7 @@ from nicegui import ui
 from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, handle_event
 from nicegui.dataclasses import KWONLY_SLOTS
 
-from niceview.dataadapter import ModelDataAdapter, SqlModelAdapter
+from niceview.dataadapter import JsonSingleModelAdapter, ModelDataAdapter, SqlModelAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 
@@ -39,9 +42,17 @@ class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
     props: str
 
     autosave: bool
-    """Whether to automatically save the form when the value changes. Defaults to False."""
+    """Whether to automatically save the form on field change. Defaults to False (OFF)."""
+
+    refresh_button: str | None
+    """Text for the refresh button. Empty string shows icon only. Requires item_model. If not provided, no refresh button will be shown (default)."""
+
+    save_button: str | None
+    """Text for the save button. Empty string shows icon only. Requires item_model. If not provided, no save button will be shown (default)."""
+
     on_change: Handler[FieldChangeEventArguments]
     """Callback to execute when value changes. To reduce the number of change events, fields like ui.input or ui.number also have to loose focus (blur)."""
+
 
 class ModelForm():
     """
@@ -53,7 +64,6 @@ class ModelForm():
     _item_model: ModelDataAdapter | None
     _item_key: str | int | None
     _model_repositories: dict[str, ModelDataAdapter]
-    _autosave: bool = False
     _change_handler: Handler[FieldChangeEventArguments]
 
     _fields: Fields
@@ -69,6 +79,9 @@ class ModelForm():
     style: str
     props: str
 
+    autosave: bool
+    refresh_button: str | None
+    save_button: str | None
 
     def __init__(self, item_type: type[BaseModel], **kwargs: Unpack[_ModelFormOptionInputs]) -> None:
         """
@@ -90,7 +103,7 @@ class ModelForm():
             value = getattr(meta, param, default) if meta else default
             value = kwargs.pop(param, value)  # override with kwargs if provided
             return value
-        
+
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
 
@@ -98,7 +111,6 @@ class ModelForm():
         self._item_model = None
         self._item_key = None
         self._model_repositories = {}
-        self._autosave = _get_param('autosave', False)
         self._change_handlers = []
 
         include = _get_param('include', '__all__')
@@ -117,6 +129,10 @@ class ModelForm():
         self.style = _get_param('style', '')
         self.props = _get_param('props', '')
 
+        self.autosave = _get_param('autosave', False)
+        self.refresh_button = _get_param('refresh_button', None)
+        self.save_button = _get_param('save_button', None)
+
         if on_change_callback := kwargs.pop('on_change', None):
             self.on_change(on_change_callback)
 
@@ -134,7 +150,18 @@ class ModelForm():
         ret = cls(type(item), **kwargs)
         ret.item = item
         return ret
-
+    
+    @classmethod
+    def from_json(cls, item_type: type[BaseModel], json_path: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
+        """
+        Create ModelForm bound to a JsonModelAdapter for a JSON file.
+        """
+        if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
+            raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
+        adapter = JsonSingleModelAdapter(item_type, json_path, create_if_not_exist=create_if_not_exist)
+        instance = cls(item_type, **kwargs)
+        instance.set_item_from_model(adapter, 1)
+        return instance
 
     @property
     def item(self) -> BaseModel:
@@ -174,13 +201,38 @@ class ModelForm():
     
     def set_model_repositories(self, repositories: dict[str, ModelDataAdapter]) -> Self:
         """
-        Set the model repositories for the form.
+        Set the model repositories for the modelselect widgets in the form.
         This is a dictionary of model data adapters that can be used to read and write items.
         """
         if not isinstance(repositories, dict):
             raise TypeError(f"model_repositories must be a dictionary, got {type(dict)}")
         self._model_repositories = repositories
         return self
+
+    def _refresh(self) -> None:
+        """
+        Refresh the form by reloading the item from the model.
+        This will reset the current item to the validated item.
+        """
+        if not self._item_model or not self._item_key:
+            raise ValueError("No item model or item key set. Use set_item_from_model() to set them.")
+        self.set_item_from_model(self._item_model, self._item_key)
+        # TODO render _current_item to widgets
+        #ui.notify('Form refreshed', color='positive')
+
+    def _save(self) -> None:
+        """
+        Save the current item to the model.
+        """
+        if not self._item_model or not self._item_key:
+            raise ValueError("No item model or item key set. Use set_item_from_model() to set them.")
+
+        if self.has_validation_errors():
+            ui.notify('Cannot save form: validation errors present', color='negative')
+            return
+
+        self._item_model.update(self.item, str(self._item_key))
+        ui.notify('Form saved', color='positive')
 
 
     def on_change(self, callback: Handler[FieldChangeEventArguments]) -> Self:
@@ -236,6 +288,8 @@ class ModelForm():
         from niceview.dataadapter import ListModelAdapter
 
         def notify_change(e: TableItemEventArguments) -> None:
+            if self.autosave:
+                self._save()
             fce = FieldChangeEventArguments(
                 sender=e.sender,
                 client=e.client,
@@ -346,7 +400,7 @@ class ModelForm():
         elif widget_type == 'editgrid':
             widget = self._render_editgrid_widget(field_name, field_info)
             is_simple_widget = False
-        
+
         elif widget_type == 'modelselect':
             widget = self._render_modelselect_widget(field_name, field_info, get_kwargs_from_field_info(['label', 'with_input', 'multiple', 'clearable']))
 
@@ -371,10 +425,20 @@ class ModelForm():
         """
         Render the form
         """
-        if self.title:
-            ui.label(self.title).classes('text-h4')
+        if self.title or self.refresh_button is not None or self.save_button is not None:
+            with ui.row().classes('w-full'):
+                if self.title:
+                    ui.label(self.title).classes('text-h6 font-bold')
+                if self.refresh_button is not None or self.save_button is not None:
+                    ui.space()
+                    with ui.button_group():
+                        if self.refresh_button is not None:
+                            ui.button(self.refresh_button, icon='refresh').tooltip('Refresh').props('dense flat').on_click(self._refresh)
+                        if self.save_button is not None:
+                            ui.button(self.save_button, icon='save').tooltip('Save').props('dense flat').on_click(self._save)
+
         if self.description:
-            ui.label(self.description)
+            ui.markdown(self.description)
 
         self.widgets = {}
         for field_name in self._fields:
@@ -469,6 +533,10 @@ class ModelForm():
         # TODO find a way to display the validation errors in the UI
 
 
+    def has_validation_errors(self) -> bool:
+        return len(self._validation_error_messages) > 0
+
+
     def _handle_blur_event(self, field_name: str, event) -> None:
         """
         Handle the change event to update the model with the new value.
@@ -519,6 +587,10 @@ class ModelForm():
         # change accepted, update teh validated model from the current model
         #print(f"_handle_value_change field_name={field_name} event={value_change_event}: old_value={old_value} new_value={new_value}")
         setattr(self._validated_item, field_name, new_value)
+
+        # handle autosave
+        if self.autosave:
+            self._save()
 
         # call the change handlers
         #event.args.update({'field_name': field_name, 'old_value': old_value, 'new_value': new_value})
