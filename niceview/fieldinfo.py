@@ -20,7 +20,11 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
     hidden: bool
     editable: bool
     help_text: str
-    widget_type: Literal['ui.input', 'ui.number', 'datetime', 'date', 'time', 'ui.textarea', 'ui.checkbox', 'ui.switch', 'ui.select', 'editgrid', 'modelselect']
+    widget_type: Literal[
+        'ui.input', 'ui.number', 'ui.textarea', 'ui.checkbox', 'ui.switch', 'ui.select', 'ui.input_chips',
+        'datetime', 'date', 'time', 'timedelta',
+        'editgrid', 'modelselect',
+    ]
 
     props: str
     classes: str
@@ -49,6 +53,9 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
     multiple: bool
     clearable: bool
     # validation same as in ui.input
+
+    # additional options when the field is rendered as ui.input_chips
+    new_value_mode: Literal['add', 'add-unique', 'toggle']
 
     # additional options when field is rendered as onetomany
     o2m_item_type: type  # type of the item in the one-to-many relationship, e.g. Group
@@ -82,7 +89,11 @@ class FieldInfo():
     editable: bool = True
     help_text: str | None = None
     # widget type for the field  (default infered from field type)
-    widget_type: Literal['ui.input', 'ui.number', 'datetime', 'date', 'time', 'ui.textarea', 'ui.checkbox', 'ui.switch', 'ui.select', 'editgrid'] | None = None
+    widget_type: Literal[
+        'ui.input', 'ui.number', 'ui.textarea', 'ui.checkbox', 'ui.switch', 'ui.select', 'ui.input_chips',
+        'datetime', 'date', 'time', 'timedelta',
+        'editgrid', 'modelselect',
+    ] | None = None
 
     # ui.element
     props: str | None = None
@@ -114,6 +125,9 @@ class FieldInfo():
     with_input: bool = False
     multiple: bool = False
     clearable: bool = False
+
+    # additional options when the field is rendered as ui.input_chips
+    new_value_mode: Literal['add', 'add-unique', 'toggle'] = 'add-unique'
 
     # additional options when field is a relationship field
     item_type: type | None = None

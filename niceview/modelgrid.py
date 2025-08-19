@@ -188,7 +188,16 @@ class ModelGrid:
 
         kwargs = { k: v for k in ['theme', 'auto_size_columns']
                    if ( v := getattr(self, k)) }
-        config_dict = { 'columnDefs': self._cols, 'rowData': self._rows, 'stopEditingWhenCellsLoseFocus': True, }
+        config_dict = {
+            'columnDefs': self._cols, 
+            'rowData': self._rows, 
+            'stopEditingWhenCellsLoseFocus': True,
+            # 'domLayout': 'autoHeight',
+            # 'autoSizeStrategy': {
+            #     # type: 'fitGridWidth', // size columns to try an fit into grid without scrolling
+            #     'type': 'fitCellContents', #// size columns to try an fit cell content with horizontal scrolling if nessissary
+            # },
+        }
         if self.defaultColDef:
             config_dict['defaultColDef'] = self.defaultColDef
         if self.rowSelection:
@@ -200,6 +209,7 @@ class ModelGrid:
         self.widget.style(self.style)
         self.widget.props(self.props)
         self.widget.on('selectionChanged', self._handle_selection_changed)
+        #self.widget.on('firstDataRendered', lambda: self.widget.run_grid_method('autoSizeAllColumns'))
 
         return self
 

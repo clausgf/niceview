@@ -33,9 +33,9 @@ class User(pydantic.BaseModel):
     birthdate: datetime.date = datetime.date.today()
     birthtime: datetime.time = pydantic.Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).time(), title="Time of birth", description="User's time of birth (UTC)")
     birthdatetime: Annotated[datetime.datetime, pydantic.Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0), title="Birthdate & Time", description="User's birthdate and time (UTC)")]
+    until_birthday: datetime.timedelta = pydantic.Field(default_factory=lambda: datetime.timedelta(days=5), title="Until next birthday", description="Time until the next birthday")
     gender: Literal['male', 'female', 'other'] = 'other'
     vegetarian: Literal['Yes', 'No', None] = None
-
     favorite_dishes: list[str] = []
     groups: Annotated[list[Group], pydantic.Field(default_factory=list, title="Groups", description="List of groups the user belongs to"), niceview.Field()]
 
@@ -74,9 +74,14 @@ def form_page():
             ui.label().bind_text_from(user, 'num')
             ui.label('is active').bind_visibility_from(user, 'is_active')
             ui.label('is admin').bind_visibility_from(user, 'is_admin')
+            ui.label().bind_text_from(user, 'birthdate')
+            ui.label().bind_text_from(user, 'birthtime')
             ui.label().bind_text_from(user, 'birthdatetime')
+            ui.label().bind_text_from(user, 'until_birthday', backward=lambda td: str(td))
             ui.label().bind_text_from(user, 'gender')
-            ui.label().bind_text_from(user, 'mag_schnitzel')
+            ui.label().bind_text_from(user, 'vegetarian')
+            ui.label().bind_text_from(user, 'favorite_dishes')
+
             groups_label = ui.label(f'Groups: {", ".join(g.name for g in user.groups)}')
             with ui.row():
                 ui.button('num++', on_click=lambda: setattr(user, 'num', user.num + 1))

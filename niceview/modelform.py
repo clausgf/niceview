@@ -7,7 +7,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from sqlalchemy import Enum
 import typing_extensions
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from nicegui import ui
 from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, handle_event
@@ -354,27 +354,6 @@ class ModelForm():
             widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
             widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
 
-        elif widget_type == 'datetime':
-            widget = ui.input(**get_kwargs_from_field_info(['label', 'placeholder'])).props('type=datetime-local').props('step=1')
-            self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate(field_name, vce))
-            widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
-            widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
-
-        elif widget_type == 'date':
-            widget = ui.input(**get_kwargs_from_field_info(['label', 'placeholder'])).props('type=date')
-            self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate(field_name, vce))
-            widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
-            widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
-
-        elif widget_type == 'time':
-            widget = ui.input(**get_kwargs_from_field_info(['label', 'placeholder'])).props('type=time').props('step=1')
-            self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate(field_name, vce))
-            widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
-            widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
-
         elif widget_type == 'ui.textarea':
             widget = ui.textarea(**get_kwargs_from_field_info(['label', 'placeholder']))
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
@@ -396,6 +375,41 @@ class ModelForm():
 
         elif widget_type == 'ui.select':
             widget = self._render_select_widget(field_name, field_info, get_kwargs_from_field_info(['label', 'with_input', 'multiple', 'clearable']))
+
+        elif widget_type == 'ui.input_chips':
+            widget = ui.input_chips(**get_kwargs_from_field_info(['label', 'new_value_mode']))
+            self._from_current_item_to_widget_value(field_name, widget_type, widget)
+            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate(field_name, vce))
+            widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
+            widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
+
+        elif widget_type == 'datetime':
+            widget = ui.input(**get_kwargs_from_field_info(['label', 'placeholder'])).props('type=datetime-local').props('step=1')
+            self._from_current_item_to_widget_value(field_name, widget_type, widget)
+            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate(field_name, vce))
+            widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
+            widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
+
+        elif widget_type == 'date':
+            widget = ui.input(**get_kwargs_from_field_info(['label', 'placeholder'])).props('type=date')
+            self._from_current_item_to_widget_value(field_name, widget_type, widget)
+            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate(field_name, vce))
+            widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
+            widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
+
+        elif widget_type == 'time':
+            widget = ui.input(**get_kwargs_from_field_info(['label', 'placeholder'])).props('type=time').props('step=1')
+            self._from_current_item_to_widget_value(field_name, widget_type, widget)
+            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate(field_name, vce))
+            widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
+            widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
+        
+        elif widget_type == 'timedelta':
+            widget = ui.input(**get_kwargs_from_field_info(['label', 'placeholder']))
+            self._from_current_item_to_widget_value(field_name, widget_type, widget)
+            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate(field_name, vce))
+            widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
+            widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
 
         elif widget_type == 'editgrid':
             widget = self._render_editgrid_widget(field_name, field_info)
@@ -471,6 +485,10 @@ class ModelForm():
             # timezone support for datetime fields
             local_tz = ZoneInfo("Europe/Berlin")  #TODO: remove hardcoded timezone
             value = value.astimezone(local_tz).replace(tzinfo=None).isoformat()
+        
+        elif widget_type == 'timedelta':
+            timedelta_adapter = TypeAdapter(datetime.timedelta)
+            value = timedelta_adapter.dump_python(value, mode="json")
 
         widget.value = value
 
@@ -490,26 +508,37 @@ class ModelForm():
         field_type = self._fields[field_name].field_type
         value = widget.value
 
-        # convert the value depending on the widget type
-        if widget_type == 'datetime':
-            dt = datetime.datetime.fromisoformat(value)
-            local_tz = ZoneInfo("Europe/Berlin")  #TODO: remove hardcoded timezone
-            value = dt.replace(tzinfo=local_tz)
-            value = value.astimezone(datetime.timezone.utc)  # convert to UTC
-
-        elif widget_type == 'ui.input' and typing.get_origin(field_type) == list:
+        if widget_type == 'ui.input' and typing.get_origin(field_type) == list:
             value = [item.strip() for item in value.split(',')]
             item_type = self._fields[field_name].item_type
             if item_type in (int, float, bool, str):
                 value = [item_type(item) for item in value]
             else:
                 raise ValueError(f"Field '{field_name}' is a list but no allowed item type is specified")
-
+        
         elif widget_type == 'ui.number':
             if field_type == int:
                 value = int(value)
             else:
                 value = float(value)  # convert to float for number fields
+
+        elif widget_type == 'ui.input_chips':
+            # split comma separated values
+            for v in value:
+                if isinstance(v, str) and ',' in v:
+                    value.remove(v)
+                    value.extend([item.strip() for item in v.split(',')])
+
+        # convert the value depending on the widget type
+        elif widget_type == 'datetime':
+            dt = datetime.datetime.fromisoformat(value)
+            local_tz = ZoneInfo("Europe/Berlin")  #TODO: remove hardcoded timezone
+            value = dt.replace(tzinfo=local_tz)
+            value = value.astimezone(datetime.timezone.utc)  # convert to UTC
+
+        elif widget_type == 'timedelta':
+            timedelta_adapter = TypeAdapter(datetime.timedelta)
+            value = timedelta_adapter.validate_python(value)
 
         elif widget_type == 'modelselect':
             repository = self._model_repositories[self._fields[field_name].item_type.__name__]

@@ -28,6 +28,7 @@ class Fields(typing.Mapping[str, FieldInfo]):
         datetime.datetime: 'datetime',
         datetime.date: 'date',
         datetime.time: 'time',
+        datetime.timedelta: 'timedelta',
     }
 
 
@@ -167,6 +168,8 @@ class Fields(typing.Mapping[str, FieldInfo]):
                     raise ValueError(f"Field '{field_name}' is a list but no item type is specified in FieldInfo or as a pydantic model type")
                 elif issubclass(nv_field_info.item_type, pydantic.BaseModel):
                     nv_field_info.widget_type = 'editgrid'
+                elif issubclass(nv_field_info.item_type, str):
+                    nv_field_info.widget_type = 'ui.input_chips'
                 else:
                     nv_field_info.widget_type = 'ui.input'
 
