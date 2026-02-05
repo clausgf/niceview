@@ -3,6 +3,6 @@ uvicorn
 pydantic-settings
 sqlmodel
 pytest
-protobuf==6.30.2
+protobuf==6.33.5
 python-snappy==0.7.3
 pytz
