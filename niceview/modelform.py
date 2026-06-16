@@ -50,6 +50,9 @@ class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
     save_button: str | None
     """Text for the save button. Empty string shows icon only. Requires item_model. If not provided, no save button will be shown (default)."""
 
+    local_tz: str | None
+    """Local timezone name for datetime display (e.g. 'Europe/Berlin'). Defaults to None (system local timezone)."""
+
     on_change: Handler[FieldChangeEventArguments]
     """Callback to execute when value changes. To reduce the number of change events, fields like ui.input or ui.number also have to loose focus (blur)."""
 
@@ -80,6 +83,7 @@ class ModelForm():
     props: str
 
     autosave: bool
+    local_tz: str | None
     refresh_button: str | None
     save_button: str | None
 
@@ -130,6 +134,7 @@ class ModelForm():
         self.props = _get_param('props', '')
 
         self.autosave = _get_param('autosave', False)
+        self.local_tz = _get_param('local_tz', None)
         self.refresh_button = _get_param('refresh_button', None)
         self.save_button = _get_param('save_button', None)
 
@@ -482,9 +487,8 @@ class ModelForm():
             value = repository.key_from_item(value)
 
         elif type(value) is datetime.datetime:
-            # timezone support for datetime fields
-            local_tz = ZoneInfo("Europe/Berlin")  #TODO: remove hardcoded timezone
-            value = value.astimezone(local_tz).replace(tzinfo=None).isoformat()
+            tz = ZoneInfo(self.local_tz) if self.local_tz else None
+            value = value.astimezone(tz).replace(tzinfo=None).isoformat()
         
         elif widget_type == 'timedelta':
             timedelta_adapter = TypeAdapter(datetime.timedelta)
@@ -532,9 +536,8 @@ class ModelForm():
         # convert the value depending on the widget type
         elif widget_type == 'datetime':
             dt = datetime.datetime.fromisoformat(value)
-            local_tz = ZoneInfo("Europe/Berlin")  #TODO: remove hardcoded timezone
-            value = dt.replace(tzinfo=local_tz)
-            value = value.astimezone(datetime.timezone.utc)  # convert to UTC
+            tz = ZoneInfo(self.local_tz) if self.local_tz else None
+            value = dt.replace(tzinfo=tz).astimezone(datetime.timezone.utc)
 
         elif widget_type == 'timedelta':
             timedelta_adapter = TypeAdapter(datetime.timedelta)

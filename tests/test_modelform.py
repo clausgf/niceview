@@ -49,6 +49,13 @@ class TestModelFormInit:
         form = ModelForm(User, autosave=True)
         assert form.autosave is True
 
+    def test_local_tz_default_is_none(self):
+        assert ModelForm(User).local_tz is None
+
+    def test_local_tz_kwarg(self):
+        form = ModelForm(User, local_tz='Europe/Berlin')
+        assert form.local_tz == 'Europe/Berlin'
+
     def test_unknown_kwarg_raises(self):
         with pytest.raises(TypeError):
             ModelForm(User, nonexistent_option=True)  # type: ignore
