@@ -220,20 +220,23 @@ class ModelForm():
 
     def _refresh(self) -> None:
         """
-        Refresh the form by reloading the item from the model.
-        This will reset the current item to the validated item.
+        Refresh the form by reloading the item from the model and pushing
+        the new values into all rendered widgets.
         """
-        if not self._item_model or not self._item_key:
+        if self._item_model is None or self._item_key is None:
             raise ValueError("No item model or item key set. Use set_item_from_model() to set them.")
         self.set_item_from_model(self._item_model, self._item_key)
-        # TODO render _current_item to widgets
-        #ui.notify('Form refreshed', color='positive')
+        for field_name, widget in self.widgets.items():
+            widget_type = self._fields[field_name].widget_type
+            if widget_type != 'editgrid':
+                self._from_current_item_to_widget_value(field_name, widget_type, widget)
+        ui.notify('Form refreshed', color='positive')
 
     def _save(self) -> None:
         """
         Save the current item to the model.
         """
-        if not self._item_model or not self._item_key:
+        if self._item_model is None or self._item_key is None:
             raise ValueError("No item model or item key set. Use set_item_from_model() to set them.")
 
         if self.has_validation_errors():

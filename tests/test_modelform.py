@@ -132,6 +132,25 @@ class TestSetItemFromModel:
         assert result is form
 
 
+class TestRefresh:
+    def test_refresh_without_model_raises(self):
+        form = ModelForm(User)
+        with pytest.raises(ValueError):
+            form._refresh()
+
+    def test_refresh_updates_validated_item(self):
+        items = [User(name='Bob', age=25)]
+        adapter = ListModelAdapter(User, items)
+        form = ModelForm(User)
+        form.set_item_from_model(adapter, 0)
+        # Modify the backing list entry
+        items[0] = User(name='Alice', age=30)
+        adapter.update(items[0], '0')
+        form._refresh()
+        assert form.item.name == 'Alice'
+        assert form.item.age == 30
+
+
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
