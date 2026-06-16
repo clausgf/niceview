@@ -128,14 +128,13 @@ class EditGridWrapper():
             try:
                 item = self.grid._data.create(item)
                 ui.notify(f'Item created', color='positive')
+                self.grid.update_rows()
+                self._invoke_change_handlers(event, self.grid._data.key_from_item(item), item)
             except Exception as e:
                 log.error(f'Error creating item: {e}')
                 ui.notify(f'Error creating item: {self._error_msg_from_exception(e)}', color='negative')
         else:
             ui.notify('Item creation cancelled', color='negative')
-
-        self.grid.update_rows()
-        self._invoke_change_handlers(event, self.grid._data.key_from_item(item), item)
 
 
     async def update_item(self, event: ClickEventArguments) -> None:
