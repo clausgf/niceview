@@ -10,7 +10,7 @@ import niceview
 from niceview.modeledit import EditGridWrapper
 from niceview.modelform import ModelForm
 from niceview.modelgrid import ModelGridInlineEdit, ModelGrid
-from niceview.dataadapter import ListModelAdapter
+from niceview.dataadapter import ListModelAdapter, JsonListModelAdapter
 
 
 def now_factory():
@@ -54,6 +54,7 @@ user_list = [
 ]
 
 USER_PATH: Path = Path('./user.json')
+GROUPS_PATH: Path = Path('./groups.json')
 
 @ui.page('/form')
 def form_page():
@@ -139,8 +140,21 @@ def grid_page():
 
 @ui.page('/grid_json')
 def grid_json_page():
+    adapter = JsonListModelAdapter(Group, GROUPS_PATH)
+
     with ui.card().classes('w-full'):
-        ui.label('Example for a User Grid (JSON file, autosave)').classes('text-h6')
+        ui.label('Readonly AgGrid backed by JSON file').classes('text-h6')
+        ModelGrid(Group, adapter, classes='w-full').render()
+
+    with ui.card().classes('w-full'):
+        ui.label('Inline-editable AgGrid (changes persist to JSON immediately)').classes('text-h6')
+        ModelGridInlineEdit(Group, adapter, classes='w-full').render()
+
+    with ui.card().classes('w-full'):
+        EditGridWrapper(
+            ModelGridInlineEdit(Group, adapter, classes='w-full'),
+            title='Groups — full CRUD, persisted to JSON',
+        ).render()
 
 
 @ui.page('/')
