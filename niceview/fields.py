@@ -5,10 +5,19 @@ import typing
 import pydantic
 import sqlalchemy
 from sqlmodel import SQLModel, Relationship
-from niceview.fieldinfo import FieldInfo
+from niceview.fieldinfo import FieldInfo, _FieldInfoInputs
 import importlib
 
 log = logging.getLogger('niceview')
+
+_FIELD_INFO_KWARGS = set(_FieldInfoInputs.__annotations__.keys())
+
+
+def _merge_field_infos(base: FieldInfo, override: FieldInfo) -> FieldInfo:
+    """Return a new FieldInfo with base values overridden by explicitly set values from override."""
+    base_dict = {k: getattr(base, k) for k in _FIELD_INFO_KWARGS if hasattr(base, k)}
+    override_dict = {k: v for k, v in vars(override).items() if k in _FIELD_INFO_KWARGS}
+    return FieldInfo(**{**base_dict, **override_dict})
 
 
 class Fields(typing.Mapping[str, FieldInfo]):
@@ -99,14 +108,13 @@ class Fields(typing.Mapping[str, FieldInfo]):
                     # merge the field info from the Meta class with the field info from the model
                     fi = meta_field_info[field_name]
                     if isinstance(fi, FieldInfo):
-                        self._field_infos[field_name] = FieldInfo(**{**self._field_infos[field_name], **fi}) # type: ignore
+                        self._field_infos[field_name] = _merge_field_infos(self._field_infos[field_name], fi)
                     else:
                         raise ValueError(f"Invalid field info in Meta class for field '{field_name}': {field_info}")
 
             # overwrite field info gathered so far with the FieldInfo provided
             if field_name in field_infos:
-                field_info_arg = field_infos[field_name]
-                self._field_infos[field_name] = FieldInfo(**{**self._field_infos[field_name], **field_info_arg}) # type: ignore
+                self._field_infos[field_name] = _merge_field_infos(self._field_infos[field_name], field_infos[field_name])
 
             if field_name in self._field_infos:
                 log.debug(f"{self._item_type.__name__}.{field_name} type={field_type} FieldInfo={self._field_infos[field_name]}")
