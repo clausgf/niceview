@@ -1,6 +1,7 @@
 from copy import copy
 from dataclasses import dataclass
 import datetime
+import logging
 from typing import Any, Callable, Iterable, List, Literal, Self, TypeVar, Unpack
 import typing_extensions
 from pydantic import BaseModel
@@ -11,6 +12,8 @@ from nicegui.dataclasses import KWONLY_SLOTS
 from niceview.dataadapter import ModelDataAdapter, ListModelAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
+
+log = logging.getLogger('niceview')
 
 
 def _collect_aggrid_cols(fields: Fields) -> list[dict[str, Any]]:
@@ -144,7 +147,7 @@ class ModelGrid:
         if not callable(callback):
             raise TypeError(f"callback must be callable, got {type(callback)}")
         if not self.rowSelection == 'single':
-            print(f"on_select is only supported for single row selection, but rowSelection is '{self.rowSelection}'") # TODO logging
+            log.warning(f"on_select is only supported for single row selection, but rowSelection is '{self.rowSelection}'")
         self._selection_handlers.append(callback)
         return self
 

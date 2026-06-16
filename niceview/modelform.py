@@ -169,7 +169,7 @@ class ModelForm():
             raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
         adapter = JsonSingleModelAdapter(item_type, json_path, create_if_not_exist=create_if_not_exist)
         instance = cls(item_type, **kwargs)
-        instance.set_item_from_model(adapter, 1)
+        instance.set_item_from_model(adapter, 0)
         return instance
 
     @property
@@ -563,10 +563,7 @@ class ModelForm():
 
 
     def _validation_errors(self, field_name: str, value) -> str | None:
-        # return validation error messages for the field
-        msg = self._validation_error_messages.get(field_name, None)
-        #print(f"_validation_errors: Validation error for field {field_name}: {msg}")
-        return msg
+        return self._validation_error_messages.get(field_name, None)
 
 
     def _validate(self, field_name: str | None = None) -> None:
@@ -591,15 +588,6 @@ class ModelForm():
 
 
     def _handle_blur_event(self, field_name: str, event) -> None:
-        """
-        Handle the change event to update the model with the new value.
-        """
-        #print(f"change '{field_name}': {event}")
-        # GenericEventArguments(sender=<nicegui.elements.number.Number object at 0x113dcec10>, client=<nicegui.client.Client object at 0x113d27cb0>, 
-        #  args={'isTrusted': True, '_vts': 1747817122891, 'detail': 0, 'layerX': 0, 'layerY': 0, 'pageX': 0, 'pageY': 0, 
-        #   'which': 0, 'type': 'focusout', 'currentTarget': None, 'eventPhase': 0, 'cancelBubble': False, 
-        #   'bubbles': True, 'cancelable': False, 'defaultPrevented': False, 'composed': True, 'timeStamp': 8820, 
-        #   'returnValue': True, 'NONE': 0, 'CAPTURING_PHASE': 1, 'AT_TARGET': 2, 'BUBBLING_PHASE': 3})
         vce = ValueChangeEventArguments(sender=event.sender, client=event.client, value=event.sender.value)
         self._handle_value_change(field_name, vce)
 
@@ -609,8 +597,6 @@ class ModelForm():
         new_value = value_change_event.sender.value
 
         if old_value != new_value:
-            # update the current model from the widget & validate the current model
-            #print(f"_handle_validate field_name={field_name} event={value_change_event}: old_value={old_value} new_value={new_value}")
             error_msg = None
             try:
                 self._from_widget_value_to_current_item(field_name)
@@ -627,8 +613,6 @@ class ModelForm():
     def _handle_value_change(self, field_name: str, value_change_event: ValueChangeEventArguments) -> None:
         # do not handle the change event if the validation failed because of this field
         if len(self._validation_error_messages.get(field_name, '')) > 0:
-            # validation error, do not update the model
-            #print(f"_handle_value_change field_name={field_name} event={value_change_event}: change not accepted or propagated, validation error(s): {self._validation_error_messages}")
             return
 
         # do not handle non-changes
@@ -637,8 +621,6 @@ class ModelForm():
         if old_value == new_value:
             return
 
-        # change accepted, update teh validated model from the current model
-        #print(f"_handle_value_change field_name={field_name} event={value_change_event}: old_value={old_value} new_value={new_value}")
         setattr(self._validated_item, field_name, new_value)
 
         # handle autosave

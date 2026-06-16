@@ -1,11 +1,14 @@
 import ast
 import datetime
+import logging
 from pathlib import Path
 from typing import Any, Generic, TypeVar, Iterator, Protocol
 from fastapi import HTTPException, status
 from sqlalchemy import Engine
 import pydantic
 import sqlmodel
+
+log = logging.getLogger('niceview')
 
 
 T = TypeVar('T', bound=pydantic.BaseModel)
@@ -134,15 +137,10 @@ class SqlModelAdapter(ModelDataAdapter[T]):
             if self._lock_field:
                 now = datetime.datetime.now(datetime.timezone.utc)
                 setattr(item, self._lock_field, now)
-            print(f"before add: {item=}")
             session.add(item)
-            print(f"before commit: {item=}")
             session.commit()
-            print(f"before refresh: {item=}")
             session.refresh(item)  # Refresh to get the updated item with the new ID
-            print(f"before model_validate: {item=}")
             item = self._item_type.model_validate(item) # force reloading all fields & detach object
-        print(f"before return: {item=}")
         return item
 
 

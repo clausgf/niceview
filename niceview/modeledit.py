@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import logging
 from typing import Any, Awaitable, Callable, Iterable, Self, Unpack
 from fastapi import HTTPException
 import typing_extensions
@@ -10,6 +11,8 @@ from nicegui.dataclasses import KWONLY_SLOTS
 from niceview.modelform import ModelForm
 from niceview.modelgrid import ModelGridInlineEdit, ModelDataAdapter, ModelGrid, T, TableItemEventArguments, TableItemFieldEventArguments
 from niceview.util import submit_dialog
+
+log = logging.getLogger('niceview')
 
 
 class _EditGridWrapperInputs(typing_extensions.TypedDict, total=False):
@@ -126,7 +129,7 @@ class EditGridWrapper():
                 item = self.grid._data.create(item)
                 ui.notify(f'Item created', color='positive')
             except Exception as e:
-                print(f'Error creating item: {e}')
+                log.error(f'Error creating item: {e}')
                 ui.notify(f'Error creating item: {self._error_msg_from_exception(e)}', color='negative')
         else:
             ui.notify('Item creation cancelled', color='negative')
