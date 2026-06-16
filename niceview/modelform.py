@@ -163,7 +163,7 @@ class ModelForm():
     @classmethod
     def from_json(cls, item_type: type[BaseModel], json_path: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
-        Create ModelForm bound to a JsonModelAdapter for a JSON file.
+        Create ModelForm bound to a JsonSingleModelAdapter for a JSON file.
         """
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
@@ -248,7 +248,10 @@ class ModelForm():
             ui.notify('Cannot save form: validation errors present', color='negative')
             return
 
-        self._item_model.update(self.item, str(self._item_key))
+        updated = self._item_model.update(self.item, str(self._item_key))
+        if updated is not None and updated is not self._validated_item:
+            self._validated_item = updated
+            self._current_item = updated.model_copy()
         ui.notify('Form saved', color='positive')
 
 

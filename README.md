@@ -37,8 +37,12 @@ ModelForm
 # From a model instance (edits the instance in-place)
 form = ModelForm.from_item(item, title='Edit User', classes='w-full')
 
-# From a JSON file (loads and saves automatically)
+# From a JSON file (creates file with defaults if missing; autosave on each validated change)
 form = ModelForm.from_json(User, Path('user.json'), autosave=True)
+# With explicit save button instead of autosave
+form = ModelForm.from_json(User, Path('user.json'), save_button='Save', refresh_button='')
+# Fail if file does not exist (no auto-creation)
+form = ModelForm.from_json(User, Path('user.json'), create_if_not_exist=False)
 
 # From a data adapter (supports refresh and save buttons)
 form = ModelForm(User, title='Edit User', save_button='', refresh_button='')

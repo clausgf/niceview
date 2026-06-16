@@ -146,6 +146,39 @@ class TestFromJson:
         form = ModelForm.from_json(User, path, title='My Form')
         assert form.title == 'My Form'
 
+    def test_create_if_not_exist_false_with_existing_file(self, tmp_path):
+        path = tmp_path / 'user.json'
+        path.write_text(json.dumps({'name': 'Carol', 'age': 40, 'active': False}), encoding='utf-8')
+        form = ModelForm.from_json(User, path, create_if_not_exist=False)
+        assert form.item.name == 'Carol'
+
+    def test_create_if_not_exist_false_missing_file_raises(self, tmp_path):
+        path = tmp_path / 'user.json'
+        with pytest.raises(FileNotFoundError):
+            ModelForm.from_json(User, path, create_if_not_exist=False)
+
+    def test_save_writes_to_file(self, tmp_path):
+        path = tmp_path / 'user.json'
+        form = ModelForm.from_json(User, path)
+        form._validated_item.name = 'Alice'
+        form._save()
+        data = json.loads(path.read_text(encoding='utf-8'))
+        assert data['name'] == 'Alice'
+
+    def test_autosave_flag_is_set(self, tmp_path):
+        path = tmp_path / 'user.json'
+        form = ModelForm.from_json(User, path, autosave=True)
+        assert form.autosave is True
+
+    def test_refresh_reloads_from_file(self, tmp_path):
+        path = tmp_path / 'user.json'
+        form = ModelForm.from_json(User, path)
+        # externally overwrite the file
+        path.write_text(json.dumps({'name': 'Dave', 'age': 50, 'active': True}), encoding='utf-8')
+        form._refresh()
+        assert form.item.name == 'Dave'
+        assert form.item.age == 50
+
 
 # ---------------------------------------------------------------------------
 # set_item_from_model

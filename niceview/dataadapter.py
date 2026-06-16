@@ -263,29 +263,29 @@ class ListModelAdapter(ModelDataAdapter[T]):
 
 class JsonSingleModelAdapter(ModelDataAdapter[T]):
     """
-    A data adapter for a JSON file containing a single item.
+    A data adapter for a JSON file containing a single Pydantic model instance.
+    Writes are atomic (write to .tmp, then rename).
     """
     def __init__(self, item_type: type[T], path_name: Path, create_if_not_exist: bool = True) -> None:
-        if not issubclass(item_type, pydantic.BaseModel):
-            raise ValueError(f"item_type must be a subclass of pydantic.BaseModel, got {item_type}")
+        if not isinstance(item_type, type) or not issubclass(item_type, pydantic.BaseModel):
+            raise TypeError(f"item_type must be a subclass of pydantic.BaseModel, got {item_type}")
         self._item_type = item_type
         self._path_name = path_name
         if path_name.exists() and not path_name.is_file():
             raise ValueError(f"Path {path_name} exists but is not a file.")
         if create_if_not_exist and not path_name.exists():
-            # create an instance & update
             instance = self._item_type()
             self.update(instance, key="0")
 
     def read(self, key: str | int) -> T:
-        json_data = self._path_name.read_text()
+        json_data = self._path_name.read_text(encoding='utf-8')
         item = self._item_type.model_validate_json(json_data)
         return item
-    
+
     def update(self, item: T, key: str) -> T:
         temp_file = self._path_name.with_suffix('.tmp')
         json_data = item.model_dump_json(indent=2)
-        temp_file.write_text(json_data)
+        temp_file.write_text(json_data, encoding='utf-8')
         temp_file.rename(self._path_name)
         return self.read(key)
 

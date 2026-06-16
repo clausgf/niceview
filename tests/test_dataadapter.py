@@ -204,5 +204,33 @@ class TestJsonSingleModelAdapter:
 
     def test_invalid_item_type_raises(self, tmp_path):
         path = tmp_path / 'data.json'
-        with pytest.raises((ValueError, TypeError)):
+        with pytest.raises(TypeError):
             JsonSingleModelAdapter(str, path)  # type: ignore
+
+    def test_read_missing_file_raises(self, tmp_path):
+        path = tmp_path / 'data.json'
+        adapter = JsonSingleModelAdapter(Item, path, create_if_not_exist=False)
+        with pytest.raises(FileNotFoundError):
+            adapter.read('0')
+
+    def test_read_invalid_json_raises(self, tmp_path):
+        path = tmp_path / 'data.json'
+        path.write_text('not valid json', encoding='utf-8')
+        adapter = JsonSingleModelAdapter(Item, path, create_if_not_exist=False)
+        with pytest.raises(Exception):
+            adapter.read('0')
+
+    def test_update_is_atomic(self, tmp_path):
+        path = tmp_path / 'data.json'
+        adapter = JsonSingleModelAdapter(Item, path, create_if_not_exist=True)
+        adapter.update(Item(name='v2', value=2), '0')
+        # temp file must not linger
+        assert not path.with_suffix('.tmp').exists()
+        assert path.exists()
+
+    def test_create_if_not_exist_false_with_existing_file(self, tmp_path):
+        path = tmp_path / 'data.json'
+        path.write_text('{"name": "existing", "value": 7}', encoding='utf-8')
+        adapter = JsonSingleModelAdapter(Item, path, create_if_not_exist=False)
+        item = adapter.read('0')
+        assert item.name == 'existing'
