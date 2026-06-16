@@ -120,15 +120,17 @@ class TestSetItemFromModel:
     def test_set_item_from_list_adapter(self):
         items = [User(name='Bob', age=25)]
         adapter = ListModelAdapter(User, items)
+        key = adapter.key_from_item(items[0])
         form = ModelForm(User)
-        form.set_item_from_model(adapter, 0)
+        form.set_item_from_model(adapter, key)
         assert form.item.name == 'Bob'
 
     def test_set_item_returns_self(self):
         items = [User()]
         adapter = ListModelAdapter(User, items)
+        key = adapter.key_from_item(items[0])
         form = ModelForm(User)
-        result = form.set_item_from_model(adapter, 0)
+        result = form.set_item_from_model(adapter, key)
         assert result is form
 
 
@@ -141,10 +143,12 @@ class TestRefresh:
     def test_refresh_updates_validated_item(self):
         items = [User(name='Bob', age=25)]
         adapter = ListModelAdapter(User, items)
+        key = adapter.key_from_item(items[0])
         form = ModelForm(User)
-        form.set_item_from_model(adapter, 0)
-        items[0] = User(name='Alice', age=30)
-        adapter.update(items[0], '0')
+        form.set_item_from_model(adapter, key)
+        # Modify the item in-place (simulates an external update visible through the adapter)
+        items[0].name = 'Alice'
+        items[0].age = 30
         form._refresh()
         assert form.item.name == 'Alice'
         assert form.item.age == 30

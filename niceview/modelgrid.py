@@ -127,7 +127,7 @@ class ModelGrid:
         self.cell_renderers = copy(kwargs.pop('cell_renderers', {}))
 
     @classmethod
-    def form_list(cls, items: list[T], **kwargs: Unpack[_ModelGridOptionInputs]) -> 'ModelGrid':
+    def from_list(cls, items: list[T], **kwargs: Unpack[_ModelGridOptionInputs]) -> 'ModelGrid':
         """
         Create a ModelGrid instance from a list of Pydantic BaseModels.
         **Beware:** This can only work with a list of items containing at least one element.

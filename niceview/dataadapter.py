@@ -215,7 +215,10 @@ class SqlModelAdapter(ModelDataAdapter[T]):
 
 class ListModelAdapter(ModelDataAdapter[T]):
     """
-    An adapter for a list to work with the ModelGrid.
+    An adapter for an in-memory list.
+
+    Keys are the Python object identity (id()) of each item expressed as a string,
+    so keys remain stable after deletions (no index shifting).
     """
     def __init__(self, item_type: type[T], items: list[T]) -> None:
         self._item_type = item_type
@@ -223,17 +226,23 @@ class ListModelAdapter(ModelDataAdapter[T]):
 
     def __iter__(self) -> Iterator[T]:
         return iter(self._items)
-    
-    def query_all_strs(self) -> Iterator[tuple[str, str]]:
-        for index, item in enumerate(self._items):
-            yield str(index), str(item)
 
     def key_from_item(self, item: pydantic.BaseModel, index: int = -1) -> str:
-        key = str(index)
-        return key
+        return str(id(item))
 
-    def key_from_str(self, key: str | int) -> int:
-        return int(key)
+    def key_from_str(self, key: str | int) -> str:
+        return str(key)
+
+    def _find_index(self, key: str | int) -> int:
+        key_str = str(key)
+        for i, item in enumerate(self._items):
+            if str(id(item)) == key_str:
+                return i
+        raise KeyError(f"Item with key {key!r} not found in list.")
+
+    def query_all_strs(self) -> Iterator[tuple[str, str]]:
+        for item in self._items:
+            yield str(id(item)), str(item)
 
     def create(self, item: T) -> T:
         if not isinstance(item, self._item_type):
@@ -242,26 +251,14 @@ class ListModelAdapter(ModelDataAdapter[T]):
         return item
 
     def read(self, key: str | int) -> T:
-        index = self.key_from_str(key)
-        if index < 0 or index >= len(self._items):
-            raise IndexError(f"Index {index} is out of bounds for the list.")
-
-        return self._items[index]
+        return self._items[self._find_index(key)]
 
     def update(self, item: T, key: str) -> T:
-        index = self.key_from_str(key)
-        if index < 0 or index >= len(self._items):
-            raise IndexError(f"Index {index} is out of bounds for the list.")
-
-        self._items[index] = item
+        self._items[self._find_index(key)] = item
         return item
 
     def delete(self, key: str) -> None:
-        index = self.key_from_str(key)
-        if index < 0 or index >= len(self._items):
-            raise IndexError(f"Index {index} is out of bounds for the list.")
-
-        del self._items[index]
+        del self._items[self._find_index(key)]
 
 
 class JsonSingleModelAdapter(ModelDataAdapter[T]):

@@ -24,21 +24,20 @@ class TestListModelAdapterRead:
         self.adapter = ListModelAdapter(Item, self.items)
 
     def test_read_first(self):
-        assert self.adapter.read(0).name == 'a'
+        key = self.adapter.key_from_item(self.items[0])
+        assert self.adapter.read(key).name == 'a'
 
     def test_read_last(self):
-        assert self.adapter.read(2).name == 'c'
+        key = self.adapter.key_from_item(self.items[2])
+        assert self.adapter.read(key).name == 'c'
 
-    def test_read_by_string_key(self):
-        assert self.adapter.read('1').name == 'b'
+    def test_read_middle(self):
+        key = self.adapter.key_from_item(self.items[1])
+        assert self.adapter.read(key).name == 'b'
 
-    def test_read_out_of_bounds_raises(self):
-        with pytest.raises(IndexError):
-            self.adapter.read(99)
-
-    def test_read_negative_index_raises(self):
-        with pytest.raises(IndexError):
-            self.adapter.read(-1)
+    def test_read_unknown_key_raises(self):
+        with pytest.raises(KeyError):
+            self.adapter.read('not-a-valid-key')
 
 
 class TestListModelAdapterCreate:
@@ -61,6 +60,12 @@ class TestListModelAdapterCreate:
         with pytest.raises(TypeError):
             self.adapter.create("not an Item")  # type: ignore
 
+    def test_created_item_readable_by_key(self):
+        new_item = Item(name='z')
+        self.adapter.create(new_item)
+        key = self.adapter.key_from_item(new_item)
+        assert self.adapter.read(key).name == 'z'
+
 
 class TestListModelAdapterUpdate:
     def setup_method(self):
@@ -68,18 +73,26 @@ class TestListModelAdapterUpdate:
         self.adapter = ListModelAdapter(Item, self.items)
 
     def test_update_replaces_item(self):
+        key = self.adapter.key_from_item(self.items[0])
         updated = Item(name='X', value=99)
-        self.adapter.update(updated, '0')
+        self.adapter.update(updated, key)
         assert self.items[0].name == 'X'
 
     def test_update_returns_item(self):
+        key = self.adapter.key_from_item(self.items[0])
         updated = Item(name='X')
-        result = self.adapter.update(updated, '0')
+        result = self.adapter.update(updated, key)
         assert result is updated
 
-    def test_update_out_of_bounds_raises(self):
-        with pytest.raises(IndexError):
-            self.adapter.update(Item(), '99')
+    def test_update_unknown_key_raises(self):
+        with pytest.raises(KeyError):
+            self.adapter.update(Item(), 'not-a-valid-key')
+
+    def test_update_same_object_inplace(self):
+        key = self.adapter.key_from_item(self.items[0])
+        self.items[0].name = 'modified'
+        result = self.adapter.update(self.items[0], key)
+        assert result.name == 'modified'
 
 
 class TestListModelAdapterDelete:
@@ -88,14 +101,21 @@ class TestListModelAdapterDelete:
         self.adapter = ListModelAdapter(Item, self.items)
 
     def test_delete_removes_item(self):
-        self.adapter.delete('1')
+        key = self.adapter.key_from_item(self.items[1])
+        self.adapter.delete(key)
         assert len(self.items) == 2
         assert self.items[0].name == 'a'
         assert self.items[1].name == 'c'
 
-    def test_delete_out_of_bounds_raises(self):
-        with pytest.raises(IndexError):
-            self.adapter.delete('99')
+    def test_delete_unknown_key_raises(self):
+        with pytest.raises(KeyError):
+            self.adapter.delete('not-a-valid-key')
+
+    def test_key_stable_after_delete(self):
+        # key of 'c' (originally at index 2) stays valid after deleting 'b' (index 1)
+        key_c = self.adapter.key_from_item(self.items[2])
+        self.adapter.delete(self.adapter.key_from_item(self.items[1]))
+        assert self.adapter.read(key_c).name == 'c'
 
 
 class TestListModelAdapterKeys:
@@ -103,20 +123,36 @@ class TestListModelAdapterKeys:
         self.items = [Item(name='a'), Item(name='b')]
         self.adapter = ListModelAdapter(Item, self.items)
 
-    def test_key_from_str_int(self):
-        assert self.adapter.key_from_str('2') == 2
+    def test_key_from_item_is_string(self):
+        key = self.adapter.key_from_item(self.items[0])
+        assert isinstance(key, str)
 
-    def test_key_from_str_already_int(self):
-        assert self.adapter.key_from_str(0) == 0
+    def test_key_from_item_unique_per_object(self):
+        key_a = self.adapter.key_from_item(self.items[0])
+        key_b = self.adapter.key_from_item(self.items[1])
+        assert key_a != key_b
+
+    def test_key_from_str_returns_string(self):
+        assert self.adapter.key_from_str('12345') == '12345'
+
+    def test_key_from_str_int_becomes_string(self):
+        assert self.adapter.key_from_str(42) == '42'
 
     def test_iter_yields_all_items(self):
         result = list(self.adapter)
         assert len(result) == 2
         assert result[0].name == 'a'
 
-    def test_query_all_strs(self):
+    def test_query_all_strs_returns_valid_keys(self):
         pairs = list(self.adapter.query_all_strs())
-        assert pairs == [('0', 'a'), ('1', 'b')]
+        assert len(pairs) == 2
+        for key, _ in pairs:
+            assert self.adapter.read(key) is not None
+
+    def test_query_all_strs_str_is_item_str(self):
+        pairs = list(self.adapter.query_all_strs())
+        names = [s for _, s in pairs]
+        assert names == ['a', 'b']
 
 
 # ---------------------------------------------------------------------------
