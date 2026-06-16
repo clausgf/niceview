@@ -193,11 +193,12 @@ class TestJsonSingleModelAdapter:
         assert data['name'] == 'updated'
         assert data['value'] == 7
 
-    def test_update_returns_persisted_item(self, tmp_path):
+    def test_update_returns_same_object(self, tmp_path):
         path = tmp_path / 'data.json'
         adapter = JsonSingleModelAdapter(Item, path, create_if_not_exist=True)
-        result = adapter.update(Item(name='x', value=3), '0')
-        assert result.name == 'x'
+        item = Item(name='x', value=3)
+        result = adapter.update(item, '0')
+        assert result is item  # same object — preserves references held by nested widgets
 
     def test_path_is_directory_raises(self, tmp_path):
         with pytest.raises(ValueError):

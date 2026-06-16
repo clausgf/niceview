@@ -9,10 +9,18 @@ from niceview.dataadapter import ListModelAdapter
 from niceview.modelform import ModelForm
 
 
+class Tag(pydantic.BaseModel):
+    label: str = ''
+
+    def __str__(self):
+        return self.label
+
+
 class User(pydantic.BaseModel):
     name: str = pydantic.Field(default='', max_length=10, title='Name')
     age: int = pydantic.Field(default=0, ge=0, le=120)
     active: bool = True
+    tags: list[Tag] = pydantic.Field(default_factory=list)
 
 
 class CrossFieldModel(pydantic.BaseModel):
@@ -174,10 +182,30 @@ class TestFromJson:
         path = tmp_path / 'user.json'
         form = ModelForm.from_json(User, path)
         # externally overwrite the file
-        path.write_text(json.dumps({'name': 'Dave', 'age': 50, 'active': True}), encoding='utf-8')
+        path.write_text(json.dumps({'name': 'Dave', 'age': 50, 'active': True, 'tags': []}), encoding='utf-8')
         form._refresh()
         assert form.item.name == 'Dave'
         assert form.item.age == 50
+
+    def test_nested_list_reference_survives_save(self, tmp_path):
+        # Regression: after _save(), the nested list must still be the same
+        # Python object so that a ListModelAdapter wrapping it stays valid.
+        path = tmp_path / 'user.json'
+        form = ModelForm.from_json(User, path)
+        nested_list = form.item.tags  # grab reference as a nested grid adapter would
+        form._validated_item.name = 'Alice'
+        form._save()
+        assert form.item.tags is nested_list  # same object, not a new deserialized list
+
+    def test_nested_list_changes_visible_after_save(self, tmp_path):
+        # Changes made via a nested adapter must survive the next save cycle.
+        path = tmp_path / 'user.json'
+        form = ModelForm.from_json(User, path)
+        form.item.tags.append(Tag(label='dev'))  # simulate nested grid create
+        form._save()
+        data = json.loads(path.read_text(encoding='utf-8'))
+        assert len(data['tags']) == 1
+        assert data['tags'][0]['label'] == 'dev'
 
 
 # ---------------------------------------------------------------------------

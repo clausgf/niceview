@@ -287,7 +287,7 @@ class JsonSingleModelAdapter(ModelDataAdapter[T]):
         json_data = item.model_dump_json(indent=2)
         temp_file.write_text(json_data, encoding='utf-8')
         temp_file.rename(self._path_name)
-        return self.read(key)
+        return item  # return same object to preserve in-memory references (e.g. nested grid adapters)
 
     def __iter__(self) -> Iterator[T]:
         raise NotImplementedError
