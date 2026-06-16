@@ -1,9 +1,13 @@
 import datetime
+import logging
+import os
 from typing import Annotated
 import sqlmodel
 from nicegui import ui
 
 import niceview
+
+log = logging.getLogger('niceview-example')
 from niceview.modeledit import EditFormWrapper, EditGridWrapper
 from niceview.modelform import ModelForm
 from niceview.modelgrid import ModelGridInlineEdit, ModelGrid
@@ -42,7 +46,7 @@ class Book(sqlmodel.SQLModel, table=True):
     class Meta:
         title = 'Book'
         description = 'A book written by an author'
-        fields = {
+        field_info = {
             'title': niceview.Field(label='Title', tooltip='The title of the book'),
             'published_date': niceview.Field(label='Published Date', tooltip='The date when the book was published'),
             'author': niceview.Field(label='Author', tooltip='The author of the book'),
@@ -50,7 +54,7 @@ class Book(sqlmodel.SQLModel, table=True):
 
 
 def save_author(author: Author):
-    print(f'Saving author: {author!r}')
+    log.info(f'Saving author: {author!r}')
     with sqlmodel.Session(engine) as session:
         session.merge(author)
         session.commit()
@@ -71,7 +75,7 @@ def author_id_page(author_id: int):
     saved automatically. This is realized by hand using the ModelForm."""
 
     def on_author_changed(event):
-        print(f'Author changed: {event.field_name=} {event.old_value=} {event.new_value=} local={author!r} form.validated={form._validated_item!r}')
+        log.info(f'Author changed: {event.field_name=} {event.old_value=} {event.new_value=}')
         save_author(author)
 
     with ui.row():
@@ -117,7 +121,7 @@ def author_page():
         ui.label('Authors Inline-Editable ModelGrid').classes('text-h6')
         grid_inline_edit = ModelGridInlineEdit(Author, authors, classes='w-full')
         grid_inline_edit.render()
-        grid_inline_edit.on_change(lambda event: print(f'grid_edit_inline Edit changed: {event.row_key=} {event.item=}'))
+        grid_inline_edit.on_change(lambda event: log.info(f'grid_edit_inline Edit changed: {event.row_key=} {event.item=}'))
     with ui.card().classes('w-full'):
         ui.label('Authors ModelGrid in EditGridWrapper with auto-generated title').classes('text-h6')
         grid_edit = EditGridWrapper(ModelGrid(Author, authors))
@@ -157,12 +161,9 @@ def main_page():
         ui.button('Books ModelGrid', on_click=lambda: ui.navigate.to('/books')).classes('q-mr-sm')
 
 
-# configure logging
-import logging
 logging.basicConfig(level=logging.DEBUG)
 
 # remove the database file if it exists
-import os
 if os.path.exists("example.db"):
     os.remove("example.db")
 
