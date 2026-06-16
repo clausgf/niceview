@@ -4,6 +4,7 @@ import pydantic
 from pathlib import Path
 
 from niceview.dataadapter import ListModelAdapter, JsonSingleModelAdapter, JsonListModelAdapter
+from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
 
 
 class Item(pydantic.BaseModel):
@@ -370,3 +371,41 @@ class TestJsonListModelAdapterReload:
         adapter = JsonListModelAdapter(Item, path)
         adapter.create(Item(name='x'))
         assert not path.with_suffix('.tmp').exists()
+
+
+# ---------------------------------------------------------------------------
+# ModelGrid.from_json / ModelGridInlineEdit.from_json
+# ---------------------------------------------------------------------------
+
+class TestModelGridFromJson:
+    def test_from_json_creates_grid(self, tmp_path):
+        path = tmp_path / 'items.json'
+        grid = ModelGrid.from_json(Item, path)
+        assert isinstance(grid, ModelGrid)
+
+    def test_from_json_adapter_is_json_list(self, tmp_path):
+        path = tmp_path / 'items.json'
+        grid = ModelGrid.from_json(Item, path)
+        assert isinstance(grid._data, JsonListModelAdapter)
+
+    def test_from_json_creates_file(self, tmp_path):
+        path = tmp_path / 'items.json'
+        ModelGrid.from_json(Item, path)
+        assert path.exists()
+
+    def test_from_json_loads_existing_items(self, tmp_path):
+        path = tmp_path / 'items.json'
+        path.write_text(json.dumps([{'name': 'a', 'value': 1}]), encoding='utf-8')
+        grid = ModelGrid.from_json(Item, path)
+        assert list(grid._data)[0].name == 'a'
+
+    def test_inline_edit_from_json_creates_correct_type(self, tmp_path):
+        path = tmp_path / 'items.json'
+        grid = ModelGridInlineEdit.from_json(Item, path)
+        assert isinstance(grid, ModelGridInlineEdit)
+        assert isinstance(grid._data, JsonListModelAdapter)
+
+    def test_from_json_missing_file_raises_when_no_create(self, tmp_path):
+        path = tmp_path / 'items.json'
+        with pytest.raises(FileNotFoundError):
+            ModelGrid.from_json(Item, path, create_if_not_exist=False)

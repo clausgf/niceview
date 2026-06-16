@@ -118,6 +118,8 @@ class EditGridWrapper():
 
 
     def refresh(self, event: ClickEventArguments) -> None:
+        if hasattr(self.grid._data, 'reload'):
+            self.grid._data.reload()
         self.grid.update_rows()
 
 

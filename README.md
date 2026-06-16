@@ -119,21 +119,17 @@ Data Adapters
 | `SqlModelAdapter(Type, engine)` | SQLModel / SQLAlchemy database table |
 
 ```python
-from niceview.dataadapter import JsonListModelAdapter
+# Read-only grid backed by a JSON file (created with [] if missing)
+ModelGrid.from_json(User, Path('users.json')).render()
 
-adapter = JsonListModelAdapter(User, Path('users.json'))  # creates file if missing
+# Inline-editable grid — every cell edit is persisted immediately
+ModelGridInlineEdit.from_json(User, Path('users.json')).render()
 
-# Use with any grid
-grid = ModelGrid(User, adapter)
-grid.render()
-
-# Use with inline-edit grid
-grid = EditGridWrapper(ModelGridInlineEdit(User, adapter), title='Users')
-grid.render()
-
-# Reload from disk after external changes, then refresh the grid
-adapter.reload()
-grid.update_rows()
+# Full CRUD via EditGridWrapper; the Refresh button also reloads from disk
+EditGridWrapper(
+    ModelGridInlineEdit.from_json(User, Path('users.json')),
+    title='Users',
+).render()
 ```
 
 

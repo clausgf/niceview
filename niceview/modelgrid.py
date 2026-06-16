@@ -2,6 +2,7 @@ from copy import copy
 from dataclasses import dataclass
 import datetime
 import logging
+from pathlib import Path
 from typing import Any, Callable, Iterable, List, Literal, Self, TypeVar, Unpack
 import typing_extensions
 from pydantic import BaseModel
@@ -9,7 +10,7 @@ from nicegui import ui
 from nicegui.events import Handler, ClickEventArguments, ValueChangeEventArguments, handle_event
 from nicegui.dataclasses import KWONLY_SLOTS
 
-from niceview.dataadapter import ModelDataAdapter, ListModelAdapter
+from niceview.dataadapter import ModelDataAdapter, ListModelAdapter, JsonListModelAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 
@@ -138,6 +139,16 @@ class ModelGrid:
         data = ListModelAdapter(item_type, items)
         ret = cls(item_type, data, **kwargs)
         return ret
+
+    @classmethod
+    def from_json(cls, item_type: type[T], path_name: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelGridOptionInputs]) -> 'ModelGrid':
+        """
+        Create a ModelGrid backed by a JSON file via JsonListModelAdapter.
+        The file is created with an empty list if it does not exist.
+        Call grid._data.reload() + grid.update_rows() to refresh from disk.
+        """
+        data = JsonListModelAdapter(item_type, path_name, create_if_not_exist=create_if_not_exist)
+        return cls(item_type, data, **kwargs)
 
     def on_select(self, callback: Handler[ValueChangeEventArguments]) -> Self:
         """
