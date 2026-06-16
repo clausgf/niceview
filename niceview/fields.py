@@ -80,7 +80,6 @@ class Fields(typing.Mapping[str, FieldInfo]):
         self._field_infos = {}
 
         pydantic_fields = item_type.model_fields
-        print(self._item_type)
         is_sqlmodel = issubclass(self._item_type, SQLModel)
         for field_name, field_type in self._item_type.__annotations__.items():
             field_info = None
