@@ -222,8 +222,6 @@ class ModelGrid:
         Handle the row selected event to call the selection handlers.
         """
         row = await self.widget.get_selected_row()
-        # print(f"rowSelected: {event} {row}")
-        # rowSelected: GenericEventArguments(sender=<nicegui.elements.aggrid.AgGrid object at 0x1123c1090>, client=<nicegui.client.Client object at 0x1123c02d0>, args={'source': 'rowClicked'}) {'__ui_row_key': 1, 'name': 'Jane Doe', 'age': 25, 'num': 43, 'is_active': True, 'is_admin': True, 'birthdatetime': '2025-06-10T10:19:47+00:00', 'gender': 'other'}
         e = ValueChangeEventArguments(sender=event.sender, client=event.client, value=row)
         for handler in self._selection_handlers:
             handle_event(handler, e)
@@ -295,7 +293,6 @@ class ModelGridInlineEdit(ModelGrid):
         Handle the cell value changed event to update the model with the new value
         when using inline editing (aggrid_editable).
         """
-        # print(f"cellValueChanged: {event}")
         # GenericEventArguments(sender=<nicegui.elements.aggrid.AgGrid object at ...>, client=<nicegui.client.Client object at ...>,
         #  args={'value': 'John Doexfdsdf', 'oldValue': 'John Doe', 'newValue': 'John Doexfdsdf', 'rowIndex': 0, 
         #   'data': {'__ui_row_key': 0, 'name': 'John Doexfdsdf', 'age': 30}, 
