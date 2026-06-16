@@ -13,6 +13,17 @@ class User(pydantic.BaseModel):
     active: bool = True
 
 
+class CrossFieldModel(pydantic.BaseModel):
+    start: int = 0
+    end: int = 10
+
+    @pydantic.model_validator(mode='after')
+    def check_start_before_end(self) -> 'CrossFieldModel':
+        if self.start >= self.end:
+            raise ValueError('start must be less than end')
+        return self
+
+
 class SimpleModel(pydantic.BaseModel):
     value: str = ''
 
@@ -147,6 +158,26 @@ class TestValidation:
         form._current_item = User.model_construct(name='X' * 20, age=0)
         form._validate()
         assert isinstance(form._validation_error_messages.get('name'), str)
+
+    def test_nonfield_errors_stored_for_cross_field_validation(self):
+        form = ModelForm.from_item(CrossFieldModel(start=0, end=10))
+        form._current_item = CrossFieldModel.model_construct(start=10, end=5)
+        form._validate()
+        assert form._nonfield_validation_errors != []
+
+    def test_nonfield_errors_empty_when_valid(self):
+        form = ModelForm.from_item(CrossFieldModel(start=0, end=10))
+        assert form._nonfield_validation_errors == []
+
+    def test_has_validation_errors_includes_nonfield_errors(self):
+        form = ModelForm.from_item(CrossFieldModel(start=0, end=10))
+        form._current_item = CrossFieldModel.model_construct(start=10, end=5)
+        form._validate()
+        assert form.has_validation_errors() is True
+
+    def test_nonfield_error_element_initially_none(self):
+        form = ModelForm(User)
+        assert form._nonfield_error_element is None
 
 
 # ---------------------------------------------------------------------------

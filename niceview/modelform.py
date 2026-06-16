@@ -73,6 +73,8 @@ class ModelForm():
     _current_item: BaseModel | None
     _validated_item: BaseModel | None
     _validation_error_messages: dict[str, str]
+    _nonfield_validation_errors: list[str]
+    _nonfield_error_element: Any
     widgets: dict[str, ui.element]
 
     title: str
@@ -124,6 +126,8 @@ class ModelForm():
         self._current_item = None
         self._validated_item = None
         self._validation_error_messages = {}
+        self._nonfield_validation_errors = []
+        self._nonfield_error_element = None
         self.widgets = {}
 
         self.title = _get_param('title', '')
@@ -470,6 +474,9 @@ class ModelForm():
             # Render an editable field based on its widget class
             self.widgets[field_name] = self._render_widget(field_name, field_info)
 
+        self._nonfield_error_element = ui.label('').classes('text-negative w-full')
+        self._nonfield_error_element.set_visibility(False)
+
         return self
 
 
@@ -562,11 +569,22 @@ class ModelForm():
     def _validate(self, field_name: str | None = None) -> None:
         field_errors, nonfield_errors = self._fields.validation_errors(self._current_item.model_dump())
         self._validation_error_messages = field_errors
-        # TODO find a way to display the validation errors in the UI
+        self._nonfield_validation_errors = nonfield_errors
+
+        if self._nonfield_error_element is not None:
+            if nonfield_errors:
+                self._nonfield_error_element.set_text(' | '.join(nonfield_errors))
+                self._nonfield_error_element.set_visibility(True)
+            else:
+                self._nonfield_error_element.set_visibility(False)
+
+        for widget in self.widgets.values():
+            if hasattr(widget, 'validate') and callable(widget.validate):
+                widget.validate()
 
 
     def has_validation_errors(self) -> bool:
-        return len(self._validation_error_messages) > 0
+        return bool(self._validation_error_messages) or bool(self._nonfield_validation_errors)
 
 
     def _handle_blur_event(self, field_name: str, event) -> None:
