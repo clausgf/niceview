@@ -2,6 +2,7 @@ import datetime
 import logging
 import typing
 
+import annotated_types
 import pydantic
 import sqlalchemy
 from sqlmodel import SQLModel, Relationship
@@ -197,17 +198,17 @@ class Fields(typing.Mapping[str, FieldInfo]):
 
         # merge regular aditional metadata with FieldInfo min/max/step
         if field_type in (int, float):
-            meta = py_field_info.metadata
-            if not nv_field_info.min and hasattr(meta, 'gt'):
-                nv_field_info.min = py_field_info.gt
-            elif not nv_field_info.min and hasattr(meta, 'ge'):
-                nv_field_info.min = py_field_info.ge
-            if not nv_field_info.max and hasattr(meta, 'lt'):
-                nv_field_info.max = py_field_info.lt
-            elif not nv_field_info.max and hasattr(meta, 'le'):
-                nv_field_info.max = py_field_info.le
-            if not nv_field_info.step and hasattr(meta, 'multiple_of'):
-                nv_field_info.step = py_field_info.multiple_of
+            for constraint in py_field_info.metadata:
+                if nv_field_info.min is None and isinstance(constraint, annotated_types.Gt):
+                    nv_field_info.min = float(constraint.gt)
+                elif nv_field_info.min is None and isinstance(constraint, annotated_types.Ge):
+                    nv_field_info.min = float(constraint.ge)
+                if nv_field_info.max is None and isinstance(constraint, annotated_types.Lt):
+                    nv_field_info.max = float(constraint.lt)
+                elif nv_field_info.max is None and isinstance(constraint, annotated_types.Le):
+                    nv_field_info.max = float(constraint.le)
+                if nv_field_info.step is None and isinstance(constraint, annotated_types.MultipleOf):
+                    nv_field_info.step = float(constraint.multiple_of)
         
         return nv_field_info
     

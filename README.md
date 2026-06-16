@@ -143,7 +143,7 @@ from typing import Annotated
 
 class User(pydantic.BaseModel):
     age: Annotated[int, pydantic.Field(default=0), niceview.Field(min=0, max=150, label="Age")]
-    secret: str = niceview.Field(hidden=True)
+    secret: Annotated[str, niceview.Field(hidden=True)] = ''
 ```
 
 Or via a `Meta` class on the model:

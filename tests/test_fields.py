@@ -201,6 +201,54 @@ class TestNiceviewFieldAnnotation:
         assert fields['weight'].max == 200.0
 
 
+class TestPydanticConstraints:
+    def test_ge_sets_min(self):
+        fields = Fields(TitledModel)
+        assert fields['age'].min == 0.0
+
+    def test_le_sets_max(self):
+        fields = Fields(TitledModel)
+        assert fields['age'].max == 150.0
+
+    def test_constraints_do_not_override_niceview_field(self):
+        class M(pydantic.BaseModel):
+            x: Annotated[int, pydantic.Field(default=0, ge=5), niceview.Field(min=1.0)]
+        fields = Fields(M)
+        assert fields['x'].min == 1.0  # niceview.Field takes priority
+
+    def test_gt_sets_min(self):
+        class M(pydantic.BaseModel):
+            x: int = pydantic.Field(default=1, gt=0)
+        fields = Fields(M)
+        assert fields['x'].min == 0.0
+
+    def test_lt_sets_max(self):
+        class M(pydantic.BaseModel):
+            x: int = pydantic.Field(default=0, lt=100)
+        fields = Fields(M)
+        assert fields['x'].max == 100.0
+
+
+class TestFieldInfosKwarg:
+    def test_field_infos_overrides_label(self):
+        fields = Fields(SimpleModel, field_infos={'name': FieldInfo(label='Full Name')})
+        assert fields['name'].label == 'Full Name'
+
+    def test_field_infos_overrides_hidden(self):
+        fields = Fields(SimpleModel, field_infos={'age': FieldInfo(hidden=True)})
+        assert fields['age'].hidden is True
+
+    def test_field_infos_does_not_affect_other_fields(self):
+        fields = Fields(SimpleModel, field_infos={'name': FieldInfo(hidden=True)})
+        assert fields['age'].hidden is False
+
+    def test_field_infos_merges_with_meta(self):
+        # field_infos kwarg takes priority over Meta class
+        fields = Fields(MetaModel, field_infos={'secret': FieldInfo(label='Override')})
+        assert fields['secret'].label == 'Override'
+        assert fields['secret'].hidden is True  # from Meta class, preserved
+
+
 class TestMetaClass:
     def test_meta_sets_hidden(self):
         fields = Fields(MetaModel)

@@ -1,4 +1,6 @@
 import datetime
+import json
+from pathlib import Path
 
 import pydantic
 import pytest
@@ -110,6 +112,39 @@ class TestFromItem:
         form = ModelForm(User)
         with pytest.raises(TypeError):
             form.item = 'not a model'  # type: ignore
+
+
+# ---------------------------------------------------------------------------
+# from_json
+# ---------------------------------------------------------------------------
+
+class TestFromJson:
+    def test_creates_file_if_not_exist(self, tmp_path):
+        path = tmp_path / 'user.json'
+        ModelForm.from_json(User, path)
+        assert path.exists()
+
+    def test_loads_defaults_from_new_file(self, tmp_path):
+        path = tmp_path / 'user.json'
+        form = ModelForm.from_json(User, path)
+        assert form.item.name == ''
+        assert form.item.age == 0
+
+    def test_loads_existing_file(self, tmp_path):
+        path = tmp_path / 'user.json'
+        path.write_text(json.dumps({'name': 'Bob', 'age': 25, 'active': True}))
+        form = ModelForm.from_json(User, path)
+        assert form.item.name == 'Bob'
+        assert form.item.age == 25
+
+    def test_non_model_type_raises(self, tmp_path):
+        with pytest.raises(TypeError):
+            ModelForm.from_json(str, tmp_path / 'x.json')  # type: ignore
+
+    def test_kwargs_passed_through(self, tmp_path):
+        path = tmp_path / 'user.json'
+        form = ModelForm.from_json(User, path, title='My Form')
+        assert form.title == 'My Form'
 
 
 # ---------------------------------------------------------------------------
