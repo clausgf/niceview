@@ -115,7 +115,26 @@ Data Adapters
 |---|---|
 | `ListModelAdapter(Type, list)` | In-memory list |
 | `JsonSingleModelAdapter(Type, path)` | Single item in a JSON file |
+| `JsonListModelAdapter(Type, path)` | List of items in a JSON file |
 | `SqlModelAdapter(Type, engine)` | SQLModel / SQLAlchemy database table |
+
+```python
+from niceview.dataadapter import JsonListModelAdapter
+
+adapter = JsonListModelAdapter(User, Path('users.json'))  # creates file if missing
+
+# Use with any grid
+grid = ModelGrid(User, adapter)
+grid.render()
+
+# Use with inline-edit grid
+grid = EditGridWrapper(ModelGridInlineEdit(User, adapter), title='Users')
+grid.render()
+
+# Reload from disk after external changes, then refresh the grid
+adapter.reload()
+grid.update_rows()
+```
 
 
 Supported Field Types

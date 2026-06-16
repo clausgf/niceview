@@ -1,5 +1,5 @@
-import ast
 import datetime
+import json
 import logging
 from pathlib import Path
 from typing import Any, Generic, TypeVar, Iterator, Protocol
@@ -307,3 +307,67 @@ class JsonSingleModelAdapter(ModelDataAdapter[T]):
     def query_all_strs(self) -> Iterator[tuple[str, str]]:
         raise NotImplementedError
 
+
+class JsonListModelAdapter(ListModelAdapter[T]):
+    """
+    A data adapter that persists a list of Pydantic models as a JSON array.
+
+    Items are kept in memory (like ListModelAdapter) and written to disk after
+    every mutating operation. Writes are atomic: the full list is serialized to
+    a .tmp file that is then renamed over the target path.
+
+    Keys are Python object-identity based (str(id(item))), so they are stable
+    within a session but change after reload().
+    """
+
+    def __init__(self, item_type: type[T], path_name: Path, create_if_not_exist: bool = True) -> None:
+        if not isinstance(item_type, type) or not issubclass(item_type, pydantic.BaseModel):
+            raise TypeError(f"item_type must be a subclass of pydantic.BaseModel, got {item_type}")
+        if path_name.exists() and not path_name.is_file():
+            raise ValueError(f"Path {path_name} exists but is not a file.")
+
+        self._path_name = path_name
+
+        if path_name.exists():
+            raw = json.loads(path_name.read_text(encoding='utf-8'))
+            items: list[T] = [item_type.model_validate(d) for d in raw]
+        elif create_if_not_exist:
+            items = []
+        else:
+            raise FileNotFoundError(f"JSON file not found: {path_name}")
+
+        super().__init__(item_type, items)
+
+        if not path_name.exists():
+            self._persist()
+
+    def _persist(self) -> None:
+        """Write the full item list to disk atomically."""
+        temp_file = self._path_name.with_suffix('.tmp')
+        data = [item.model_dump(mode='json') for item in self._items]
+        temp_file.write_text(json.dumps(data, indent=2), encoding='utf-8')
+        temp_file.rename(self._path_name)
+
+    def reload(self) -> None:
+        """Re-read items from the JSON file, replacing the in-memory list.
+
+        Existing keys become stale after this call; refresh the grid with
+        update_rows() afterwards.
+        """
+        raw = json.loads(self._path_name.read_text(encoding='utf-8'))
+        self._items.clear()
+        self._items.extend(self._item_type.model_validate(d) for d in raw)
+
+    def create(self, item: T) -> T:
+        result = super().create(item)
+        self._persist()
+        return result
+
+    def update(self, item: T, key: str) -> T:
+        result = super().update(item, key)
+        self._persist()
+        return result
+
+    def delete(self, key: str) -> None:
+        super().delete(key)
+        self._persist()

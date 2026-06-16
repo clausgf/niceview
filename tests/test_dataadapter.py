@@ -3,7 +3,7 @@ import pytest
 import pydantic
 from pathlib import Path
 
-from niceview.dataadapter import ListModelAdapter, JsonSingleModelAdapter
+from niceview.dataadapter import ListModelAdapter, JsonSingleModelAdapter, JsonListModelAdapter
 
 
 class Item(pydantic.BaseModel):
@@ -233,4 +233,140 @@ class TestJsonSingleModelAdapter:
         path.write_text('{"name": "existing", "value": 7}', encoding='utf-8')
         adapter = JsonSingleModelAdapter(Item, path, create_if_not_exist=False)
         item = adapter.read('0')
+
         assert item.name == 'existing'
+
+
+# ---------------------------------------------------------------------------
+# JsonListModelAdapter
+# ---------------------------------------------------------------------------
+
+class TestJsonListModelAdapterInit:
+    def test_creates_empty_file_if_not_exist(self, tmp_path):
+        path = tmp_path / 'items.json'
+        JsonListModelAdapter(Item, path)
+        assert path.exists()
+        assert json.loads(path.read_text()) == []
+
+    def test_loads_existing_items(self, tmp_path):
+        path = tmp_path / 'items.json'
+        path.write_text(json.dumps([{'name': 'a', 'value': 1}, {'name': 'b', 'value': 2}]), encoding='utf-8')
+        adapter = JsonListModelAdapter(Item, path)
+        items = list(adapter)
+        assert len(items) == 2
+        assert items[0].name == 'a'
+        assert items[1].name == 'b'
+
+    def test_create_if_not_exist_false_missing_file_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            JsonListModelAdapter(Item, tmp_path / 'missing.json', create_if_not_exist=False)
+
+    def test_create_if_not_exist_false_with_existing_file(self, tmp_path):
+        path = tmp_path / 'items.json'
+        path.write_text(json.dumps([{'name': 'x', 'value': 9}]), encoding='utf-8')
+        adapter = JsonListModelAdapter(Item, path, create_if_not_exist=False)
+        assert list(adapter)[0].name == 'x'
+
+    def test_path_is_directory_raises(self, tmp_path):
+        with pytest.raises(ValueError):
+            JsonListModelAdapter(Item, tmp_path)
+
+    def test_invalid_item_type_raises(self, tmp_path):
+        with pytest.raises(TypeError):
+            JsonListModelAdapter(str, tmp_path / 'items.json')  # type: ignore
+
+
+class TestJsonListModelAdapterCreate:
+    def test_create_appends_and_persists(self, tmp_path):
+        path = tmp_path / 'items.json'
+        adapter = JsonListModelAdapter(Item, path)
+        adapter.create(Item(name='z', value=99))
+        raw = json.loads(path.read_text(encoding='utf-8'))
+        assert len(raw) == 1
+        assert raw[0]['name'] == 'z'
+
+    def test_create_returns_item(self, tmp_path):
+        path = tmp_path / 'items.json'
+        adapter = JsonListModelAdapter(Item, path)
+        new_item = Item(name='z')
+        result = adapter.create(new_item)
+        assert result is new_item
+
+    def test_create_readable_by_key(self, tmp_path):
+        path = tmp_path / 'items.json'
+        adapter = JsonListModelAdapter(Item, path)
+        new_item = adapter.create(Item(name='z'))
+        key = adapter.key_from_item(new_item)
+        assert adapter.read(key).name == 'z'
+
+
+class TestJsonListModelAdapterUpdate:
+    def setup_method(self):
+        pass
+
+    def test_update_persists_to_file(self, tmp_path):
+        path = tmp_path / 'items.json'
+        path.write_text(json.dumps([{'name': 'a', 'value': 1}]), encoding='utf-8')
+        adapter = JsonListModelAdapter(Item, path)
+        item = list(adapter)[0]
+        key = adapter.key_from_item(item)
+        adapter.update(Item(name='X', value=99), key)
+        raw = json.loads(path.read_text(encoding='utf-8'))
+        assert raw[0]['name'] == 'X'
+
+    def test_update_returns_item(self, tmp_path):
+        path = tmp_path / 'items.json'
+        path.write_text(json.dumps([{'name': 'a', 'value': 1}]), encoding='utf-8')
+        adapter = JsonListModelAdapter(Item, path)
+        item = list(adapter)[0]
+        key = adapter.key_from_item(item)
+        updated = Item(name='X')
+        result = adapter.update(updated, key)
+        assert result is updated
+
+
+class TestJsonListModelAdapterDelete:
+    def test_delete_removes_and_persists(self, tmp_path):
+        path = tmp_path / 'items.json'
+        path.write_text(json.dumps([{'name': 'a', 'value': 1}, {'name': 'b', 'value': 2}]), encoding='utf-8')
+        adapter = JsonListModelAdapter(Item, path)
+        items = list(adapter)
+        key = adapter.key_from_item(items[0])
+        adapter.delete(key)
+        raw = json.loads(path.read_text(encoding='utf-8'))
+        assert len(raw) == 1
+        assert raw[0]['name'] == 'b'
+
+    def test_key_stable_after_delete(self, tmp_path):
+        path = tmp_path / 'items.json'
+        path.write_text(json.dumps([{'name': 'a', 'value': 1}, {'name': 'b', 'value': 2}]), encoding='utf-8')
+        adapter = JsonListModelAdapter(Item, path)
+        items = list(adapter)
+        key_b = adapter.key_from_item(items[1])
+        adapter.delete(adapter.key_from_item(items[0]))
+        assert adapter.read(key_b).name == 'b'
+
+
+class TestJsonListModelAdapterReload:
+    def test_reload_picks_up_external_changes(self, tmp_path):
+        path = tmp_path / 'items.json'
+        adapter = JsonListModelAdapter(Item, path)
+        adapter.create(Item(name='a'))
+        # external write
+        path.write_text(json.dumps([{'name': 'external', 'value': 42}]), encoding='utf-8')
+        adapter.reload()
+        assert list(adapter)[0].name == 'external'
+
+    def test_reload_replaces_all_items(self, tmp_path):
+        path = tmp_path / 'items.json'
+        path.write_text(json.dumps([{'name': 'a'}, {'name': 'b'}]), encoding='utf-8')
+        adapter = JsonListModelAdapter(Item, path)
+        path.write_text(json.dumps([{'name': 'only'}]), encoding='utf-8')
+        adapter.reload()
+        assert len(list(adapter)) == 1
+
+    def test_atomic_write_no_tmp_left(self, tmp_path):
+        path = tmp_path / 'items.json'
+        adapter = JsonListModelAdapter(Item, path)
+        adapter.create(Item(name='x'))
+        assert not path.with_suffix('.tmp').exists()
