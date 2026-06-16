@@ -57,8 +57,8 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
     # additional options when the field is rendered as ui.input_chips
     new_value_mode: Literal['add', 'add-unique', 'toggle']
 
-    # additional options when field is rendered as onetomany
-    o2m_item_type: type  # type of the item in the one-to-many relationship, e.g. Group
+    # item type for list fields (editgrid) and relationship fields (modelselect)
+    item_type: type
 
     # options when field is used in a table or grid column
     table_label: str  # label for the table column, if not set, the field label is used
