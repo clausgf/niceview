@@ -193,6 +193,7 @@ class ModelForm():
         self._validated_item = value  # the validated item is modified in-place, so it is not a copy
         self._current_item = self._validated_item.model_copy()
         self._validate()
+        self._push_item_to_widgets()
 
 
     def set_item_from_model(self, item_model: ModelDataAdapter, item_key: str | int) -> Self:
@@ -218,6 +219,13 @@ class ModelForm():
         self._model_repositories = repositories
         return self
 
+    def _push_item_to_widgets(self) -> None:
+        """Push current item values into all rendered widgets."""
+        for field_name, widget in self.widgets.items():
+            widget_type = self._fields[field_name].widget_type
+            if widget_type != 'editgrid':
+                self._from_current_item_to_widget_value(field_name, widget_type, widget)
+
     def _refresh(self) -> None:
         """
         Refresh the form by reloading the item from the model and pushing
@@ -226,10 +234,7 @@ class ModelForm():
         if self._item_model is None or self._item_key is None:
             raise ValueError("No item model or item key set. Use set_item_from_model() to set them.")
         self.set_item_from_model(self._item_model, self._item_key)
-        for field_name, widget in self.widgets.items():
-            widget_type = self._fields[field_name].widget_type
-            if widget_type != 'editgrid':
-                self._from_current_item_to_widget_value(field_name, widget_type, widget)
+        self._push_item_to_widgets()
         ui.notify('Form refreshed', color='positive')
 
     def _save(self) -> None:
@@ -455,12 +460,13 @@ class ModelForm():
             with ui.row().classes('w-full'):
                 if self.title:
                     ui.label(self.title).classes('text-h6 font-bold')
-                if self.refresh_button is not None or self.save_button is not None:
+                has_adapter = self._item_model is not None
+                if (self.refresh_button is not None and has_adapter) or (self.save_button is not None and has_adapter):
                     ui.space()
                     with ui.button_group():
-                        if self.refresh_button is not None:
+                        if self.refresh_button is not None and has_adapter:
                             ui.button(self.refresh_button, icon='refresh').tooltip('Refresh').props('dense flat').on_click(self._refresh)
-                        if self.save_button is not None:
+                        if self.save_button is not None and has_adapter:
                             ui.button(self.save_button, icon='save').tooltip('Save').props('dense flat').on_click(self._save)
 
         if self.description:
@@ -623,8 +629,8 @@ class ModelForm():
 
         setattr(self._validated_item, field_name, new_value)
 
-        # handle autosave
-        if self.autosave:
+        # handle autosave (only if a model adapter is set; with from_item the item is already modified in-place)
+        if self.autosave and self._item_model is not None:
             self._save()
 
         # call the change handlers

@@ -143,12 +143,29 @@ class TestRefresh:
         adapter = ListModelAdapter(User, items)
         form = ModelForm(User)
         form.set_item_from_model(adapter, 0)
-        # Modify the backing list entry
         items[0] = User(name='Alice', age=30)
         adapter.update(items[0], '0')
         form._refresh()
         assert form.item.name == 'Alice'
         assert form.item.age == 30
+
+
+class TestAutosaveWithoutAdapter:
+    def test_autosave_does_not_crash_without_adapter(self):
+        user = User(name='Alice', age=30)
+        form = ModelForm.from_item(user, autosave=True)
+        # Simulating what _handle_value_change does after a field change
+        form._current_item = User.model_construct(name='Bob', age=30)
+        # Must not raise even though no adapter is set
+        form._handle_value_change('name', type('E', (), {'sender': None, 'client': None})())
+
+    def test_item_setter_updates_current_item(self):
+        user1 = User(name='Alice', age=30)
+        user2 = User(name='Bob', age=25)
+        form = ModelForm.from_item(user1)
+        form.item = user2
+        assert form._current_item.name == 'Bob'
+        assert form._current_item.age == 25
 
 
 # ---------------------------------------------------------------------------
