@@ -179,3 +179,6 @@ data/projects/**
 *.db
 sqlmodel-example.py
 user.json
+
+# Claude Code personal settings (permissions, hooks)
+.claude/settings.local.json
