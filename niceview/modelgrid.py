@@ -129,28 +129,30 @@ class ModelGrid:
         self.cell_renderers = copy(kwargs.pop('cell_renderers', {}))
 
     @classmethod
-    def from_list(cls, item_type: type[T], items: list[T], **kwargs: Unpack[_ModelGridOptionInputs]) -> 'ModelGrid':
+    def from_list(cls, item_type: type[T], items: list[T], **kwargs: Unpack[_ModelGridOptionInputs]) -> Self:
         """
-        Create a ModelGrid instance from an in-memory list.
+        Create an instance from an in-memory list.
+        Return type is Self so subclasses (e.g. ModelGridInlineEdit) are returned as their own type.
         """
         data = ListModelAdapter(item_type, items)
         return cls(item_type, data, **kwargs)  # type: ignore[arg-type]
 
     @classmethod
-    def from_adapter(cls, item_type: type[T], data: ModelDataAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> 'ModelGrid':
+    def from_adapter(cls, item_type: type[T], data: ModelDataAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> Self:
         """
-        Create a ModelGrid from any ModelDataAdapter.
-        Equivalent to ModelGrid(item_type, data, **kwargs) — provided for API symmetry
-        with ModelForm.from_adapter().
+        Create an instance from any ModelDataAdapter.
+        Equivalent to the constructor — provided for API symmetry with ModelForm.from_adapter().
+        Return type is Self so subclasses (e.g. ModelGridInlineEdit) are returned as their own type.
         """
         return cls(item_type, data, **kwargs)  # type: ignore[arg-type]
 
     @classmethod
-    def from_json(cls, item_type: type[T], path_name: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelGridOptionInputs]) -> 'ModelGrid':
+    def from_json(cls, item_type: type[T], path_name: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelGridOptionInputs]) -> Self:
         """
-        Create a ModelGrid backed by a JSON file via JsonListModelAdapter.
+        Create an instance backed by a JSON file via JsonListModelAdapter.
         The file is created with an empty list if it does not exist.
         Call grid._data.reload() + grid.update_rows() to refresh from disk.
+        Return type is Self so subclasses (e.g. ModelGridInlineEdit) are returned as their own type.
         """
         data = JsonListModelAdapter(item_type, path_name, create_if_not_exist=create_if_not_exist)
         return cls(item_type, data, **kwargs)  # type: ignore[arg-type]
