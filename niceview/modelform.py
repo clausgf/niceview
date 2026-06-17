@@ -36,7 +36,6 @@ class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
     title: str
     description: str
     classes: str
-    tailwind: str
     style: str
     props: str
 
@@ -79,7 +78,6 @@ class ModelForm():
     title: str
     description: str
     classes: str
-    tailwind: str
     style: str
     props: str
 
@@ -132,7 +130,6 @@ class ModelForm():
         self.title = _get_param('title', '')
         self.description = _get_param('description', '')
         self.classes = _get_param('classes', '')
-        self.tailwind = _get_param('tailwind', '')
         self.style = _get_param('style', '')
         self.props = _get_param('props', '')
 
@@ -159,19 +156,19 @@ class ModelForm():
         """
         if item is None:
             if not isinstance(item_type_or_item, BaseModel):
-                raise TypeError(f"item must be a BaseModel instance, got {type(item_type_or_item)}")
+                raise TypeError(f"item_type_or_item must be a BaseModel instance, got {type(item_type_or_item)}")
             item = item_type_or_item
             item_type = type(item)
         else:
             item_type = item_type_or_item  # type: ignore[assignment]
             if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
-                raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
+                raise TypeError(f"item_type_or_item must be a subclass of BaseModel, got {item_type}")
             if not isinstance(item, BaseModel):
                 raise TypeError(f"item must be a BaseModel instance, got {type(item)}")
         ret = cls(item_type, **kwargs)
         ret.item = item
         return ret
-    
+
     @classmethod
     def from_adapter(cls, item_type: type[BaseModel], adapter: SingleItemAdapter, key: str | int, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
@@ -350,7 +347,7 @@ class ModelForm():
         data = ListModelAdapter(field_info.item_type, getattr(self._validated_item, field_name))
         widget = ModelGrid(
             field_info.item_type, data,
-            classes=self.classes, tailwind=self.tailwind, style=self.style, props=self.props,
+            classes=self.classes, style=self.style, props=self.props,
         )
         if field_info.editable:  # create an editable grid for the field
             edit_widget = EditGridWrapper(widget, title=field_info.label)
@@ -471,8 +468,6 @@ class ModelForm():
                 widget.tooltip(field_info.tooltip)
 
             widget.classes(self.classes)
-            if self.tailwind:
-                widget.classes(self.tailwind)
             widget.style(self.style)
             widget.props(self.props)
 
@@ -486,7 +481,7 @@ class ModelForm():
         if self.title or self.refresh_button is not None or self.save_button is not None:
             with ui.row().classes('w-full'):
                 if self.title:
-                    ui.label(self.title).classes('text-h6 font-bold')
+                    ui.label(self.title).classes('text-h6')
                 has_adapter = self._item_model is not None
                 if (self.refresh_button is not None and has_adapter) or (self.save_button is not None and has_adapter):
                     ui.space()

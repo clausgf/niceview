@@ -19,11 +19,11 @@ One form showing all field types supported by NiceView:
 """
 # Allows running without prior install. With uv: `uv run python examples/<file>.py`.
 import sys
-import datetime
 from pathlib import Path
-from typing import Annotated, Literal
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import datetime
+from typing import Annotated, Literal
 import pydantic
 from nicegui import ui
 

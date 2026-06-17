@@ -103,7 +103,7 @@ class EditGridWrapper():
         # render the title, add and delete buttons
         with ui.row().classes('w-full'):
             if self.title:
-                ui.label(self.title).classes('text-h6 font-bold')
+                ui.label(self.title).classes('text-h6')
                 ui.space()
             with ui.button_group():
                 if self.refresh_button is not None:
@@ -209,6 +209,10 @@ class EditGridWrapper():
         form = ModelForm.from_item(item, classes='w-full')
 
         def confirm():
+            if form.has_validation_errors():
+                ui.notify('Cannot save form: validation errors present', color='negative')
+                return
+
             # Commit values the user typed but hasn't blurred away from yet
             # (blur fires before click in browsers, but the order of WebSocket
             # messages is not strictly guaranteed in all scenarios)
@@ -227,7 +231,7 @@ class EditGridWrapper():
         with ui.dialog().style('width: 400px') as dialog:
             with ui.card().classes('w-full'):
                 form.render()
-                with ui.card_section():
+                with ui.card_section().classes('w-full'):
                     with ui.row():
                         ui.space()
                         ui.button('Cancel', on_click=lambda: dialog.submit('cancel'))
@@ -296,21 +300,19 @@ class EditFormWrapper():
 
 
     def render(self) -> Self:
+        # with ui.row().classes('w-full'):
+        #     if self.title:
+        #         ui.label(self.title).classes('text-h6')
+        #     ui.space()
+        #     with ui.button_group():
+        #         if self.refresh_button is not None:
+        #             ui.button(self.refresh_button, icon='refresh').tooltip('Reload').props('dense flat').on_click(lambda _: self._form._refresh())
+        #         if self.cancel_button is not None:
+        #             ui.button(self.cancel_button, icon='cancel').tooltip('Discard edits').props('dense flat').on_click(lambda _: self._form._refresh())
+        #         if self.apply_button is not None:
+        #             ui.button(self.apply_button, icon='save').tooltip('Apply changes').props('dense flat').on_click(lambda _: self._form._save())
+        #         if self.ok_button is not None:
+        #             ui.button(self.ok_button, icon='check').tooltip('Save').props('dense flat').on_click(lambda _: self._form._save())
         self._form.render()
-        has_adapter = self._form._item_model is not None
-        has_button = any(b is not None for b in [
-            self.refresh_button, self.cancel_button, self.apply_button, self.ok_button,
-        ])
-        if has_button and has_adapter:
-            with ui.row().classes('w-full justify-end'):
-                with ui.button_group():
-                    if self.refresh_button is not None:
-                        ui.button(self.refresh_button, icon='refresh').tooltip('Reload from source').props('dense flat').on_click(lambda _: self._form._refresh())
-                    if self.cancel_button is not None:
-                        ui.button(self.cancel_button, icon='cancel').tooltip('Discard edits').props('dense flat').on_click(lambda _: self._form._refresh())
-                    if self.apply_button is not None:
-                        ui.button(self.apply_button, icon='save').tooltip('Apply changes').props('dense flat').on_click(lambda _: self._form._save())
-                    if self.ok_button is not None:
-                        ui.button(self.ok_button, icon='check').tooltip('Save').props('dense flat').on_click(lambda _: self._form._save())
         return self
 

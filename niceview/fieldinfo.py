@@ -28,7 +28,6 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
 
     props: str
     classes: str
-    tailwind: str
     style: str
     tooltip: str
 
@@ -100,7 +99,6 @@ class FieldInfo():
     # ui.element
     props: str | None = None
     classes: str | None = None
-    tailwind: str | None = None
     style: str | None = None
     tooltip: str | None = None
 

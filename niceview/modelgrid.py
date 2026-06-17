@@ -65,7 +65,6 @@ class _ModelGridOptionInputs(typing_extensions.TypedDict, total=False):
     field_infos: dict[str, FieldInfo] # FieldsMixin: dict of field names to FieldInfo objects to override the info from the model
 
     classes: str
-    tailwind: str
     style: str
     props: str
     theme: str
@@ -89,7 +88,6 @@ class ModelGrid:
 
     widget: ui.aggrid | None = None
     classes: str
-    tailwind: str
     style: str
     props: str
     theme: str
@@ -118,7 +116,6 @@ class ModelGrid:
         self._selection_handlers = []
         self.widget = None
         self.classes = kwargs.pop('classes', '')
-        self.tailwind = kwargs.pop('tailwind', '')
         self.style = kwargs.pop('style', '')
         self.props = kwargs.pop('props', '')
         self.theme = kwargs.pop('theme', '')
@@ -194,7 +191,8 @@ class ModelGrid:
                     row[field_name] = value
             self._rows.append(row)
         if self.widget:
-            self.widget.update()
+            # self.widget.update()
+            self.widget.options['rowData'] = self._rows
         return self
 
 
@@ -220,8 +218,6 @@ class ModelGrid:
 
         self.widget = ui.aggrid(config_dict, **kwargs)
         self.widget.classes(self.classes)
-        if self.tailwind:
-            self.widget.classes(self.tailwind)
         self.widget.style(self.style)
         self.widget.props(self.props)
         self.widget.on('selectionChanged', self._handle_selection_changed)

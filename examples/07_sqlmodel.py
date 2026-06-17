@@ -18,13 +18,13 @@ Pages: `/` → Authors grid, `/authors/{id}` → edit author,
 """
 # Allows running without prior install. With uv: `uv run python examples/<file>.py`.
 import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import os
 import datetime
 import logging
-from pathlib import Path
 from typing import Annotated
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 import sqlmodel
 from nicegui import ui
 
