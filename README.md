@@ -35,9 +35,9 @@ NiceView follows a consistent factory pattern across all backends and UI compone
 
 | | **ModelForm** (single item) | **ModelGrid / ModelGridInlineEdit** (list) |
 |---|---|---|
-| **In-memory** | `ModelForm.from_item(instance)` | `ModelGrid.from_list(Type, items)` |
+| **In-memory** | `ModelForm.from_item(Type, instance)` | `ModelGrid.from_list(Type, items)` |
 | **JSON file** | `ModelForm.from_json(Type, path)` | `ModelGrid.from_json(Type, path)` |
-| **Any adapter** | `ModelForm.from_adapter(Type, adapter, key)` | `ModelGrid(Type, adapter)` |
+| **Any adapter** | `ModelForm.from_adapter(Type, adapter, key)` | `ModelGrid.from_adapter(Type, adapter)` |
 
 All `from_*` methods accept the same keyword options (see below).
 `ModelGridInlineEdit` uses the same factory methods as `ModelGrid` via inheritance.
@@ -57,7 +57,8 @@ from niceview.modelform import ModelForm
 from pathlib import Path
 
 # In-memory: edits the instance in-place, no persistence
-form = ModelForm.from_item(user)
+form = ModelForm.from_item(user)           # type inferred from instance
+form = ModelForm.from_item(User, user)     # explicit type (for API symmetry)
 
 # JSON file: reads/writes a single object; created with defaults if missing
 form = ModelForm.from_json(User, Path('user.json'), autosave=True)
@@ -113,9 +114,9 @@ grid = ModelGridInlineEdit.from_list(User, user_list)
 grid = ModelGrid.from_json(User, Path('users.json'))
 grid = ModelGridInlineEdit.from_json(User, Path('users.json'))
 
-# Any adapter
-grid = ModelGrid(User, adapter)
-grid = ModelGridInlineEdit(User, adapter)
+# Any adapter (two equivalent forms)
+grid = ModelGrid(User, adapter)                   # constructor
+grid = ModelGrid.from_adapter(User, adapter)      # for API symmetry with ModelForm.from_adapter()
 
 grid.render()
 grid.on_change(lambda e: print(e.row_key, e.field_name, e.new_value))

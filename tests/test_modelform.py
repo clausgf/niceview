@@ -121,6 +121,20 @@ class TestFromItem:
         with pytest.raises(TypeError):
             form.item = 'not a model'  # type: ignore
 
+    def test_from_item_explicit_type(self):
+        user = User(name='Alice', age=30)
+        form = ModelForm.from_item(User, user)
+        assert form.item is user
+        assert form._item_type is User
+
+    def test_from_item_explicit_type_wrong_type_raises(self):
+        with pytest.raises(TypeError):
+            ModelForm.from_item('not a type', User())  # type: ignore
+
+    def test_from_item_explicit_type_wrong_instance_raises(self):
+        with pytest.raises(TypeError):
+            ModelForm.from_item(User, 'not an instance')  # type: ignore
+
 
 # ---------------------------------------------------------------------------
 # from_adapter

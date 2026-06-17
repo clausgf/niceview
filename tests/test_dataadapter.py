@@ -383,6 +383,21 @@ class TestJsonListModelAdapterReload:
 # ModelGrid.from_list / ModelGridInlineEdit.from_list
 # ---------------------------------------------------------------------------
 
+class TestModelGridFromAdapter:
+    def test_from_adapter_creates_grid(self):
+        items = [Item(name='a')]
+        adapter = ListModelAdapter(Item, items)
+        grid = ModelGrid.from_adapter(Item, adapter)
+        assert isinstance(grid, ModelGrid)
+        assert grid._data is adapter
+
+    def test_inline_edit_from_adapter_creates_correct_type(self):
+        items = [Item(name='a')]
+        adapter = ListModelAdapter(Item, items)
+        grid = ModelGridInlineEdit.from_adapter(Item, adapter)
+        assert isinstance(grid, ModelGridInlineEdit)
+
+
 class TestModelGridFromList:
     def test_from_list_creates_grid(self):
         items = [Item(name='a'), Item(name='b')]

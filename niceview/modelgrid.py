@@ -136,6 +136,15 @@ class ModelGrid:
         return cls(item_type, data, **kwargs)
 
     @classmethod
+    def from_adapter(cls, item_type: type[T], data: ModelDataAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> 'ModelGrid':
+        """
+        Create a ModelGrid from any ModelDataAdapter.
+        Equivalent to ModelGrid(item_type, data, **kwargs) — provided for API symmetry
+        with ModelForm.from_adapter().
+        """
+        return cls(item_type, data, **kwargs)
+
+    @classmethod
     def from_json(cls, item_type: type[T], path_name: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelGridOptionInputs]) -> 'ModelGrid':
         """
         Create a ModelGrid backed by a JSON file via JsonListModelAdapter.

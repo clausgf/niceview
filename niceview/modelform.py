@@ -150,13 +150,26 @@ class ModelForm():
 
 
     @classmethod
-    def from_item(cls, item: BaseModel, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
+    def from_item(cls, item_type_or_item: 'type[BaseModel] | BaseModel', item: 'BaseModel | None' = None, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
-        Create a ModelForm instance from a BaseModel item.
+        Create a ModelForm from a model instance.
+
+        Two call forms for API symmetry with from_adapter() and from_json():
+          from_item(instance)         — convenience; item_type inferred from instance
+          from_item(Type, instance)   — explicit type
         """
-        if not isinstance(item, BaseModel):
-            raise TypeError(f"item must be a BaseModel instance, got {type(item)}")
-        ret = cls(type(item), **kwargs)
+        if item is None:
+            if not isinstance(item_type_or_item, BaseModel):
+                raise TypeError(f"item must be a BaseModel instance, got {type(item_type_or_item)}")
+            item = item_type_or_item
+            item_type = type(item)
+        else:
+            item_type = item_type_or_item  # type: ignore[assignment]
+            if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
+                raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
+            if not isinstance(item, BaseModel):
+                raise TypeError(f"item must be a BaseModel instance, got {type(item)}")
+        ret = cls(item_type, **kwargs)
         ret.item = item
         return ret
     
@@ -180,7 +193,7 @@ class ModelForm():
             raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
         adapter = JsonModelAdapter(item_type, json_path, create_if_not_exist=create_if_not_exist)
         instance = cls(item_type, **kwargs)
-        instance.load(adapter, 0)
+        instance.load(adapter, JsonModelAdapter.DEFAULT_KEY)
         return instance
 
     @property

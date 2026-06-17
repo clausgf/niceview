@@ -238,6 +238,8 @@ class JsonModelAdapter(ModelDataAdapter[T]):
     A data adapter for a JSON file containing a single Pydantic model instance.
     Writes are atomic (write to .tmp, then rename).
     """
+    DEFAULT_KEY: str = "0"  # single-item adapters use a fixed key; the key itself is ignored by read/update
+
     def __init__(self, item_type: type[T], path_name: Path, create_if_not_exist: bool = True) -> None:
         if not isinstance(item_type, type) or not issubclass(item_type, pydantic.BaseModel):
             raise TypeError(f"item_type must be a subclass of pydantic.BaseModel, got {item_type}")
@@ -247,7 +249,7 @@ class JsonModelAdapter(ModelDataAdapter[T]):
             raise ValueError(f"Path {path_name} exists but is not a file.")
         if create_if_not_exist and not path_name.exists():
             instance = self._item_type()
-            self.update(instance, key="0")
+            self.update(instance, key=self.DEFAULT_KEY)
 
     def read(self, key: str | int) -> T:
         json_data = self._path_name.read_text(encoding='utf-8')
