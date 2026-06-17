@@ -234,7 +234,6 @@ class ModelForm():
         if self._item_model is None or self._item_key is None:
             raise ValueError("No item model or item key set. Use set_item_from_model() to set them.")
         self.set_item_from_model(self._item_model, self._item_key)
-        self._push_item_to_widgets()
         ui.notify('Form refreshed', color='positive')
 
     def _save(self) -> None:
