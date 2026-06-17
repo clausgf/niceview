@@ -99,8 +99,8 @@ def book_id_page(book_id: int):
     handles database access for you."""
     books = SqlModelAdapter(item_type=Book, engine=engine)
     with ui.card().classes('w-full'):
-        form = ModelForm(Book, title='Book Form', description='Edit the book details.')
-        form.set_item_from_model(books, book_id).set_model_repositories({Author.__name__: SqlModelAdapter(item_type=Author, engine=engine)})
+        form = ModelForm.from_adapter(Book, books, book_id, title='Book Form', description='Edit the book details.')
+        form.set_model_repositories({Author.__name__: SqlModelAdapter(item_type=Author, engine=engine)})
         form_edit = EditFormWrapper(form)
         form_edit.render()
 

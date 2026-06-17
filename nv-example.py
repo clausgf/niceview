@@ -10,7 +10,6 @@ import niceview
 from niceview.modeledit import EditGridWrapper
 from niceview.modelform import ModelForm
 from niceview.modelgrid import ModelGridInlineEdit, ModelGrid
-from niceview.dataadapter import ListModelAdapter
 
 
 def now_factory():
@@ -112,27 +111,19 @@ def form_json_page_buttons():
 def grid_page():
     with ui.card().classes('w-full'):
         ui.label('Simple readonly AgGrid').classes('text-h6')
-        user_grid_simple = ModelGrid(User, ListModelAdapter(User, user_list), fields=['name', 'age', 'num'], classes='w-full')
-        user_grid_simple.render()
+        ModelGrid.from_list(User, user_list, fields=['name', 'age', 'num'], classes='w-full').render()
 
     with ui.card().classes('w-full'):
         ui.label('Inline-editable AgGrid').classes('text-h6')
-        user_grid_inlineedit = ModelGridInlineEdit(
-            User, ListModelAdapter(User, user_list), 
-            rowSelection='single', 
-        )
+        user_grid_inlineedit = ModelGridInlineEdit.from_list(User, user_list, rowSelection='single')
         user_grid_inlineedit.render()
         user_grid_inlineedit.on_change(lambda e: print(f'inline on_change: {e.model_table=} {e.row_key=} {e.item=} {e.field_name} {e.new_value} {e.sender=} {e.client=}'))
 
     with ui.card().classes('w-full'):
         ui.label('AgGrid in a EditGridWrapper').classes('text-h6')
         user_grid_edit = EditGridWrapper(
-            ModelGrid(
-                User, 
-                ListModelAdapter(User, user_list), 
-                fields=['name', 'age', 'num', 'is_active', 'birthdatetime', 'gender'], 
-            ),
-            title='Example for an editable AgGrid', 
+            ModelGrid.from_list(User, user_list, fields=['name', 'age', 'num', 'is_active', 'birthdatetime', 'gender']),
+            title='Example for an editable AgGrid',
         )
         user_grid_edit.render()
         user_grid_edit.on_change(lambda e: print(f'edit on_change: {e.model_table=} {e.row_key=} {e.item=} {e.sender=} {e.client=}'))
