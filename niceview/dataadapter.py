@@ -55,14 +55,17 @@ class ModelDataAdapter(Generic[T], Protocol):
 
 class SqlModelAdapter(ModelDataAdapter[T]):
     """
-    An adapter for SQLModel to work with the ModelGrid.
+    An adapter for SQLModel / SQLAlchemy to work with ModelForm and ModelGrid.
+
+    Supports optimistic locking via lock_field (default 'updated_at').
+    Set lock_field=None to disable locking.
     """
-    def __init__(self, item_type: type[T], engine: Engine, key_field: str = 'id', lock_field: str = 'updated_at') -> None:
-        if not issubclass(item_type, sqlmodel.SQLModel):
-            raise TypeError(f"Expected item_type to be a subclass of SQLModel, got {item_type}")
+    def __init__(self, item_type: type[T], engine: Engine, key_field: str = 'id', lock_field: str | None = 'updated_at') -> None:
+        if not isinstance(item_type, type) or not issubclass(item_type, sqlmodel.SQLModel):
+            raise TypeError(f"item_type must be a subclass of SQLModel, got {item_type}")
         if not key_field:
             raise ValueError("key_field must be specified")
-        if key_field and not hasattr(item_type, key_field):
+        if not hasattr(item_type, key_field):
             raise ValueError(f"Item type {item_type} does not have a field named {key_field}")
         if lock_field and not hasattr(item_type, lock_field):
             raise ValueError(f"Item type {item_type} does not have a field named {lock_field}")
@@ -78,7 +81,6 @@ class SqlModelAdapter(ModelDataAdapter[T]):
             statement = sqlmodel.select(self._item_type)
             result = session.exec(statement)
             for item in result:
-                # Do we have to detach the items? Just to be sure...
                 yield self._item_type.model_validate(item)
 
 
@@ -93,33 +95,18 @@ class SqlModelAdapter(ModelDataAdapter[T]):
     def key_from_item(self, item: pydantic.BaseModel, index: int = -1) -> str:
         if not isinstance(item, sqlmodel.SQLModel):
             raise TypeError(f"Expected item to be an instance of {self._item_type}, got {type(item)}")
-
-        # pk_columns = item.__table__.primary_key.columns # type: ignore
-        # pks = {col.name: getattr(item, col.name) for col in pk_columns}
-        # key = str(pks)
         key = getattr(item, self._key_field)
         if key is None:
             raise ValueError(f"Item {item} does not have a valid primary key value.")
         return str(key)
 
 
-    # def key_from_str(self, key: str) -> dict[str, Any]:
-    #     try:
-    #         return ast.literal_eval(key)  # Use ast.literal_eval for safety
-    #     except (SyntaxError, ValueError):
-    #         raise ValueError(f"Invalid key format: {key}")
     def key_from_str(self, key: str | int) -> Any:
-        """
-        Convert a string key to the appropriate type for the primary key.
-        This method assumes that the key is a string representation of an integer or a string.
-        """
         if isinstance(key, int):
             return key
         try:
-            # Try to convert the key to an integer
             return int(key)
         except ValueError:
-            # If it fails, return the key as a string
             return key
 
 
@@ -133,8 +120,8 @@ class SqlModelAdapter(ModelDataAdapter[T]):
                 setattr(item, self._lock_field, now)
             session.add(item)
             session.commit()
-            session.refresh(item)  # Refresh to get the updated item with the new ID
-            item = self._item_type.model_validate(item) # force reloading all fields & detach object
+            session.refresh(item)
+            item = self._item_type.model_validate(item)
         return item
 
 
@@ -144,8 +131,6 @@ class SqlModelAdapter(ModelDataAdapter[T]):
             item = session.get(self._item_type, key_dict)
             if not item:
                 raise ValueError(f"Item with key {key} not found in the database.")
-
-            # force reloading all fields and detach the object
             item = self._item_type.model_validate(item)
         return item
 
@@ -174,27 +159,20 @@ class SqlModelAdapter(ModelDataAdapter[T]):
                     raise ValueError(f"Item with key {key} not found in the database.")
 
             # Update the item with the new values
-            data = item.model_dump(exclude={self._key_field, self._lock_field}, exclude_unset=True)
+            exclude = {self._key_field}
+            if self._lock_field:
+                exclude.add(self._lock_field)
+            data = item.model_dump(exclude=exclude)
             for field, value in data.items():
                 setattr(db_item, field, value)
 
-            # Update the lock field
             if self._lock_field:
-                now = datetime.datetime.now(datetime.timezone.utc)
-                setattr(db_item, self._lock_field, now)
+                setattr(db_item, self._lock_field, datetime.datetime.now(datetime.timezone.utc))
 
-            # Add the updated item to the session
             session.add(db_item)
             session.commit()
             session.refresh(db_item)
-            db_item = self._item_type.model_validate(db_item)  # force reloading all fields & detach object
-            return db_item
-
-        #     session.merge(item)
-        #     session.commit()
-        #     # force reloading all fields and detach the object
-        #     item = self._item_type.model_validate(item)
-        # return item
+            return self._item_type.model_validate(db_item)
 
 
     def delete(self, key: str | int) -> None:

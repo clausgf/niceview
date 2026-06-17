@@ -1,9 +1,12 @@
+import datetime
 import json
 import pytest
 import pydantic
+import sqlmodel
 from pathlib import Path
+from typing import Annotated
 
-from niceview.dataadapter import ListModelAdapter, JsonModelAdapter, JsonListModelAdapter
+from niceview.dataadapter import ListModelAdapter, JsonModelAdapter, JsonListModelAdapter, SqlModelAdapter
 from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
 
 
@@ -441,3 +444,238 @@ class TestModelGridFromJson:
         path = tmp_path / 'items.json'
         with pytest.raises(FileNotFoundError):
             ModelGrid.from_json(Item, path, create_if_not_exist=False)
+
+
+# ---------------------------------------------------------------------------
+# SqlModelAdapter
+# ---------------------------------------------------------------------------
+
+def _now():
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+class DbItem(sqlmodel.SQLModel, table=True):
+    __tablename__ = 'test_dbitems'
+    id: int | None = sqlmodel.Field(default=None, primary_key=True)
+    name: str = ''
+    value: int = 0
+    updated_at: datetime.datetime = sqlmodel.Field(default_factory=_now)
+
+
+class DbItemNoLock(sqlmodel.SQLModel, table=True):
+    __tablename__ = 'test_dbitems_nolock'
+    id: int | None = sqlmodel.Field(default=None, primary_key=True)
+    name: str = ''
+
+
+@pytest.fixture
+def engine():
+    eng = sqlmodel.create_engine('sqlite://', connect_args={'check_same_thread': False})
+    sqlmodel.SQLModel.metadata.create_all(eng)
+    yield eng
+    sqlmodel.SQLModel.metadata.drop_all(eng)
+
+
+@pytest.fixture
+def populated_engine(engine):
+    with sqlmodel.Session(engine) as session:
+        session.add(DbItem(name='alpha', value=1))
+        session.add(DbItem(name='beta', value=2))
+        session.commit()
+    return engine
+
+
+class TestSqlModelAdapterInit:
+    def test_valid_init(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        assert adapter._key_field == 'id'
+        assert adapter._lock_field == 'updated_at'
+
+    def test_non_sqlmodel_type_raises(self, engine):
+        with pytest.raises(TypeError):
+            SqlModelAdapter(pydantic.BaseModel, engine)  # type: ignore
+
+    def test_non_type_raises(self, engine):
+        with pytest.raises(TypeError):
+            SqlModelAdapter(DbItem(), engine)  # type: ignore
+
+    def test_missing_key_field_raises(self, engine):
+        with pytest.raises(ValueError):
+            SqlModelAdapter(DbItem, engine, key_field='nonexistent')
+
+    def test_missing_lock_field_raises(self, engine):
+        with pytest.raises(ValueError):
+            SqlModelAdapter(DbItem, engine, lock_field='nonexistent')
+
+    def test_lock_field_none_allowed(self, engine):
+        adapter = SqlModelAdapter(DbItemNoLock, engine, lock_field=None)
+        assert adapter._lock_field is None
+
+    def test_empty_key_field_raises(self, engine):
+        with pytest.raises(ValueError):
+            SqlModelAdapter(DbItem, engine, key_field='')
+
+
+class TestSqlModelAdapterCreate:
+    def test_create_returns_item_with_id(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        item = adapter.create(DbItem(name='new', value=42))
+        assert item.id is not None
+
+    def test_create_persists_to_db(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        adapter.create(DbItem(name='persisted', value=7))
+        items = list(adapter)
+        assert any(i.name == 'persisted' for i in items)
+
+    def test_create_wrong_type_raises(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        with pytest.raises(TypeError):
+            adapter.create(Item(name='wrong'))  # type: ignore
+
+    def test_create_sets_lock_field(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        before = _now().replace(tzinfo=None)  # SQLite returns tz-naive datetimes
+        item = adapter.create(DbItem(name='lock_test'))
+        assert item.updated_at.replace(tzinfo=None) >= before
+
+
+class TestSqlModelAdapterRead:
+    def test_read_existing(self, populated_engine):
+        adapter = SqlModelAdapter(DbItem, populated_engine)
+        items = list(adapter)
+        key = adapter.key_from_item(items[0])
+        read_item = adapter.read(key)
+        assert read_item.name == items[0].name
+
+    def test_read_by_int_key(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        created = adapter.create(DbItem(name='r', value=5))
+        fetched = adapter.read(created.id)
+        assert fetched.name == 'r'
+
+    def test_read_missing_raises(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        with pytest.raises(ValueError):
+            adapter.read(9999)
+
+    def test_read_returns_detached_object(self, populated_engine):
+        adapter = SqlModelAdapter(DbItem, populated_engine)
+        items = list(adapter)
+        item = adapter.read(adapter.key_from_item(items[0]))
+        assert isinstance(item, DbItem)
+
+
+class TestSqlModelAdapterUpdate:
+    def test_update_persists_change(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        item = adapter.create(DbItem(name='old', value=1))
+        key = adapter.key_from_item(item)
+        item.name = 'new'
+        adapter.update(item, key)
+        assert adapter.read(key).name == 'new'
+
+    def test_update_returns_new_instance(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        item = adapter.create(DbItem(name='x'))
+        key = adapter.key_from_item(item)
+        item.name = 'y'
+        result = adapter.update(item, key)
+        assert result is not item
+
+    def test_update_refreshes_lock_field(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        item = adapter.create(DbItem(name='lock'))
+        key = adapter.key_from_item(item)
+        before = item.updated_at
+        item.name = 'changed'
+        result = adapter.update(item, key)
+        assert result.updated_at >= before
+
+    def test_update_optimistic_lock_conflict_raises(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        item = adapter.create(DbItem(name='conflict'))
+        key = adapter.key_from_item(item)
+        item.name = 'v1'
+        v1 = adapter.update(item, key)
+        item.name = 'v2'
+        with pytest.raises(ValueError, match='Optimistic Locking'):
+            adapter.update(item, key)  # stale lock field
+
+    def test_update_missing_raises(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        ghost = DbItem(id=9999, name='ghost', updated_at=_now())
+        with pytest.raises(ValueError):
+            adapter.update(ghost, 9999)
+
+    def test_update_no_lock_field(self, engine):
+        adapter = SqlModelAdapter(DbItemNoLock, engine, lock_field=None)
+        item = adapter.create(DbItemNoLock(name='nolockitem'))
+        key = adapter.key_from_item(item)
+        item.name = 'changed'
+        result = adapter.update(item, key)
+        assert result.name == 'changed'
+
+
+class TestSqlModelAdapterDelete:
+    def test_delete_removes_item(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        item = adapter.create(DbItem(name='del'))
+        key = adapter.key_from_item(item)
+        adapter.delete(key)
+        with pytest.raises(ValueError):
+            adapter.read(key)
+
+    def test_delete_missing_raises(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        with pytest.raises(ValueError):
+            adapter.delete(9999)
+
+
+class TestSqlModelAdapterIter:
+    def test_iter_yields_all(self, populated_engine):
+        adapter = SqlModelAdapter(DbItem, populated_engine)
+        items = list(adapter)
+        assert len(items) == 2
+        assert {i.name for i in items} == {'alpha', 'beta'}
+
+    def test_iter_empty(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        assert list(adapter) == []
+
+    def test_query_all_strs(self, populated_engine):
+        adapter = SqlModelAdapter(DbItem, populated_engine)
+        pairs = list(adapter.query_all_strs())
+        assert len(pairs) == 2
+        for key, s in pairs:
+            assert isinstance(key, str)
+            assert isinstance(s, str)
+
+
+class TestSqlModelAdapterKeys:
+    def test_key_from_item_is_string(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        item = adapter.create(DbItem(name='k'))
+        assert isinstance(adapter.key_from_item(item), str)
+
+    def test_key_from_item_no_pk_raises(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        with pytest.raises(ValueError):
+            adapter.key_from_item(DbItem(name='no-pk'))  # id is None
+
+    def test_key_from_item_wrong_type_raises(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        with pytest.raises(TypeError):
+            adapter.key_from_item(Item(name='wrong'))  # type: ignore
+
+    def test_key_from_str_int_string(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        assert adapter.key_from_str('42') == 42
+
+    def test_key_from_str_int(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        assert adapter.key_from_str(42) == 42
+
+    def test_key_from_str_non_int_string(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        assert adapter.key_from_str('abc') == 'abc'
