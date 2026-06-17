@@ -82,6 +82,8 @@ class EditGridWrapper():
         """
         Get the key of the currently selected row, if any.
         """
+        if not self.grid.widget:
+            return None
         selected_row = await self.grid.widget.get_selected_row()
         return selected_row['__ui_row_key'] if selected_row else None
 

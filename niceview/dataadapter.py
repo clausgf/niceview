@@ -2,7 +2,7 @@ import datetime
 import json
 import logging
 from pathlib import Path
-from typing import Any, Generic, TypeVar, Iterator, Protocol
+from typing import Any, Generic, TypeVar, Iterator, Protocol, runtime_checkable
 from fastapi import HTTPException, status
 from sqlalchemy import Engine
 import pydantic
@@ -23,6 +23,7 @@ class SingleItemAdapter(Generic[T], Protocol):
     def update(self, item: T, key: str) -> T: ...
 
 
+@runtime_checkable
 class ReloadableAdapter(Protocol):
     """Protocol for adapters that support reloading from an external source (e.g. disk)."""
     def reload(self) -> None: ...

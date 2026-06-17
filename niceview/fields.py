@@ -200,15 +200,15 @@ class Fields(typing.Mapping[str, FieldInfo]):
         if field_type in (int, float):
             for constraint in py_field_info.metadata:
                 if nv_field_info.min is None and isinstance(constraint, annotated_types.Gt):
-                    nv_field_info.min = float(constraint.gt)
+                    nv_field_info.min = float(constraint.gt)  # type: ignore[arg-type]
                 elif nv_field_info.min is None and isinstance(constraint, annotated_types.Ge):
-                    nv_field_info.min = float(constraint.ge)
+                    nv_field_info.min = float(constraint.ge)  # type: ignore[arg-type]
                 if nv_field_info.max is None and isinstance(constraint, annotated_types.Lt):
-                    nv_field_info.max = float(constraint.lt)
+                    nv_field_info.max = float(constraint.lt)  # type: ignore[arg-type]
                 elif nv_field_info.max is None and isinstance(constraint, annotated_types.Le):
-                    nv_field_info.max = float(constraint.le)
+                    nv_field_info.max = float(constraint.le)  # type: ignore[arg-type]
                 if nv_field_info.step is None and isinstance(constraint, annotated_types.MultipleOf):
-                    nv_field_info.step = float(constraint.multiple_of)
+                    nv_field_info.step = float(constraint.multiple_of)  # type: ignore[arg-type]
         
         return nv_field_info
     
@@ -309,8 +309,8 @@ class Fields(typing.Mapping[str, FieldInfo]):
         Validate the model with the new value and return a list of validation errors.
         If there are no validation errors, return None.
         """
-        field_errors = {}
-        nonfield_errors = []
+        field_error_lists: dict[str, list[str]] = {}
+        nonfield_errors: list[str] = []
         try:
             # validate the model
             self._item_type.model_validate(model_dict)
@@ -321,15 +321,14 @@ class Fields(typing.Mapping[str, FieldInfo]):
                 for loc in error['loc']:
                     if loc in self._field_names:
                         field_name = loc
-                        if field_name not in field_errors:
-                            field_errors[field_name] = []
-                        field_errors[field_name].append(error['msg'])
+                        if field_name not in field_error_lists:
+                            field_error_lists[field_name] = []
+                        field_error_lists[field_name].append(error['msg'])
                         error_was_handled = True
                 if not error_was_handled:
                     # if the error cannot be attributed to a known field, it is a non-field error
                     nonfield_errors.append(error['msg'])
-        for k, v in field_errors.items():
-            field_errors[k] = ', '.join(v)
+        field_errors: dict[str, str] = {k: ', '.join(v) for k, v in field_error_lists.items()}
         return field_errors, nonfield_errors
 
 

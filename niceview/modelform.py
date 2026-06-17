@@ -107,7 +107,7 @@ class ModelForm():
             """Get a parameter from (in descending priority) kwargs, Meta class or default value."""
             meta = getattr(self._item_type, 'Meta', None)
             value = getattr(meta, param, default) if meta else default
-            value = kwargs.pop(param, value)  # override with kwargs if provided
+            value = kwargs.pop(param, value)  # type: ignore[misc]  # dynamic TypedDict key
             return value
 
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
@@ -117,7 +117,7 @@ class ModelForm():
         self._item_model = None
         self._item_key = None
         self._model_repositories = {}
-        self._change_handlers = []
+        self._change_handlers: list[Handler[FieldChangeEventArguments]] = []
 
         include = _get_param('include', '__all__')
         exclude = _get_param('exclude', '')
@@ -247,7 +247,7 @@ class ModelForm():
         """Push current item values into all rendered widgets."""
         for field_name, widget in self.widgets.items():
             widget_type = self._fields[field_name].widget_type
-            if widget_type != 'editgrid':
+            if widget_type and widget_type != 'editgrid':
                 self._from_current_item_to_widget_value(field_name, widget_type, widget)
 
     def _refresh(self) -> None:
@@ -354,13 +354,14 @@ class ModelForm():
             classes=self.classes, tailwind=self.tailwind, style=self.style, props=self.props,
         )
         if field_info.editable:  # create an editable grid for the field
-            widget = EditGridWrapper(widget, title=field_info.label)
-            widget.on_change(notify_change)
-            widget.render()
+            edit_widget = EditGridWrapper(widget, title=field_info.label)
+            edit_widget.on_change(notify_change)
+            edit_widget.render()
+            return edit_widget  # type: ignore[return-value]
         else:  # create a read-only grid for the field
             ui.label(field_info.label).classes('text-h6')
             widget.render()
-        return widget
+            return widget  # type: ignore[return-value]
 
 
     def _render_widget(self, field_name: str, field_info: FieldInfo) -> ui.element:
@@ -381,7 +382,7 @@ class ModelForm():
         if not widget_type:
             raise ValueError(f"Widget type for field {field_name} not found in field info")
         is_simple_widget = True  # whether the widget is a simple widget (e.g. input, number, textarea, checkbox, switch, select)
-        widget = None
+        widget: Any = None
 
         if widget_type == 'ui.input':
             widget = ui.input(**get_kwargs_from_field_info(['label', 'placeholder', 'password', 'password_toggle_button', 'autocomplete']))
@@ -471,7 +472,7 @@ class ModelForm():
                 widget.tooltip(field_info.tooltip)
 
             widget.classes(self.classes)
-            widget.tailwind(self.tailwind)
+            widget.tailwind(self.tailwind)  # type: ignore[attr-defined]
             widget.style(self.style)
             widget.props(self.props)
 
@@ -523,9 +524,11 @@ class ModelForm():
         value = getattr(self._current_item, field_name)
 
         if widget_type == 'modelselect':
-            repository = self._model_repositories[self._fields[field_name].item_type.__name__]
+            item_type = self._fields[field_name].item_type
+            assert item_type is not None, f"item_type for field '{field_name}' must not be None"
+            repository = self._model_repositories[item_type.__name__]
             if not repository:
-                raise ValueError(f"Model repository for {self._fields[field_name].item_type.__name__} not found in form's model repositories")
+                raise ValueError(f"Model repository for {item_type.__name__} not found in form's model repositories")
             value = repository.key_from_item(value)
 
         elif type(value) is datetime.datetime:
@@ -536,7 +539,7 @@ class ModelForm():
             timedelta_adapter = TypeAdapter(datetime.timedelta)
             value = timedelta_adapter.dump_python(value, mode="json")
 
-        widget.value = value
+        widget.value = value  # type: ignore[attr-defined]
 
         return self
 
@@ -552,7 +555,7 @@ class ModelForm():
         widget = self.widgets[field_name]
         widget_type = self._fields[field_name].widget_type
         field_type = self._fields[field_name].field_type
-        value = widget.value
+        value = widget.value  # type: ignore[attr-defined]
 
         if widget_type == 'ui.input' and typing.get_origin(field_type) == list:
             value = [item.strip() for item in value.split(',')]
@@ -586,9 +589,11 @@ class ModelForm():
             value = timedelta_adapter.validate_python(value)
 
         elif widget_type == 'modelselect':
-            repository = self._model_repositories[self._fields[field_name].item_type.__name__]
+            item_type = self._fields[field_name].item_type
+            assert item_type is not None, f"item_type for field '{field_name}' must not be None"
+            repository = self._model_repositories[item_type.__name__]
             if not repository:
-                raise ValueError(f"Model repository for {self._fields[field_name].item_type.__name__} not found in form's model repositories")
+                raise ValueError(f"Model repository for {item_type.__name__} not found in form's model repositories")
             value = repository.read(value)
 
         setattr(self._current_item, field_name, value)
@@ -599,6 +604,8 @@ class ModelForm():
 
 
     def _validate(self, field_name: str | None = None) -> None:
+        if self._current_item is None:
+            return
         field_errors, nonfield_errors = self._fields.validation_errors(self._current_item.model_dump())
         self._validation_error_messages = field_errors
         self._nonfield_validation_errors = nonfield_errors
@@ -626,7 +633,7 @@ class ModelForm():
 
     def _handle_validate(self, field_name: str, value_change_event: ValueChangeEventArguments) -> None:
         old_value = getattr(self._current_item, field_name)
-        new_value = value_change_event.sender.value
+        new_value = value_change_event.sender.value  # type: ignore[attr-defined]
 
         if old_value != new_value:
             error_msg = None

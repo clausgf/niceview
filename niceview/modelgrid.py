@@ -134,7 +134,7 @@ class ModelGrid:
         Create a ModelGrid instance from an in-memory list.
         """
         data = ListModelAdapter(item_type, items)
-        return cls(item_type, data, **kwargs)
+        return cls(item_type, data, **kwargs)  # type: ignore[arg-type]
 
     @classmethod
     def from_adapter(cls, item_type: type[T], data: ModelDataAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> 'ModelGrid':
@@ -143,7 +143,7 @@ class ModelGrid:
         Equivalent to ModelGrid(item_type, data, **kwargs) — provided for API symmetry
         with ModelForm.from_adapter().
         """
-        return cls(item_type, data, **kwargs)
+        return cls(item_type, data, **kwargs)  # type: ignore[arg-type]
 
     @classmethod
     def from_json(cls, item_type: type[T], path_name: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelGridOptionInputs]) -> 'ModelGrid':
@@ -153,7 +153,7 @@ class ModelGrid:
         Call grid._data.reload() + grid.update_rows() to refresh from disk.
         """
         data = JsonListModelAdapter(item_type, path_name, create_if_not_exist=create_if_not_exist)
-        return cls(item_type, data, **kwargs)
+        return cls(item_type, data, **kwargs)  # type: ignore[arg-type]
 
     def on_select(self, callback: Handler[ValueChangeEventArguments]) -> Self:
         """
@@ -219,7 +219,7 @@ class ModelGrid:
 
         self.widget = ui.aggrid(config_dict, **kwargs)
         self.widget.classes(self.classes)
-        self.widget.tailwind(self.tailwind)
+        self.widget.tailwind(self.tailwind)  # type: ignore[attr-defined]
         self.widget.style(self.style)
         self.widget.props(self.props)
         self.widget.on('selectionChanged', self._handle_selection_changed)
@@ -231,6 +231,8 @@ class ModelGrid:
         """
         Handle the row selected event to call the selection handlers.
         """
+        if not self.widget:
+            return
         row = await self.widget.get_selected_row()
         e = ValueChangeEventArguments(sender=event.sender, client=event.client, value=row)
         for handler in self._selection_handlers:
@@ -267,7 +269,7 @@ class ModelGridInlineEdit(ModelGrid):
     def __init__(self, item_type: type[T], data: ModelDataAdapter, **kwargs: Unpack[_InlineEditableModelGridOptionInputs]) -> None:
         self.cell_readers = kwargs.pop('cell_readers', {})
 
-        super().__init__(item_type, data, **kwargs)
+        super().__init__(item_type, data, **kwargs)  # type: ignore[arg-type, misc]
         self.defaultColDef.update({'editable': True})
 
         self._change_handlers = []
