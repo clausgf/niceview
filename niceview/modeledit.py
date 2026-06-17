@@ -124,13 +124,26 @@ class EditGridWrapper():
         self.grid.update_rows()
 
 
+    def _apply_create(self, item: BaseModel) -> BaseModel:
+        """Persist a new item via the adapter. Raises on type mismatch or adapter error."""
+        return self.grid._data.create(item)
+
+    def _apply_update(self, item: BaseModel, row_key: str) -> BaseModel:
+        """Persist an updated item via the adapter. Raises on not-found or optimistic-lock conflict."""
+        return self.grid._data.update(item, row_key)
+
+    def _apply_delete(self, row_key: str) -> None:
+        """Delete an item via the adapter. Raises if the key does not exist."""
+        self.grid._data.delete(row_key)
+
+
     async def create_item(self, event: ClickEventArguments) -> None:
         item = self.grid._fields._item_type()
         success = await self.default_edit_create_handler(item, True)
         if success:
             try:
-                item = self.grid._data.create(item)
-                ui.notify(f'Item created', color='positive')
+                item = self._apply_create(item)
+                ui.notify('Item created', color='positive')
                 self.grid.update_rows()
                 self._invoke_change_handlers(event, self.grid._data.key_from_item(item), item)
             except Exception as e:
@@ -151,13 +164,12 @@ class EditGridWrapper():
             ui.notify(f'Item with key {row_key} not found', color='negative')
             return
 
-        # edit & update the item
-        item = item.model_copy(deep=True)  # make sure to edit a copy of the item
+        item = item.model_copy(deep=True)
         success = await self.default_edit_create_handler(item, False)
         if success:
             try:
-                item = self.grid._data.update(item, row_key)
-                ui.notify(f'Item updated', color='positive')
+                item = self._apply_update(item, row_key)
+                ui.notify('Item updated', color='positive')
             except Exception as e:
                 ui.notify(f'Error updating item: {self._error_msg_from_exception(e)}', color='negative')
         else:
@@ -174,16 +186,14 @@ class EditGridWrapper():
             ui.notify('Please select a row for deletion!', color='negative')
             return
 
-        # confirm deletion
         confirm = await submit_dialog('Confirm Deletion', f'Are you sure you want to delete the selected item *{row_key}*?')
         if not confirm:
             ui.notify('Item deletion cancelled', color='negative')
             return
 
-        # delete the item from the data adapter
         try:
-            self.grid._data.delete(row_key)
-            ui.notify(f'Item deleted', color='positive')
+            self._apply_delete(row_key)
+            ui.notify('Item deleted', color='positive')
         except Exception as e:
             ui.notify(f'Error deleting item {row_key}: {self._error_msg_from_exception(e)}', color='negative')
 
