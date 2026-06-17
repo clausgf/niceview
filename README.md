@@ -279,5 +279,6 @@ Accepted Technical Debt
 
 Open Questions / TODO
 ---------------------
+- **Inline EditGridWrapper grid not refreshing**: When a `list[BaseModel]` field is rendered as an inline `EditGridWrapper` inside a `ModelForm`, Create/Edit/Delete dialogs work but the AgGrid table does not visually update afterwards. Standalone `EditGridWrapper` (example 06) works correctly. Root cause unclear — `run_grid_method('setGridOption', 'rowData', ...)` is called but the update does not reach the rendered grid. (See example 02, `tags` field.)
 - **Support binding in tables**: Two-way sync between grid rows and the in-memory model (no manual `update_rows()` needed).
 - **Support dataclasses**: In addition to Pydantic models.
