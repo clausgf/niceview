@@ -93,7 +93,7 @@ ModelForm.from_item(user,
 
 **Change events** carry field name and old/new value:
 ```python
-form.on_change(lambda e: print(e.field_name, e.old_value, e.new_value))
+form.on_change(lambda e: print(e.field_name, e.previous_value, e.value))
 ```
 
 

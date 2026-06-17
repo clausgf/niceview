@@ -6,7 +6,6 @@ import typing_extensions
 from pydantic import BaseModel, ValidationError
 from nicegui import ui
 from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, ClickEventArguments, handle_event
-from nicegui.dataclasses import KWONLY_SLOTS
 
 from niceview.dataadapter import ReloadableAdapter
 from niceview.modelform import ModelForm

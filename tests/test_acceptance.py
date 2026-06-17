@@ -107,7 +107,7 @@ class TestModelFormInteraction:
 
         def on_change(e):
             called_with['field'] = e.field_name
-            called_with['new'] = e.new_value
+            called_with['new'] = e.value
 
         @ui.page('/')
         def page():

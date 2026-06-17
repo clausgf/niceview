@@ -88,7 +88,7 @@ def form_page():
                 ui.button('num--', on_click=lambda: setattr(user, 'num', user.num - 1))
 
     user_form.on_change(lambda e: refresh_groups() if e.field_name == 'groups' else None)
-    user_form.on_change(lambda e: print(f'on_change: {e.form=} {e.field_name=} {e.old_value=} {e.new_value=} {e.sender=} {e.client=}'))
+    user_form.on_change(lambda e: print(f'on_change: {e.form=} {e.field_name=} {e.previous_value=} {e.value=} {e.sender=} {e.client=}'))
 
 
 @ui.page('/form_json_autosave')

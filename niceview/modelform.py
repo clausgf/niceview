@@ -11,19 +11,18 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from nicegui import ui
 from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, handle_event
-from nicegui.dataclasses import KWONLY_SLOTS
 
 from niceview.dataadapter import JsonModelAdapter, ModelDataAdapter, SingleItemAdapter, SqlModelAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 
 
-@dataclass(**KWONLY_SLOTS)
+@dataclass(kw_only=True, slots=True)
 class FieldChangeEventArguments(UiEventArguments):
     form: 'ModelForm'
     field_name: str
-    old_value: Any
-    new_value: Any
+    previous_value: Any
+    value: Any
 
 
 class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
@@ -338,8 +337,8 @@ class ModelForm():
                 client=e.client,
                 form=self,
                 field_name=field_name,
-                old_value=None,
-                new_value=e.item,
+                previous_value=None,
+                value=e.item,
             )
             for handler in self._change_handlers:
                 handle_event(handler, fce)
@@ -680,8 +679,8 @@ class ModelForm():
             client=value_change_event.client,
             form=self,
             field_name=field_name,
-            old_value=old_value,
-            new_value=new_value,
+            previous_value=old_value,
+            value=new_value,
         )
         for handler in self._change_handlers:
             handle_event(handler, fce)

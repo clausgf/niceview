@@ -8,7 +8,6 @@ import typing_extensions
 from pydantic import BaseModel
 from nicegui import ui
 from nicegui.events import Handler, ClickEventArguments, ValueChangeEventArguments, handle_event
-from nicegui.dataclasses import KWONLY_SLOTS
 
 from niceview.dataadapter import ModelDataAdapter, ListModelAdapter, JsonListModelAdapter
 from niceview.fieldinfo import FieldInfo
@@ -242,14 +241,14 @@ class ModelGrid:
             handle_event(handler, e)
 
 
-@dataclass(**KWONLY_SLOTS)
+@dataclass(kw_only=True, slots=True)
 class TableItemEventArguments(ClickEventArguments):
     model_table: ModelGrid
     row_key: str
     item: Any
 
 
-@dataclass(**KWONLY_SLOTS)
+@dataclass(kw_only=True, slots=True)
 class TableItemFieldEventArguments(TableItemEventArguments):
     field_name: str
     new_value: Any

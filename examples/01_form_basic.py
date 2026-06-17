@@ -36,7 +36,7 @@ def page():
 
     change_log = ui.log(max_lines=10).classes('w-full h-32 mt-4')
     form.on_change(lambda e: change_log.push(
-        f'{e.field_name}: {e.old_value!r} → {e.new_value!r}'
+        f'{e.field_name}: {e.previous_value!r} → {e.value!r}'
     ))
 
 
