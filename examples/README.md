@@ -2,7 +2,7 @@
 
 Run any example from the project root:
 ```bash
-python examples/01_form_basic.py
+uv run python examples/01_form_basic.py
 ```
 
 | # | File | Shows | Backend |

@@ -11,8 +11,7 @@ content change as you edit. Click *Reload* in that panel to refresh it.
 
 The JSON file is created with default values on first run.
 """
-# Allow running directly from the project root or examples/ without installing
-# niceview as a package. Not needed in production code.
+# Allows running without prior install. With uv: `uv run python examples/<file>.py`.
 import sys
 import json
 from pathlib import Path

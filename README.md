@@ -238,6 +238,18 @@ Field-level and model-level (`@model_validator`) errors are displayed in the for
 Development
 -----------
 
+Install dependencies and run tests:
+```bash
+uv sync --dev
+uv run pytest          # 250 tests (234 unit + 16 acceptance)
+uv run mypy niceview/ --ignore-missing-imports   # 0 errors
+```
+
+Run examples:
+```bash
+uv run python examples/01_form_basic.py
+```
+
 The `niceview-split` branch contains only the `niceview/` package directory for easy inclusion as a git subtree in other projects.
 
 Update `niceview-split` from `main`:
@@ -250,12 +262,6 @@ Pull the latest `niceview-split` into a consuming project:
 ```bash
 git fetch niceview
 git subtree pull --prefix=niceview niceview niceview-split --squash
-```
-
-Run tests:
-```bash
-pytest          # 250 tests (234 unit + 16 acceptance)
-mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 
 Unit tests cover data adapters, field resolution, validation logic, and pure CRUD operations.

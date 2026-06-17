@@ -16,8 +16,7 @@ One form showing all field types supported by NiceView:
 | `list[str]` | `ui.input_chips` |
 | `list[BaseModel]` | Inline `EditGridWrapper` |
 """
-# Allow running directly from the project root or examples/ without installing
-# niceview as a package. Not needed in production code.
+# Allows running without prior install. With uv: `uv run python examples/<file>.py`.
 import sys
 import datetime
 from pathlib import Path

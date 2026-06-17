@@ -7,8 +7,7 @@ Demonstrates `ModelForm` with a simple Pydantic model.
 - Edits are written back to the Python object after validation
 - `on_change` is called after every successfully validated change
 """
-# Allow running directly from the project root or examples/ without installing
-# niceview as a package. Not needed in production code.
+# Allows running without prior install. With uv: `uv run python examples/<file>.py`.
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))

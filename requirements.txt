@@ -1,6 +1,0 @@
-NiceGUI
-uvicorn
-pydantic-settings
-sqlmodel
-pytest
-pytz

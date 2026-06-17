@@ -16,8 +16,7 @@ The database is re-created on every run.
 Pages: `/` → Authors grid, `/authors/{id}` → edit author,
 `/books` → Books grid, `/books/{id}` → edit book
 """
-# Allow running directly from the project root or examples/ without installing
-# niceview as a package. Not needed in production code.
+# Allows running without prior install. With uv: `uv run python examples/<file>.py`.
 import sys
 import os
 import datetime
