@@ -156,6 +156,21 @@ or let the `from_*` factory methods create them transparently.
 All JSON adapters write atomically (`.tmp` → rename).
 `JsonListModelAdapter` exposes `reload()` to re-read from disk after external changes.
 
+```python
+from niceview.dataadapter import SqlModelAdapter
+
+adapter = SqlModelAdapter(Book, engine)                    # with optimistic locking (updated_at)
+adapter = SqlModelAdapter(Book, engine, lock_field=None)   # without locking
+
+# Form for a specific record
+form = ModelForm.from_adapter(Book, adapter, book_id, save_button='', refresh_button='')
+form.render()
+
+# Grid over the full table
+ModelGrid(Book, adapter).render()
+EditGridWrapper(ModelGrid(Book, adapter), title='Books').render()
+```
+
 
 Supported Field Types
 ---------------------
