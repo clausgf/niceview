@@ -9,6 +9,8 @@ Three variants of the AgGrid-based table component:
 - **ModelGridInlineEdit (JSON)** — same as above, but persists to a JSON file
   automatically after every change; the file is created on first run
 """
+# Allow running directly from the project root or examples/ without installing
+# niceview as a package. Not needed in production code.
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))

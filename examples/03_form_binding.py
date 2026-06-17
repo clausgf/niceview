@@ -10,6 +10,8 @@ change back to the object.
 The bound label updates immediately; the form input does **not** — NiceView
 does not (yet) support two-way binding from the object back into the widget.
 """
+# Allow running directly from the project root or examples/ without installing
+# niceview as a package. Not needed in production code.
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -20,13 +22,13 @@ from niceview.modelform import ModelForm
 
 
 class User(pydantic.BaseModel):
-    name: str = pydantic.Field(default='Alice', max_length=20, title='Name')
-    age: int = pydantic.Field(default=30, ge=0, le=120, title='Age')
+    name: str = pydantic.Field(max_length=20, title='Name')
+    age: int = pydantic.Field(ge=0, le=120, title='Age')
     num: int = pydantic.Field(default=0, title='Counter')
     active: bool = pydantic.Field(default=True, title='Active')
 
 
-user = User()
+user = User(name='Alice', age=30)
 
 
 @ui.page('/')

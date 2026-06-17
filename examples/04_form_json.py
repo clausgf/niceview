@@ -11,6 +11,8 @@ content change as you edit. Click *Reload* in that panel to refresh it.
 
 The JSON file is created with default values on first run.
 """
+# Allow running directly from the project root or examples/ without installing
+# niceview as a package. Not needed in production code.
 import sys
 import json
 from pathlib import Path
