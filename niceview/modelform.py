@@ -628,7 +628,12 @@ class ModelForm():
 
 
     def _handle_blur_event(self, field_name: str, event) -> None:
-        vce = ValueChangeEventArguments(sender=event.sender, client=event.client, value=event.sender.value)
+        old = getattr(self._current_item, field_name, None) if self._current_item else None
+        vce = ValueChangeEventArguments(
+            sender=event.sender, client=event.client,
+            value=event.sender.value,  # type: ignore[attr-defined]
+            previous_value=old,
+        )
         self._handle_value_change(field_name, vce)
 
 
