@@ -345,7 +345,7 @@ class ModelGridInlineEdit(ModelGrid):
         # call the change handlers
         tife = TableItemFieldEventArguments(
             sender=event.sender, client=event.client, 
-            model_table=self,  # type:ignore[arg-type]  # self is a ModelGridInlineEdit
+            model_table=self,
             row_key=row_key,
             item=item, field_name=field_name, new_value=new_value,
         )
