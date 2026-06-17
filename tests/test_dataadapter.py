@@ -3,7 +3,7 @@ import pytest
 import pydantic
 from pathlib import Path
 
-from niceview.dataadapter import ListModelAdapter, JsonSingleModelAdapter, JsonListModelAdapter
+from niceview.dataadapter import ListModelAdapter, JsonModelAdapter, JsonListModelAdapter
 from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
 
 
@@ -157,37 +157,37 @@ class TestListModelAdapterKeys:
 
 
 # ---------------------------------------------------------------------------
-# JsonSingleModelAdapter
+# JsonModelAdapter
 # ---------------------------------------------------------------------------
 
-class TestJsonSingleModelAdapter:
+class TestJsonModelAdapter:
     def test_create_if_not_exist(self, tmp_path):
         path = tmp_path / 'data.json'
-        adapter = JsonSingleModelAdapter(Item, path, create_if_not_exist=True)
+        adapter = JsonModelAdapter(Item, path, create_if_not_exist=True)
         assert path.exists()
 
     def test_created_file_has_default_values(self, tmp_path):
         path = tmp_path / 'data.json'
-        JsonSingleModelAdapter(Item, path, create_if_not_exist=True)
+        JsonModelAdapter(Item, path, create_if_not_exist=True)
         data = json.loads(path.read_text())
         assert data == {'name': '', 'value': 0}
 
     def test_no_create_if_not_exist_does_not_create_file(self, tmp_path):
         path = tmp_path / 'data.json'
-        JsonSingleModelAdapter(Item, path, create_if_not_exist=False)
+        JsonModelAdapter(Item, path, create_if_not_exist=False)
         assert not path.exists()
 
     def test_read_existing_file(self, tmp_path):
         path = tmp_path / 'data.json'
         path.write_text(json.dumps({'name': 'hello', 'value': 42}))
-        adapter = JsonSingleModelAdapter(Item, path, create_if_not_exist=False)
+        adapter = JsonModelAdapter(Item, path, create_if_not_exist=False)
         item = adapter.read(0)
         assert item.name == 'hello'
         assert item.value == 42
 
     def test_update_writes_to_file(self, tmp_path):
         path = tmp_path / 'data.json'
-        adapter = JsonSingleModelAdapter(Item, path, create_if_not_exist=True)
+        adapter = JsonModelAdapter(Item, path, create_if_not_exist=True)
         adapter.update(Item(name='updated', value=7), '0')
         data = json.loads(path.read_text())
         assert data['name'] == 'updated'
@@ -195,36 +195,36 @@ class TestJsonSingleModelAdapter:
 
     def test_update_returns_same_object(self, tmp_path):
         path = tmp_path / 'data.json'
-        adapter = JsonSingleModelAdapter(Item, path, create_if_not_exist=True)
+        adapter = JsonModelAdapter(Item, path, create_if_not_exist=True)
         item = Item(name='x', value=3)
         result = adapter.update(item, '0')
         assert result is item  # same object — preserves references held by nested widgets
 
     def test_path_is_directory_raises(self, tmp_path):
         with pytest.raises(ValueError):
-            JsonSingleModelAdapter(Item, tmp_path, create_if_not_exist=False)
+            JsonModelAdapter(Item, tmp_path, create_if_not_exist=False)
 
     def test_invalid_item_type_raises(self, tmp_path):
         path = tmp_path / 'data.json'
         with pytest.raises(TypeError):
-            JsonSingleModelAdapter(str, path)  # type: ignore
+            JsonModelAdapter(str, path)  # type: ignore
 
     def test_read_missing_file_raises(self, tmp_path):
         path = tmp_path / 'data.json'
-        adapter = JsonSingleModelAdapter(Item, path, create_if_not_exist=False)
+        adapter = JsonModelAdapter(Item, path, create_if_not_exist=False)
         with pytest.raises(FileNotFoundError):
             adapter.read('0')
 
     def test_read_invalid_json_raises(self, tmp_path):
         path = tmp_path / 'data.json'
         path.write_text('not valid json', encoding='utf-8')
-        adapter = JsonSingleModelAdapter(Item, path, create_if_not_exist=False)
+        adapter = JsonModelAdapter(Item, path, create_if_not_exist=False)
         with pytest.raises(Exception):
             adapter.read('0')
 
     def test_update_is_atomic(self, tmp_path):
         path = tmp_path / 'data.json'
-        adapter = JsonSingleModelAdapter(Item, path, create_if_not_exist=True)
+        adapter = JsonModelAdapter(Item, path, create_if_not_exist=True)
         adapter.update(Item(name='v2', value=2), '0')
         # temp file must not linger
         assert not path.with_suffix('.tmp').exists()
@@ -233,7 +233,7 @@ class TestJsonSingleModelAdapter:
     def test_create_if_not_exist_false_with_existing_file(self, tmp_path):
         path = tmp_path / 'data.json'
         path.write_text('{"name": "existing", "value": 7}', encoding='utf-8')
-        adapter = JsonSingleModelAdapter(Item, path, create_if_not_exist=False)
+        adapter = JsonModelAdapter(Item, path, create_if_not_exist=False)
         item = adapter.read('0')
 
         assert item.name == 'existing'
@@ -376,6 +376,37 @@ class TestJsonListModelAdapterReload:
 
 # ---------------------------------------------------------------------------
 # ModelGrid.from_json / ModelGridInlineEdit.from_json
+# ---------------------------------------------------------------------------
+# ModelGrid.from_list / ModelGridInlineEdit.from_list
+# ---------------------------------------------------------------------------
+
+class TestModelGridFromList:
+    def test_from_list_creates_grid(self):
+        items = [Item(name='a'), Item(name='b')]
+        grid = ModelGrid.from_list(Item, items)
+        assert isinstance(grid, ModelGrid)
+
+    def test_from_list_adapter_is_list_adapter(self):
+        items = [Item(name='a')]
+        grid = ModelGrid.from_list(Item, items)
+        assert isinstance(grid._data, ListModelAdapter)
+
+    def test_from_list_empty_list_allowed(self):
+        grid = ModelGrid.from_list(Item, [])
+        assert list(grid._data) == []
+
+    def test_from_list_items_accessible(self):
+        items = [Item(name='x', value=7)]
+        grid = ModelGrid.from_list(Item, items)
+        assert list(grid._data)[0].name == 'x'
+
+    def test_inline_edit_from_list_creates_correct_type(self):
+        items = [Item(name='a')]
+        grid = ModelGridInlineEdit.from_list(Item, items)
+        assert isinstance(grid, ModelGridInlineEdit)
+        assert isinstance(grid._data, ListModelAdapter)
+
+
 # ---------------------------------------------------------------------------
 
 class TestModelGridFromJson:

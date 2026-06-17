@@ -14,17 +14,11 @@ log = logging.getLogger('niceview')
 T = TypeVar('T', bound=pydantic.BaseModel)
 class ModelDataAdapter(Generic[T], Protocol):
     """
-    This protocol defines the methods that must be implemented by any data adapter.
+    Protocol for NiceView data adapters.
 
-    DataAdapters are responsible for managing the data access layer and providing 
-    a consistent collection API for the ModelGrid.
-
-    DataAdapters could also manage single instances instead of collections
-    (e.g. for editing a single item in a ModelForm). Then only the read and update
-    methods need to be implemented, keys can be ignored.
-
-    A data adapter could be a pure adapter for a list, or something
-    more complex like an adapter for SQLModel similar to a JPA Repository.
+    Adapters decouple ModelForm and ModelGrid from the storage backend.
+    List-backed grids use the full CRUD interface; single-item forms only
+    need read() and update() — the remaining methods may raise NotImplementedError.
     """
 
     def __iter__(self) -> Iterator[T]:
@@ -261,7 +255,7 @@ class ListModelAdapter(ModelDataAdapter[T]):
         del self._items[self._find_index(key)]
 
 
-class JsonSingleModelAdapter(ModelDataAdapter[T]):
+class JsonModelAdapter(ModelDataAdapter[T]):
     """
     A data adapter for a JSON file containing a single Pydantic model instance.
     Writes are atomic (write to .tmp, then rename).

@@ -13,7 +13,7 @@ from nicegui import ui
 from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, handle_event
 from nicegui.dataclasses import KWONLY_SLOTS
 
-from niceview.dataadapter import JsonSingleModelAdapter, ModelDataAdapter, SqlModelAdapter
+from niceview.dataadapter import JsonModelAdapter, ModelDataAdapter, SqlModelAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 
@@ -161,15 +161,26 @@ class ModelForm():
         return ret
     
     @classmethod
-    def from_json(cls, item_type: type[BaseModel], json_path: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
+    def from_adapter(cls, item_type: type[BaseModel], adapter: ModelDataAdapter, key: str | int, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
-        Create ModelForm bound to a JsonSingleModelAdapter for a JSON file.
+        Create a ModelForm bound to any ModelDataAdapter.
         """
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
-        adapter = JsonSingleModelAdapter(item_type, json_path, create_if_not_exist=create_if_not_exist)
         instance = cls(item_type, **kwargs)
-        instance.set_item_from_model(adapter, 0)
+        instance.load(adapter, key)
+        return instance
+
+    @classmethod
+    def from_json(cls, item_type: type[BaseModel], json_path: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
+        """
+        Create a ModelForm bound to a JSON file via JsonModelAdapter.
+        """
+        if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
+            raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
+        adapter = JsonModelAdapter(item_type, json_path, create_if_not_exist=create_if_not_exist)
+        instance = cls(item_type, **kwargs)
+        instance.load(adapter, 0)
         return instance
 
     @property
@@ -179,7 +190,7 @@ class ModelForm():
         This is the item that is currently being edited.
         """
         if not self._validated_item:
-            raise ValueError("No current item set. Use set_item() to set the current item.")
+            raise ValueError("No item set. Use from_item(), from_json(), from_adapter(), or load() first.")
         return self._validated_item
 
     @item.setter
@@ -196,14 +207,14 @@ class ModelForm():
         self._push_item_to_widgets()
 
 
-    def set_item_from_model(self, item_model: ModelDataAdapter, item_key: str | int) -> Self:
+    def load(self, adapter: ModelDataAdapter, key: str | int) -> Self:
         """
-        Set the form's (validated) item for editing.
-        Editing the form will modify this item directly.
+        Load an item from a data adapter and make it the active item in the form.
+        Use this for master-detail navigation (switching the displayed item at runtime).
         """
-        self._item_model = item_model
-        self._item_key = item_key
-        item = self._item_model.read(item_key)
+        self._item_model = adapter
+        self._item_key = key
+        item = self._item_model.read(key)
         if not isinstance(item, BaseModel):
             raise TypeError(f"item must be a BaseModel instance, got {type(item)}")
         self.item = item
@@ -232,8 +243,8 @@ class ModelForm():
         the new values into all rendered widgets.
         """
         if self._item_model is None or self._item_key is None:
-            raise ValueError("No item model or item key set. Use set_item_from_model() to set them.")
-        self.set_item_from_model(self._item_model, self._item_key)
+            raise ValueError("No adapter set. Use from_adapter(), from_json(), or load() first.")
+        self.load(self._item_model, self._item_key)
         ui.notify('Form refreshed', color='positive')
 
     def _save(self) -> None:
@@ -241,7 +252,7 @@ class ModelForm():
         Save the current item to the model.
         """
         if self._item_model is None or self._item_key is None:
-            raise ValueError("No item model or item key set. Use set_item_from_model() to set them.")
+            raise ValueError("No adapter set. Use from_adapter(), from_json(), or load() first.")
 
         if self.has_validation_errors():
             ui.notify('Cannot save form: validation errors present', color='negative')

@@ -123,6 +123,47 @@ class TestFromItem:
 
 
 # ---------------------------------------------------------------------------
+# from_adapter
+# ---------------------------------------------------------------------------
+
+class TestFromAdapter:
+    def test_from_adapter_sets_item(self):
+        items = [User(name='Alice', age=30)]
+        adapter = ListModelAdapter(User, items)
+        key = adapter.key_from_item(items[0])
+        form = ModelForm.from_adapter(User, adapter, key)
+        assert form.item.name == 'Alice'
+
+    def test_from_adapter_sets_adapter(self):
+        items = [User()]
+        adapter = ListModelAdapter(User, items)
+        key = adapter.key_from_item(items[0])
+        form = ModelForm.from_adapter(User, adapter, key)
+        assert form._item_model is adapter
+
+    def test_from_adapter_non_model_type_raises(self):
+        items = [User()]
+        adapter = ListModelAdapter(User, items)
+        key = adapter.key_from_item(items[0])
+        with pytest.raises(TypeError):
+            ModelForm.from_adapter(str, adapter, key)  # type: ignore
+
+    def test_from_adapter_kwargs_passed_through(self):
+        items = [User()]
+        adapter = ListModelAdapter(User, items)
+        key = adapter.key_from_item(items[0])
+        form = ModelForm.from_adapter(User, adapter, key, title='Test')
+        assert form.title == 'Test'
+
+    def test_from_adapter_returns_self(self):
+        items = [User()]
+        adapter = ListModelAdapter(User, items)
+        key = adapter.key_from_item(items[0])
+        form = ModelForm.from_adapter(User, adapter, key)
+        assert isinstance(form, ModelForm)
+
+
+# ---------------------------------------------------------------------------
 # from_json
 # ---------------------------------------------------------------------------
 
@@ -209,24 +250,24 @@ class TestFromJson:
 
 
 # ---------------------------------------------------------------------------
-# set_item_from_model
+# load
 # ---------------------------------------------------------------------------
 
-class TestSetItemFromModel:
-    def test_set_item_from_list_adapter(self):
+class TestLoad:
+    def test_load_from_list_adapter(self):
         items = [User(name='Bob', age=25)]
         adapter = ListModelAdapter(User, items)
         key = adapter.key_from_item(items[0])
         form = ModelForm(User)
-        form.set_item_from_model(adapter, key)
+        form.load(adapter, key)
         assert form.item.name == 'Bob'
 
-    def test_set_item_returns_self(self):
+    def test_load_returns_self(self):
         items = [User()]
         adapter = ListModelAdapter(User, items)
         key = adapter.key_from_item(items[0])
         form = ModelForm(User)
-        result = form.set_item_from_model(adapter, key)
+        result = form.load(adapter, key)
         assert result is form
 
 
@@ -241,7 +282,7 @@ class TestRefresh:
         adapter = ListModelAdapter(User, items)
         key = adapter.key_from_item(items[0])
         form = ModelForm(User)
-        form.set_item_from_model(adapter, key)
+        form.load(adapter, key)
         # Modify the item in-place (simulates an external update visible through the adapter)
         items[0].name = 'Alice'
         items[0].age = 30

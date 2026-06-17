@@ -128,17 +128,12 @@ class ModelGrid:
         self.cell_renderers = copy(kwargs.pop('cell_renderers', {}))
 
     @classmethod
-    def from_list(cls, items: list[T], **kwargs: Unpack[_ModelGridOptionInputs]) -> 'ModelGrid':
+    def from_list(cls, item_type: type[T], items: list[T], **kwargs: Unpack[_ModelGridOptionInputs]) -> 'ModelGrid':
         """
-        Create a ModelGrid instance from a list of Pydantic BaseModels.
-        **Beware:** This can only work with a list of items containing at least one element.
+        Create a ModelGrid instance from an in-memory list.
         """
-        if len(items) == 0:
-            raise ValueError("items list is empty")
-        item_type = type(items[0])
         data = ListModelAdapter(item_type, items)
-        ret = cls(item_type, data, **kwargs)
-        return ret
+        return cls(item_type, data, **kwargs)
 
     @classmethod
     def from_json(cls, item_type: type[T], path_name: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelGridOptionInputs]) -> 'ModelGrid':
