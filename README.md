@@ -157,6 +157,14 @@ or let the `from_*` factory methods create them transparently.
 All JSON adapters write atomically (`.tmp` → rename).
 `JsonListModelAdapter` exposes `reload()` to re-read from disk after external changes.
 
+**Adapter protocols** — implement these for custom backends:
+
+| Protocol | Methods | Used by |
+|---|---|---|
+| `SingleItemAdapter[T]` | `read()`, `update()` | `ModelForm` |
+| `ReloadableAdapter` | `reload()` | `EditGridWrapper` (Refresh button) |
+| `ModelDataAdapter[T]` | extends `SingleItemAdapter` + `__iter__`, `create`, `delete`, `key_from_item`, `key_from_str`, `query_all_strs` | `ModelGrid`, `EditGridWrapper` |
+
 ```python
 from niceview.dataadapter import SqlModelAdapter
 
@@ -246,7 +254,8 @@ git subtree pull --prefix=niceview niceview niceview-split --squash
 
 Run tests:
 ```bash
-pytest
+pytest          # 234 tests
+mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 
 
@@ -255,7 +264,6 @@ Open Questions / TODO
 
 - **Form navigation / dirty state**: No detection when the user leaves an unsaved form. Options: (a) track dirty state via `on_change` and expose `is_dirty` property; (b) use a JS `beforeunload` guard (requires NiceGUI `ui.run_javascript`). Neither covers in-app navigation — NiceGUI has no built-in route guard.
 - **NiceGUI element lifecycle**: When are elements instantiated, active, deleted? `render()` must be called inside a NiceGUI page context; elements created outside a client context silently fail. No lifecycle hooks for cleanup.
-- **Tests for EditGridWrapper / EditFormWrapper**: Async dialog flows (`await dialog`) require a running NiceGUI server. Options: (a) `nicegui.testing` pytest plugin (starts a real server, provides a browser-like `User` fixture); (b) extract non-UI logic into pure functions and test those separately.
-- **`type:ignore` in `ModelGridInlineEdit`**: `TableItemFieldEventArguments.model_table` is typed as `ModelGrid`; passing `self` (a `ModelGridInlineEdit`) triggers a mypy false positive. Root cause: `@dataclass(**KWONLY_SLOTS)` may block covariance inference. Options: (a) type `model_table` as `ModelGrid | ModelGridInlineEdit`; (b) use a structural Protocol type; (c) suppress with `# type: ignore[arg-type]` as now.
+- **Tests for async dialog flows**: `create_item` / `update_item` / `delete_item` open a NiceGUI dialog (`await dialog`) and cannot be tested without a running server. The CRUD data operations are covered via extracted `_apply_create`, `_apply_update`, `_apply_delete` methods that are tested without NiceGUI. Dialog flow testing would require `nicegui.testing` (Playwright-based).
 - **Support binding in tables**: Two-way sync between grid rows and the in-memory model (no manual `update_rows()` needed).
 - **Support dataclasses**: In addition to Pydantic models.
