@@ -297,5 +297,20 @@ class EditFormWrapper():
 
     def render(self) -> Self:
         self._form.render()
+        has_adapter = self._form._item_model is not None
+        has_button = any(b is not None for b in [
+            self.refresh_button, self.cancel_button, self.apply_button, self.ok_button,
+        ])
+        if has_button and has_adapter:
+            with ui.row().classes('w-full justify-end'):
+                with ui.button_group():
+                    if self.refresh_button is not None:
+                        ui.button(self.refresh_button, icon='refresh').tooltip('Reload from source').props('dense flat').on_click(lambda _: self._form._refresh())
+                    if self.cancel_button is not None:
+                        ui.button(self.cancel_button, icon='cancel').tooltip('Discard edits').props('dense flat').on_click(lambda _: self._form._refresh())
+                    if self.apply_button is not None:
+                        ui.button(self.apply_button, icon='save').tooltip('Apply changes').props('dense flat').on_click(lambda _: self._form._save())
+                    if self.ok_button is not None:
+                        ui.button(self.ok_button, icon='check').tooltip('Save').props('dense flat').on_click(lambda _: self._form._save())
         return self
 

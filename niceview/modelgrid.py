@@ -194,7 +194,7 @@ class ModelGrid:
                     row[field_name] = value
             self._rows.append(row)
         if self.widget:
-            self.widget.run_grid_method('setGridOption', 'rowData', self._rows)
+            self.widget.update()
         return self
 
 
