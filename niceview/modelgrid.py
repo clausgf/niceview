@@ -221,7 +221,8 @@ class ModelGrid:
 
         self.widget = ui.aggrid(config_dict, **kwargs)
         self.widget.classes(self.classes)
-        self.widget.tailwind(self.tailwind)  # type: ignore[attr-defined]
+        if self.tailwind:
+            self.widget.classes(self.tailwind)
         self.widget.style(self.style)
         self.widget.props(self.props)
         self.widget.on('selectionChanged', self._handle_selection_changed)

@@ -472,7 +472,8 @@ class ModelForm():
                 widget.tooltip(field_info.tooltip)
 
             widget.classes(self.classes)
-            widget.tailwind(self.tailwind)  # type: ignore[attr-defined]
+            if self.tailwind:
+                widget.classes(self.tailwind)
             widget.style(self.style)
             widget.props(self.props)
 
