@@ -51,8 +51,8 @@ def page():
             ui.separator()
             ui.label('Direct object mutation (bypasses form):').classes('text-caption')
             with ui.row():
-                ui.button('num++', on_click=lambda: setattr(user, 'num', user.num + 1))
-                ui.button('num--', on_click=lambda: setattr(user, 'num', user.num - 1))
+                ui.button('Counter++', on_click=lambda: setattr(user, 'num', user.num + 1))
+                ui.button('Counter--', on_click=lambda: setattr(user, 'num', user.num - 1))
 
 
 ui.run(title='03 — Form Binding')

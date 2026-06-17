@@ -14,6 +14,7 @@ One form showing all field types supported by NiceView:
 | `datetime.timedelta` | `ui.input` (ISO 8601 duration) |
 | `Literal[...]` | `ui.select` |
 | `list[str]` | `ui.input_chips` |
+| `list[int]`, `list[float]`, `list[bool]` | `ui.input` |
 | `list[BaseModel]` | Inline `EditGridWrapper` |
 """
 # Allows running without prior install. With uv: `uv run python examples/<file>.py`.
@@ -42,7 +43,7 @@ class AllTypes(pydantic.BaseModel):
     number_int: int = pydantic.Field(default=42, ge=0, le=1000, title='Integer')
     number_float: float = pydantic.Field(default=3.14, title='Float')
     flag_switch: bool = pydantic.Field(default=True, title='Bool (switch)')
-    flag_checkbox: Annotated[bool, niceview.Field(widget_type='ui.checkbox')] = False
+    flag_checkbox: Annotated[bool, pydantic.Field(title='Bool (checkbox)'), niceview.Field(widget_type='ui.checkbox')] = False
     date: datetime.date = pydantic.Field(default_factory=datetime.date.today, title='Date')
     time: datetime.time = pydantic.Field(default_factory=lambda: datetime.time(9, 0), title='Time')
     dt: datetime.datetime = pydantic.Field(
@@ -65,7 +66,8 @@ class AllTypes(pydantic.BaseModel):
 def page():
     ui.markdown(__doc__ or '')
     ui.separator()
-    ModelForm.from_item(AllTypes(), classes='w-full').render()
+    with ui.card().classes('w-full'):
+        ModelForm.from_item(AllTypes(), classes='w-full').render()
 
 
 ui.run(title='02 — Field Types')

@@ -236,7 +236,7 @@ class ModelGrid:
         if not self.widget:
             return
         row = await self.widget.get_selected_row()
-        e = ValueChangeEventArguments(sender=event.sender, client=event.client, value=row)
+        e = ValueChangeEventArguments(sender=event.sender, client=event.client, value=row, previous_value=None)
         for handler in self._selection_handlers:
             handle_event(handler, e)
 

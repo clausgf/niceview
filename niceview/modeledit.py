@@ -207,6 +207,23 @@ class EditGridWrapper():
         Default edit handler that shows a dialog to edit the item.
         """
         form = ModelForm.from_item(item, classes='w-full')
+
+        def confirm():
+            # Commit values the user typed but hasn't blurred away from yet
+            # (blur fires before click in browsers, but the order of WebSocket
+            # messages is not strictly guaranteed in all scenarios)
+            if form._current_item is not None and form._validated_item is not None:
+                for field_name in form._fields:
+                    fi = form._fields[field_name]
+                    if not fi or fi.widget_type in ('editgrid', None):
+                        continue
+                    if form._validation_error_messages.get(field_name):
+                        continue
+                    cur = getattr(form._current_item, field_name)
+                    if cur != getattr(form._validated_item, field_name):
+                        setattr(form._validated_item, field_name, cur)
+            dialog.submit('confirm')
+
         with ui.dialog().style('width: 400px') as dialog:
             with ui.card().classes('w-full'):
                 form.render()
@@ -214,7 +231,7 @@ class EditGridWrapper():
                     with ui.row():
                         ui.space()
                         ui.button('Cancel', on_click=lambda: dialog.submit('cancel'))
-                        ui.button('Create' if do_create else 'Ok', on_click=lambda: dialog.submit('confirm'))
+                        ui.button('Create' if do_create else 'Ok', on_click=confirm)
 
         success = ('confirm' == await dialog)
         dialog.clear()
@@ -271,7 +288,8 @@ class EditFormWrapper():
         """
         vce = ValueChangeEventArguments(
             sender=event.sender, client=event.client,
-            value=item
+            value=item,
+            previous_value=None,
         )
         for handler in self._change_handlers:
             handle_event(handler, vce)
