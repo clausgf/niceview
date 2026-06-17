@@ -1,12 +1,21 @@
 import datetime
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pydantic
 import pytest
+from nicegui import ui
 
 from niceview.dataadapter import ListModelAdapter
 from niceview.modelform import ModelForm
+
+
+@pytest.fixture(autouse=True)
+def mock_ui_notify(monkeypatch):
+    """Suppress ui.notify() calls in unit tests that invoke _save()/_refresh()
+    directly outside a NiceGUI client context."""
+    monkeypatch.setattr(ui, 'notify', MagicMock())
 
 
 class Tag(pydantic.BaseModel):
