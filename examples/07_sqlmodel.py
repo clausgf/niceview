@@ -1,0 +1,127 @@
+"""
+# SqlModelAdapter
+
+Advanced example: `SqlModelAdapter` connects `ModelForm` and `ModelGrid`
+to a SQLite database via SQLModel / SQLAlchemy.
+
+Features shown:
+- Optimistic locking via `updated_at` field (built into `SqlModelAdapter`)
+- `EditGridWrapper` over a full SQL table
+- `ModelForm.from_adapter()` for editing a single record
+- `EditFormWrapper` with Save / Cancel / Refresh
+- SQLModel relationship rendered as `ui.select`
+
+The database is re-created on every run.
+
+Pages: `/` → Authors grid, `/authors/{id}` → edit author,
+`/books` → Books grid, `/books/{id}` → edit book
+"""
+import sys
+import os
+import datetime
+import logging
+from pathlib import Path
+from typing import Annotated
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import sqlmodel
+from nicegui import ui
+
+import niceview
+from niceview.dataadapter import SqlModelAdapter
+from niceview.modelform import ModelForm
+from niceview.modelgrid import ModelGrid
+from niceview.modeledit import EditFormWrapper, EditGridWrapper
+
+log = logging.getLogger('niceview-example')
+
+
+def _now():
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+class Author(sqlmodel.SQLModel, table=True):
+    id: Annotated[int | None, sqlmodel.Field(default=None, primary_key=True), niceview.Field(hidden=True)]
+    name: str = sqlmodel.Field(max_length=40, title='Name')
+    email: str = sqlmodel.Field(max_length=100, title='Email')
+    books: list['Book'] = sqlmodel.Relationship(back_populates='author')
+    updated_at: Annotated[datetime.datetime, sqlmodel.Field(default_factory=_now), niceview.Field(hidden=True)]
+
+    def __str__(self):
+        return self.name
+
+
+class Book(sqlmodel.SQLModel, table=True):
+    id: Annotated[int | None, sqlmodel.Field(default=None, primary_key=True), niceview.Field(hidden=True)]
+    title: str = sqlmodel.Field(max_length=100, title='Title')
+    published: datetime.date = sqlmodel.Field(default_factory=datetime.date.today, title='Published')
+    author_id: Annotated[int, sqlmodel.Field(foreign_key='author.id'), niceview.Field(hidden=True)]
+    author: Author = sqlmodel.Relationship(back_populates='books')
+    updated_at: Annotated[datetime.datetime, sqlmodel.Field(default_factory=_now), niceview.Field(hidden=True)]
+
+    class Meta:
+        field_info = {
+            'author': niceview.Field(label='Author', tooltip='Select the author of this book'),
+        }
+
+    def __str__(self):
+        return self.title
+
+
+@ui.page('/')
+def authors_page():
+    ui.markdown(__doc__ or '')
+    ui.separator()
+    ui.label('Authors').classes('text-h5')
+    authors = SqlModelAdapter(Author, engine)
+    EditGridWrapper(ModelGrid(Author, authors), title='Authors', refresh_button='').render()
+    ui.button('→ Books', on_click=lambda: ui.navigate.to('/books')).props('flat')
+
+
+@ui.page('/authors/{author_id}')
+def author_edit_page(author_id: int):
+    authors = SqlModelAdapter(Author, engine)
+    with ui.card().classes('w-full max-w-lg'):
+        form = ModelForm.from_adapter(Author, authors, author_id, title='Edit Author', classes='w-full')
+        EditFormWrapper(form).render()
+    ui.button('← Back', on_click=lambda: ui.navigate.to('/')).props('flat')
+
+
+@ui.page('/books')
+def books_page():
+    books = SqlModelAdapter(Book, engine)
+    ui.label('Books').classes('text-h5')
+    EditGridWrapper(ModelGrid(Book, books), title='Books', refresh_button='').render()
+    ui.button('← Authors', on_click=lambda: ui.navigate.to('/')).props('flat')
+
+
+@ui.page('/books/{book_id}')
+def book_edit_page(book_id: int):
+    books = SqlModelAdapter(Book, engine)
+    authors = SqlModelAdapter(Author, engine)
+    with ui.card().classes('w-full max-w-lg'):
+        form = ModelForm.from_adapter(Book, books, book_id, title='Edit Book', classes='w-full')
+        form.set_model_repositories({Author.__name__: authors})
+        EditFormWrapper(form).render()
+    ui.button('← Back', on_click=lambda: ui.navigate.to('/books')).props('flat')
+
+
+logging.basicConfig(level=logging.INFO)
+
+DB_PATH = 'example_sqlmodel.db'
+if os.path.exists(DB_PATH):
+    os.remove(DB_PATH)
+
+engine = sqlmodel.create_engine(f'sqlite:///{DB_PATH}')
+sqlmodel.SQLModel.metadata.create_all(engine)
+
+with sqlmodel.Session(engine) as session:
+    author = Author(name='Jane Doe', email='jane@example.com')
+    session.add(author)
+    session.commit()
+    session.refresh(author)
+    session.add(Book(title="Jane's First Book", author=author))  # type: ignore
+    session.add(Book(title="Jane's Second Book", author=author, published=datetime.date(2023, 6, 1)))  # type: ignore
+    session.commit()
+
+ui.run(title='07 — SQLModel')
