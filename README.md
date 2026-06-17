@@ -264,11 +264,14 @@ to verify render output and widget↔model interaction. AgGrid cell content is J
 not inspectable via the `User` fixture; row data is covered by unit tests instead.
 
 
-Open Questions / TODO
----------------------
-
+Accepted Technical Debt
+-----------------------
 - **Form navigation / dirty state**: No detection when the user leaves an unsaved form. Options: (a) track dirty state via `on_change` and expose `is_dirty` property; (b) use a JS `beforeunload` guard (requires NiceGUI `ui.run_javascript`). Neither covers in-app navigation — NiceGUI has no built-in route guard.
 - **NiceGUI element lifecycle**: When are elements instantiated, active, deleted? `render()` must be called inside a NiceGUI page context; elements created outside a client context silently fail. No lifecycle hooks for cleanup.
 - **Tests for async dialog flows**: `create_item` / `update_item` / `delete_item` open a NiceGUI dialog (`await dialog`) and cannot be tested without a browser. The CRUD data operations are covered via `_apply_create`, `_apply_update`, `_apply_delete` (unit tests) and the render/button presence via acceptance tests. Full dialog flow testing would require the `Screen` fixture (Playwright-based).
+
+
+Open Questions / TODO
+---------------------
 - **Support binding in tables**: Two-way sync between grid rows and the in-memory model (no manual `update_rows()` needed).
 - **Support dataclasses**: In addition to Pydantic models.
