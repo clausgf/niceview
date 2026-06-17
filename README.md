@@ -28,39 +28,69 @@ ui.run()
 ```
 
 
+API Design
+----------
+
+NiceView follows a consistent factory pattern across all backends and UI components:
+
+| | **ModelForm** (single item) | **ModelGrid / ModelGridInlineEdit** (list) |
+|---|---|---|
+| **In-memory** | `ModelForm.from_item(instance)` | `ModelGrid.from_list(Type, items)` |
+| **JSON file** | `ModelForm.from_json(Type, path)` | `ModelGrid.from_json(Type, path)` |
+| **Any adapter** | `ModelForm.from_adapter(Type, adapter, key)` | `ModelGrid(Type, adapter)` |
+
+All `from_*` methods accept the same keyword options (see below).
+`ModelGridInlineEdit` uses the same factory methods as `ModelGrid` via inheritance.
+
+**Data adapters** are the abstraction layer between UI components and storage backends.
+The `from_*` convenience methods create and hide the adapter; pass an adapter explicitly
+for full control or when using SQL / custom backends.
+
+
 ModelForm
 ---------
 
 `ModelForm` renders a Pydantic model as an editable form.
 
 ```python
-# From a model instance (edits the instance in-place)
-form = ModelForm.from_item(item, title='Edit User', classes='w-full')
+from niceview.modelform import ModelForm
+from pathlib import Path
 
-# From a JSON file (creates file with defaults if missing; autosave on each validated change)
+# In-memory: edits the instance in-place, no persistence
+form = ModelForm.from_item(user)
+
+# JSON file: reads/writes a single object; created with defaults if missing
 form = ModelForm.from_json(User, Path('user.json'), autosave=True)
-# With explicit save button instead of autosave
-form = ModelForm.from_json(User, Path('user.json'), save_button='Save', refresh_button='')
-# Fail if file does not exist (no auto-creation)
+form = ModelForm.from_json(User, Path('user.json'), save_button='', refresh_button='')
 form = ModelForm.from_json(User, Path('user.json'), create_if_not_exist=False)
 
-# From a data adapter (supports refresh and save buttons)
-form = ModelForm(User, title='Edit User', save_button='', refresh_button='')
-form.set_item_from_model(adapter, key)
-form.render()
+# Any adapter (e.g. SQL): full control over backend
+adapter = SqlModelAdapter(User, engine)
+form = ModelForm.from_adapter(User, adapter, key, save_button='', refresh_button='')
 
-# Options
-ModelForm(User,
+form.render()
+```
+
+**Master-detail navigation** — switch the displayed item at runtime:
+```python
+form.load(adapter, new_key)
+```
+
+**Options** (apply to all factory methods):
+```python
+ModelForm.from_item(user,
     include=['name', 'age'],    # or exclude=['active']
-    autosave=True,              # save on every change
+    autosave=True,              # save after every validated change
     save_button='Save',         # show save button ('' = icon only)
-    refresh_button='',          # show refresh button
-    local_tz='Europe/Berlin',   # timezone for datetime fields (None = system local)
-    on_change=my_callback,      # called on every validated change
+    refresh_button='',          # show refresh button ('' = icon only)
+    local_tz='Europe/Berlin',   # timezone for datetime display
+    on_change=my_callback,      # called after every validated change
+    title='Edit User',
+    classes='w-full',
 )
 ```
 
-**Change events** are emitted after successful validation via `on_change`:
+**Change events** carry field name and old/new value:
 ```python
 form.on_change(lambda e: print(e.field_name, e.old_value, e.new_value))
 ```
@@ -69,41 +99,43 @@ form.on_change(lambda e: print(e.field_name, e.old_value, e.new_value))
 ModelGrid / ModelGridInlineEdit
 --------------------------------
 
-`ModelGrid` renders a Pydantic model list as an AgGrid table.
+`ModelGrid` renders a list as a read-only AgGrid table.
+`ModelGridInlineEdit` adds per-cell editing with immediate validation and persistence.
 
 ```python
 from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
-from niceview.dataadapter import ListModelAdapter
 
-adapter = ListModelAdapter(User, user_list)
+# In-memory list
+grid = ModelGrid.from_list(User, user_list, fields=['name', 'age'])
+grid = ModelGridInlineEdit.from_list(User, user_list)
 
-# Read-only grid
-grid = ModelGrid(User, adapter, fields=['name', 'age'])
-grid.render()
+# JSON file: created with [] if missing; Refresh button reloads from disk
+grid = ModelGrid.from_json(User, Path('users.json'))
+grid = ModelGridInlineEdit.from_json(User, Path('users.json'))
 
-# Inline-editable grid
+# Any adapter
+grid = ModelGrid(User, adapter)
 grid = ModelGridInlineEdit(User, adapter)
+
 grid.render()
-grid.on_change(lambda e: print(e.row_key, e.item))
+grid.on_change(lambda e: print(e.row_key, e.field_name, e.new_value))
 ```
 
 
 EditGridWrapper / EditFormWrapper
 ----------------------------------
 
-Wrappers that add Add/Delete/Edit functionality on top of a grid:
+Wrappers that add Add / Edit / Delete buttons on top of a grid or form:
 
 ```python
 from niceview.modeledit import EditGridWrapper, EditFormWrapper
 
-# Grid with Add/Delete buttons and a popup form for editing
-wrapper = EditGridWrapper(ModelGrid(User, adapter), title='Users')
-wrapper.render()
+# Full CRUD: popup dialog for Add/Edit, Delete button, optional Refresh
+EditGridWrapper(ModelGrid.from_list(User, user_list), title='Users').render()
+EditGridWrapper(ModelGridInlineEdit.from_json(User, Path('users.json')), title='Users').render()
 
-# Form with Save/Refresh/Delete buttons backed by a data adapter
-form = ModelForm(User)
-form.set_item_from_model(adapter, key)
-edit = EditFormWrapper(form)
+# Form wrapper with Save/Cancel/Refresh
+edit = EditFormWrapper(ModelForm.from_adapter(User, adapter, key))
 edit.render()
 ```
 
@@ -111,26 +143,18 @@ edit.render()
 Data Adapters
 -------------
 
-| Adapter | Description |
-|---|---|
-| `ListModelAdapter(Type, list)` | In-memory list |
-| `JsonSingleModelAdapter(Type, path)` | Single item in a JSON file |
-| `JsonListModelAdapter(Type, path)` | List of items in a JSON file |
-| `SqlModelAdapter(Type, engine)` | SQLModel / SQLAlchemy database table |
+Adapters decouple UI components from storage. Pass them explicitly for full control,
+or let the `from_*` factory methods create them transparently.
 
-```python
-# Read-only grid backed by a JSON file (created with [] if missing)
-ModelGrid.from_json(User, Path('users.json')).render()
+| Adapter | Backs | Description |
+|---|---|---|
+| `ListModelAdapter(Type, list)` | Grid, Form | In-memory list |
+| `JsonModelAdapter(Type, path)` | Form | Single object in a JSON file |
+| `JsonListModelAdapter(Type, path)` | Grid | List of objects in a JSON file |
+| `SqlModelAdapter(Type, engine)` | Grid, Form | SQLModel / SQLAlchemy table |
 
-# Inline-editable grid — every cell edit is persisted immediately
-ModelGridInlineEdit.from_json(User, Path('users.json')).render()
-
-# Full CRUD via EditGridWrapper; the Refresh button also reloads from disk
-EditGridWrapper(
-    ModelGridInlineEdit.from_json(User, Path('users.json')),
-    title='Users',
-).render()
-```
+All JSON adapters write atomically (`.tmp` → rename).
+`JsonListModelAdapter` exposes `reload()` to re-read from disk after external changes.
 
 
 Supported Field Types
@@ -154,7 +178,7 @@ Supported Field Types
 Field Customization
 -------------------
 
-Use `niceview.Field()` as a Pydantic `Annotated` metadata to customize a field:
+Use `niceview.Field()` as `Annotated` metadata to customize a field:
 
 ```python
 import niceview
@@ -217,3 +241,4 @@ Open Questions / TODO
 - NiceGUI element lifecycle: when are elements instantiated, active, deleted?
 - Support binding in tables (two-way sync between grid rows and model)?
 - Support dataclasses in addition to Pydantic models?
+- SQLModel support: completeness, tests, inline docs
