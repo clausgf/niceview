@@ -27,14 +27,15 @@ def _collect_aggrid_cols(fields: Fields) -> list[dict[str, Any]]:
         col = {
             'headerName': info.table_label or info.label,
             'field': name,
-            # TODO table_align
             'sortable': info.table_sortable,
-            #'type': field_info.aggrid_type or 'text',  # TODO default to 'text' if not specified
-            # 'filter': 'agTextColumnFilter' or 'agNumberColumnFilter' or 'agDateColumnFilter' based on field type
-            # 'floatingFilter': True
         }
-        if info.table_cell_style:
-            col['cellStyle'] = info.table_cell_style
+        if info.aggrid_type:
+            col['type'] = info.aggrid_type
+        cell_style = info.table_cell_style or ''
+        if info.table_align:
+            cell_style = f'text-align: {info.table_align};' + (f' {cell_style}' if cell_style else '')
+        if cell_style:
+            col['cellStyle'] = cell_style
         if info.table_sort:
             col['sort'] = info.table_sort
         if info.table_filterable:
@@ -207,14 +208,9 @@ class ModelGrid:
         kwargs = { k: v for k in ['theme', 'auto_size_columns']
                    if ( v := getattr(self, k)) }
         config_dict = {
-            'columnDefs': self._cols, 
-            'rowData': self._rows, 
+            'columnDefs': self._cols,
+            'rowData': self._rows,
             'stopEditingWhenCellsLoseFocus': True,
-            # 'domLayout': 'autoHeight',
-            # 'autoSizeStrategy': {
-            #     # type: 'fitGridWidth', // size columns to try an fit into grid without scrolling
-            #     'type': 'fitCellContents', #// size columns to try an fit cell content with horizontal scrolling if nessissary
-            # },
         }
         if self.defaultColDef:
             config_dict['defaultColDef'] = self.defaultColDef
@@ -227,7 +223,6 @@ class ModelGrid:
         self.widget.style(self.style)
         self.widget.props(self.props)
         self.widget.on('selectionChanged', self._handle_selection_changed)
-        #self.widget.on('firstDataRendered', lambda: self.widget.run_grid_method('autoSizeAllColumns'))
 
         return self
 

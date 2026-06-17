@@ -8,6 +8,7 @@ from nicegui import ui
 from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, ClickEventArguments, handle_event
 from nicegui.dataclasses import KWONLY_SLOTS
 
+from niceview.dataadapter import ReloadableAdapter
 from niceview.modelform import ModelForm
 from niceview.modelgrid import ModelGridInlineEdit, ModelDataAdapter, ModelGrid, T, TableItemEventArguments, TableItemFieldEventArguments
 from niceview.util import submit_dialog
@@ -118,7 +119,7 @@ class EditGridWrapper():
 
 
     def refresh(self, event: ClickEventArguments) -> None:
-        if hasattr(self.grid._data, 'reload'):
+        if isinstance(self.grid._data, ReloadableAdapter):
             self.grid._data.reload()
         self.grid.update_rows()
 
@@ -198,7 +199,6 @@ class EditGridWrapper():
         with ui.dialog().style('width: 400px') as dialog:
             with ui.card().classes('w-full'):
                 form.render()
-                #ui.separator()
                 with ui.card_section():
                     with ui.row():
                         ui.space()
@@ -267,22 +267,6 @@ class EditFormWrapper():
 
 
     def render(self) -> Self:
-        """
-        Render the grid with the title and buttons.
-        """
-        # render the title, add and delete buttons
-        #with ui.row().classes('w-full'):
         self._form.render()
-        #    ui.space()
-            # with ui.button_group():
-            #     if self.refresh_button is not None:
-            #         ui.button(self.refresh_button, icon='refresh').tooltip('Reload').props('dense flat').on_click(self.reload)
-            #     if self.cancel_button is not None:
-            #         ui.button(self.cancel_button, icon='cancel').props('color=secondary').props('dense flat').tooltip('Cancel').on_click(self.delete_item)
-            #     if self.apply_button is not None:
-            #         ui.button(self.apply_button, icon='apply').tooltip('Apply (i.e. save) changes').props('dense flat').on_click(self.create_item)
-            #     if self.ok_button is not None:
-            #         ui.button(self.ok_button, icon='ok').tooltip('Edit item').props('dense flat').on_click(self.update_item)
-
         return self
 

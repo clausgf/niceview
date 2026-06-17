@@ -253,8 +253,9 @@ pytest
 Open Questions / TODO
 ---------------------
 
-- How do we detect leaving the form? How do we guarantee a valid model state on navigation?
-- NiceGUI element lifecycle: when are elements instantiated, active, deleted?
-- Support binding in tables (two-way sync between grid rows and model)?
-- Support dataclasses in addition to Pydantic models?
-- SQLModel support: completeness, tests, inline docs
+- **Form navigation / dirty state**: No detection when the user leaves an unsaved form. Options: (a) track dirty state via `on_change` and expose `is_dirty` property; (b) use a JS `beforeunload` guard (requires NiceGUI `ui.run_javascript`). Neither covers in-app navigation — NiceGUI has no built-in route guard.
+- **NiceGUI element lifecycle**: When are elements instantiated, active, deleted? `render()` must be called inside a NiceGUI page context; elements created outside a client context silently fail. No lifecycle hooks for cleanup.
+- **Tests for EditGridWrapper / EditFormWrapper**: Async dialog flows (`await dialog`) require a running NiceGUI server. Options: (a) `nicegui.testing` pytest plugin (starts a real server, provides a browser-like `User` fixture); (b) extract non-UI logic into pure functions and test those separately.
+- **`type:ignore` in `ModelGridInlineEdit`**: `TableItemFieldEventArguments.model_table` is typed as `ModelGrid`; passing `self` (a `ModelGridInlineEdit`) triggers a mypy false positive. Root cause: `@dataclass(**KWONLY_SLOTS)` may block covariance inference. Options: (a) type `model_table` as `ModelGrid | ModelGridInlineEdit`; (b) use a structural Protocol type; (c) suppress with `# type: ignore[arg-type]` as now.
+- **Support binding in tables**: Two-way sync between grid rows and the in-memory model (no manual `update_rows()` needed).
+- **Support dataclasses**: In addition to Pydantic models.

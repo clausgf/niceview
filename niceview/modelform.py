@@ -13,7 +13,7 @@ from nicegui import ui
 from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, handle_event
 from nicegui.dataclasses import KWONLY_SLOTS
 
-from niceview.dataadapter import JsonModelAdapter, ModelDataAdapter, SqlModelAdapter
+from niceview.dataadapter import JsonModelAdapter, ModelDataAdapter, SingleItemAdapter, SqlModelAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 
@@ -64,7 +64,7 @@ class ModelForm():
     or as keyword arguments when creating the form.
     """
     _item_type: type[BaseModel]
-    _item_model: ModelDataAdapter | None
+    _item_model: SingleItemAdapter | None
     _item_key: str | int | None
     _model_repositories: dict[str, ModelDataAdapter]
     _change_handler: Handler[FieldChangeEventArguments]
@@ -174,7 +174,7 @@ class ModelForm():
         return ret
     
     @classmethod
-    def from_adapter(cls, item_type: type[BaseModel], adapter: ModelDataAdapter, key: str | int, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
+    def from_adapter(cls, item_type: type[BaseModel], adapter: SingleItemAdapter, key: str | int, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
         Create a ModelForm bound to any ModelDataAdapter.
         """
@@ -220,7 +220,7 @@ class ModelForm():
         self._push_item_to_widgets()
 
 
-    def load(self, adapter: ModelDataAdapter, key: str | int) -> Self:
+    def load(self, adapter: SingleItemAdapter, key: str | int) -> Self:
         """
         Load an item from a data adapter and make it the active item in the form.
         Use this for master-detail navigation (switching the displayed item at runtime).

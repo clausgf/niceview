@@ -63,11 +63,13 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
     # options when field is used in a table or grid column
     table_label: str  # label for the table column, if not set, the field label is used
     table_hidden: bool
-    table_cell_style: str  # CSS style for the cell, e.g. 'text-align: center;'
+    table_align: Literal['left', 'center', 'right']  # horizontal text alignment in the cell
+    table_cell_style: str  # additional CSS style for the cell (merged with table_align)
     table_sortable: bool
-    table_sort: Literal['asc', 'desc'] # default sorting order
+    table_sort: Literal['asc', 'desc']  # default sorting order
     table_filterable: bool  # whether to show a filter row in the table; if applicable, filter type is inferred from the field type
     table_floating_filter: bool  # whether to show a floating filter row in the table
+    aggrid_type: str  # aggrid column type, e.g. 'numericColumn', 'rightAligned'
 
 
 class FieldInfo():
@@ -135,11 +137,13 @@ class FieldInfo():
     # options when field is used in a table or grid column
     table_label: str = ''
     table_hidden: bool = False
+    table_align: Literal['left', 'center', 'right'] | None = None
     table_cell_style: str = ''
     table_sortable: bool = True
     table_sort: Literal[None, 'asc', 'dsc'] | None = None
     table_filterable: bool = True
     table_floating_filter: bool = False
+    aggrid_type: str | None = None
 
 
     def __init__(self, **kwargs: Unpack[_FieldInfoInputs]):

@@ -12,45 +12,35 @@ log = logging.getLogger('niceview')
 
 
 T = TypeVar('T', bound=pydantic.BaseModel)
-class ModelDataAdapter(Generic[T], Protocol):
+
+
+class SingleItemAdapter(Generic[T], Protocol):
     """
-    Protocol for NiceView data adapters.
-
-    Adapters decouple ModelForm and ModelGrid from the storage backend.
-    List-backed grids use the full CRUD interface; single-item forms only
-    need read() and update() — the remaining methods may raise NotImplementedError.
+    Minimal adapter protocol for single-item backends (ModelForm).
+    Only read() and update() are required.
     """
+    def read(self, key: str | int) -> T: ...
+    def update(self, item: T, key: str) -> T: ...
 
-    def __iter__(self) -> Iterator[T]:
-        raise NotImplementedError
 
-    def key_from_item(self, item: T, index: int = -1) -> str:
-        raise NotImplementedError
+class ReloadableAdapter(Protocol):
+    """Protocol for adapters that support reloading from an external source (e.g. disk)."""
+    def reload(self) -> None: ...
 
-    def key_from_str(self, key: str | int) -> Any:
-        raise NotImplementedError
 
-    def create(self, item: T) -> T:
-        """
-        Add a new item to the data store.
-        """
-        raise NotImplementedError
+class ModelDataAdapter(SingleItemAdapter[T], Protocol):
+    """
+    Full adapter protocol for list-backed components (ModelGrid, EditGridWrapper).
 
-    def read(self, key: str | int) -> T:
-        raise NotImplementedError
-
-    def update(self, item: T, key: str) -> T:
-        raise NotImplementedError
-
-    def delete(self, key: str) -> None:
-        raise NotImplementedError
-
-    def query_all_strs(self) -> Iterator[tuple[str, str]]:
-        """
-        Execute a query to retrieve the key and a string representation (__str__) 
-        of all items.
-        """
-        raise NotImplementedError("query method is not implemented in this adapter")
+    Extends SingleItemAdapter with iteration and full CRUD.
+    SingleItemAdapter (read + update) is sufficient for ModelForm.
+    """
+    def __iter__(self) -> Iterator[T]: ...
+    def key_from_item(self, item: T, index: int = -1) -> str: ...
+    def key_from_str(self, key: str | int) -> Any: ...
+    def create(self, item: T) -> T: ...
+    def delete(self, key: str) -> None: ...
+    def query_all_strs(self) -> Iterator[tuple[str, str]]: ...
 
 
 class SqlModelAdapter(ModelDataAdapter[T]):
@@ -233,10 +223,10 @@ class ListModelAdapter(ModelDataAdapter[T]):
         del self._items[self._find_index(key)]
 
 
-class JsonModelAdapter(ModelDataAdapter[T]):
+class JsonModelAdapter(SingleItemAdapter[T]):
     """
     A data adapter for a JSON file containing a single Pydantic model instance.
-    Writes are atomic (write to .tmp, then rename).
+    Implements SingleItemAdapter (read + update only). Writes are atomic (.tmp → rename).
     """
     DEFAULT_KEY: str = "0"  # single-item adapters use a fixed key; the key itself is ignored by read/update
 
@@ -262,24 +252,6 @@ class JsonModelAdapter(ModelDataAdapter[T]):
         temp_file.write_text(json_data, encoding='utf-8')
         temp_file.rename(self._path_name)
         return item  # return same object to preserve in-memory references (e.g. nested grid adapters)
-
-    def __iter__(self) -> Iterator[T]:
-        raise NotImplementedError
-
-    def key_from_item(self, item: T, index: int = -1) -> str:
-        raise NotImplementedError
-
-    def key_from_str(self, key: str | int) -> Any:
-        raise NotImplementedError
-
-    def create(self, item: T) -> T:
-        raise NotImplementedError
-
-    def delete(self, key: str) -> None:
-        raise NotImplementedError
-
-    def query_all_strs(self) -> Iterator[tuple[str, str]]:
-        raise NotImplementedError
 
 
 class JsonListModelAdapter(ListModelAdapter[T]):
