@@ -103,8 +103,8 @@ def form_json_page_autosave():
 @ui.page('/form_json_buttons')
 def form_json_page_buttons():
     with ui.card().classes('w-full'):
-        title = f'User Form with refresh and save buttons (JSON file {USER_PATH}, save button)'
-        user_form_buttons = ModelForm.from_json(User, USER_PATH, title=title, save_button='', classes='w-full')
+        title = f'User Form with save and refresh buttons (JSON file {USER_PATH})'
+        user_form_buttons = ModelForm.from_json(User, USER_PATH, title=title, save_button='', refresh_button='', classes='w-full')
         user_form_buttons.render()
 
 
