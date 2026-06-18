@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from nicegui import ui
 from nicegui.events import Handler, ClickEventArguments, ValueChangeEventArguments, handle_event
 
-from niceview.dataadapter import ModelDataAdapter, ListModelAdapter, JsonListModelAdapter
+from niceview.dataadapter import CollectionAdapter, ListAdapter, JsonListAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 
@@ -81,7 +81,7 @@ class ModelGrid:
     """
     #_items: Iterable
     _fields: Fields
-    _data: ModelDataAdapter
+    _data: CollectionAdapter
     _selection_handlers: List[Handler[ValueChangeEventArguments]]
     _cols: list[dict[str, str]]
     _rows: list[dict[str, Any]]
@@ -97,7 +97,7 @@ class ModelGrid:
     cell_renderers: dict[str, Callable[[Any], Any]]
 
 
-    def __init__(self, item_type: type[T], data: ModelDataAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> None:
+    def __init__(self, item_type: type[T], data: CollectionAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> None:
         """
         Initialize the ModelGrid with a Pydantic model type and a list of items.
         The items must be instances of the model type.
@@ -130,13 +130,13 @@ class ModelGrid:
         Create an instance from an in-memory list.
         Return type is Self so subclasses (e.g. ModelGridInlineEdit) are returned as their own type.
         """
-        data = ListModelAdapter(item_type, items)
+        data = ListAdapter(item_type, items)
         return cls(item_type, data, **kwargs)  # type: ignore[arg-type]
 
     @classmethod
-    def from_adapter(cls, item_type: type[T], data: ModelDataAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> Self:
+    def from_adapter(cls, item_type: type[T], data: CollectionAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> Self:
         """
-        Create an instance from any ModelDataAdapter.
+        Create an instance from any CollectionAdapter.
         Equivalent to the constructor — provided for API symmetry with ModelForm.from_adapter().
         Return type is Self so subclasses (e.g. ModelGridInlineEdit) are returned as their own type.
         """
@@ -145,12 +145,12 @@ class ModelGrid:
     @classmethod
     def from_json(cls, item_type: type[T], path_name: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelGridOptionInputs]) -> Self:
         """
-        Create an instance backed by a JSON file via JsonListModelAdapter.
+        Create an instance backed by a JSON file via JsonListAdapter.
         The file is created with an empty list if it does not exist.
         Call grid._data.reload() + grid.update_rows() to refresh from disk.
         Return type is Self so subclasses (e.g. ModelGridInlineEdit) are returned as their own type.
         """
-        data = JsonListModelAdapter(item_type, path_name, create_if_not_exist=create_if_not_exist)
+        data = JsonListAdapter(item_type, path_name, create_if_not_exist=create_if_not_exist)
         return cls(item_type, data, **kwargs)  # type: ignore[arg-type]
 
     def on_select(self, callback: Handler[ValueChangeEventArguments]) -> Self:
@@ -264,7 +264,7 @@ class ModelGridInlineEdit(ModelGrid):
 
     cell_readers: dict[str, Callable[[str], Any]]
 
-    def __init__(self, item_type: type[T], data: ModelDataAdapter, **kwargs: Unpack[_InlineEditableModelGridOptionInputs]) -> None:
+    def __init__(self, item_type: type[T], data: CollectionAdapter, **kwargs: Unpack[_InlineEditableModelGridOptionInputs]) -> None:
         self.cell_readers = kwargs.pop('cell_readers', {})
 
         super().__init__(item_type, data, **kwargs)  # type: ignore[arg-type, misc]

@@ -7,7 +7,7 @@ import pydantic
 import pytest
 from nicegui import ui
 
-from niceview.dataadapter import ListModelAdapter
+from niceview.dataadapter import ListAdapter
 from niceview.modelform import ModelForm
 
 
@@ -152,35 +152,35 @@ class TestFromItem:
 class TestFromAdapter:
     def test_from_adapter_sets_item(self):
         items = [User(name='Alice', age=30)]
-        adapter = ListModelAdapter(User, items)
+        adapter = ListAdapter(User, items)
         key = adapter.key_from_item(items[0])
         form = ModelForm.from_adapter(User, adapter, key)
         assert form.item.name == 'Alice'
 
     def test_from_adapter_sets_adapter(self):
         items = [User()]
-        adapter = ListModelAdapter(User, items)
+        adapter = ListAdapter(User, items)
         key = adapter.key_from_item(items[0])
         form = ModelForm.from_adapter(User, adapter, key)
         assert form._item_model is adapter
 
     def test_from_adapter_non_model_type_raises(self):
         items = [User()]
-        adapter = ListModelAdapter(User, items)
+        adapter = ListAdapter(User, items)
         key = adapter.key_from_item(items[0])
         with pytest.raises(TypeError):
             ModelForm.from_adapter(str, adapter, key)  # type: ignore
 
     def test_from_adapter_kwargs_passed_through(self):
         items = [User()]
-        adapter = ListModelAdapter(User, items)
+        adapter = ListAdapter(User, items)
         key = adapter.key_from_item(items[0])
         form = ModelForm.from_adapter(User, adapter, key, title='Test')
         assert form.title == 'Test'
 
     def test_from_adapter_returns_self(self):
         items = [User()]
-        adapter = ListModelAdapter(User, items)
+        adapter = ListAdapter(User, items)
         key = adapter.key_from_item(items[0])
         form = ModelForm.from_adapter(User, adapter, key)
         assert isinstance(form, ModelForm)
@@ -253,7 +253,7 @@ class TestFromJson:
 
     def test_nested_list_reference_survives_save(self, tmp_path):
         # Regression: after _save(), the nested list must still be the same
-        # Python object so that a ListModelAdapter wrapping it stays valid.
+        # Python object so that a ListAdapter wrapping it stays valid.
         path = tmp_path / 'user.json'
         form = ModelForm.from_json(User, path)
         nested_list = form.item.tags  # grab reference as a nested grid adapter would
@@ -279,7 +279,7 @@ class TestFromJson:
 class TestLoad:
     def test_load_from_list_adapter(self):
         items = [User(name='Bob', age=25)]
-        adapter = ListModelAdapter(User, items)
+        adapter = ListAdapter(User, items)
         key = adapter.key_from_item(items[0])
         form = ModelForm(User)
         form.load(adapter, key)
@@ -287,7 +287,7 @@ class TestLoad:
 
     def test_load_returns_self(self):
         items = [User()]
-        adapter = ListModelAdapter(User, items)
+        adapter = ListAdapter(User, items)
         key = adapter.key_from_item(items[0])
         form = ModelForm(User)
         result = form.load(adapter, key)
@@ -302,7 +302,7 @@ class TestRefresh:
 
     def test_refresh_updates_validated_item(self):
         items = [User(name='Bob', age=25)]
-        adapter = ListModelAdapter(User, items)
+        adapter = ListAdapter(User, items)
         key = adapter.key_from_item(items[0])
         form = ModelForm(User)
         form.load(adapter, key)

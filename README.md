@@ -149,13 +149,13 @@ or let the `from_*` factory methods create them transparently.
 
 | Adapter | Backs | Description |
 |---|---|---|
-| `ListModelAdapter(Type, list)` | Grid, Form | In-memory list |
-| `JsonModelAdapter(Type, path)` | Form | Single object in a JSON file |
-| `JsonListModelAdapter(Type, path)` | Grid | List of objects in a JSON file |
+| `ListAdapter(Type, list)` | Grid, Form | In-memory list |
+| `JsonAdapter(Type, path)` | Form | Single object in a JSON file |
+| `JsonListAdapter(Type, path)` | Grid | List of objects in a JSON file |
 | `SqlModelAdapter(Type, engine)` | Grid, Form | SQLModel / SQLAlchemy table |
 
 All JSON adapters write atomically (`.tmp` → rename).
-`JsonListModelAdapter` exposes `reload()` to re-read from disk after external changes.
+`JsonListAdapter` exposes `reload()` to re-read from disk after external changes.
 
 **Adapter protocols** — implement these for custom backends:
 
@@ -163,7 +163,7 @@ All JSON adapters write atomically (`.tmp` → rename).
 |---|---|---|
 | `SingleItemAdapter[T]` | `read()`, `update()` | `ModelForm` |
 | `ReloadableAdapter` | `reload()` | `EditGridWrapper` (Refresh button) |
-| `ModelDataAdapter[T]` | extends `SingleItemAdapter` + `__iter__`, `create`, `delete`, `key_from_item`, `key_from_str`, `query_all_strs` | `ModelGrid`, `EditGridWrapper` |
+| `CollectionAdapter[T]` | extends `SingleItemAdapter` + `__iter__`, `create`, `delete`, `key_from_item`, `key_from_str`, `query_all_strs` | `ModelGrid`, `EditGridWrapper` |
 
 ```python
 from niceview.dataadapter import SqlModelAdapter
@@ -279,8 +279,7 @@ Accepted Technical Debt
 
 Open Questions / TODO
 ---------------------
-- rename Adapters: SingleItemAdapter, CollectionAdapter (good name?), ListAdapter, JsonSingleAdapter, JsonListAdapter
-- why do we need the reloadable adapter? who uses it? Are there different, more consistent and elegant implementations (optional protocol methods?)?
+- **ReloadableAdapter rethink**: why do we need it? who uses it? Are there more consistent implementations (optional protocol methods?)?
 - 
 - rethink bindings and observables; keep updates to a minimum
 - NiceView widget support (_FieldInfoInputs/FieldInfo for relevant options, pydantic type, test cases, add to example 2): 

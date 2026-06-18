@@ -6,7 +6,7 @@ import sqlmodel
 from pathlib import Path
 from typing import Annotated
 
-from niceview.dataadapter import ListModelAdapter, JsonModelAdapter, JsonListModelAdapter, SqlModelAdapter
+from niceview.dataadapter import ListAdapter, JsonAdapter, JsonListAdapter, SqlModelAdapter
 from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
 
 
@@ -19,13 +19,13 @@ class Item(pydantic.BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# ListModelAdapter
+# ListAdapter
 # ---------------------------------------------------------------------------
 
-class TestListModelAdapterRead:
+class TestListAdapterRead:
     def setup_method(self):
         self.items = [Item(name='a', value=1), Item(name='b', value=2), Item(name='c', value=3)]
-        self.adapter = ListModelAdapter(Item, self.items)
+        self.adapter = ListAdapter(Item, self.items)
 
     def test_read_first(self):
         key = self.adapter.key_from_item(self.items[0])
@@ -44,10 +44,10 @@ class TestListModelAdapterRead:
             self.adapter.read('not-a-valid-key')
 
 
-class TestListModelAdapterCreate:
+class TestListAdapterCreate:
     def setup_method(self):
         self.items = [Item(name='a')]
-        self.adapter = ListModelAdapter(Item, self.items)
+        self.adapter = ListAdapter(Item, self.items)
 
     def test_create_appends_item(self):
         new_item = Item(name='z', value=99)
@@ -71,10 +71,10 @@ class TestListModelAdapterCreate:
         assert self.adapter.read(key).name == 'z'
 
 
-class TestListModelAdapterUpdate:
+class TestListAdapterUpdate:
     def setup_method(self):
         self.items = [Item(name='a', value=1), Item(name='b', value=2)]
-        self.adapter = ListModelAdapter(Item, self.items)
+        self.adapter = ListAdapter(Item, self.items)
 
     def test_update_replaces_item(self):
         key = self.adapter.key_from_item(self.items[0])
@@ -99,10 +99,10 @@ class TestListModelAdapterUpdate:
         assert result.name == 'modified'
 
 
-class TestListModelAdapterDelete:
+class TestListAdapterDelete:
     def setup_method(self):
         self.items = [Item(name='a'), Item(name='b'), Item(name='c')]
-        self.adapter = ListModelAdapter(Item, self.items)
+        self.adapter = ListAdapter(Item, self.items)
 
     def test_delete_removes_item(self):
         key = self.adapter.key_from_item(self.items[1])
@@ -122,10 +122,10 @@ class TestListModelAdapterDelete:
         assert self.adapter.read(key_c).name == 'c'
 
 
-class TestListModelAdapterKeys:
+class TestListAdapterKeys:
     def setup_method(self):
         self.items = [Item(name='a'), Item(name='b')]
-        self.adapter = ListModelAdapter(Item, self.items)
+        self.adapter = ListAdapter(Item, self.items)
 
     def test_key_from_item_is_string(self):
         key = self.adapter.key_from_item(self.items[0])
@@ -160,37 +160,37 @@ class TestListModelAdapterKeys:
 
 
 # ---------------------------------------------------------------------------
-# JsonModelAdapter
+# JsonAdapter
 # ---------------------------------------------------------------------------
 
-class TestJsonModelAdapter:
+class TestJsonAdapter:
     def test_create_if_not_exist(self, tmp_path):
         path = tmp_path / 'data.json'
-        adapter = JsonModelAdapter(Item, path, create_if_not_exist=True)
+        adapter = JsonAdapter(Item, path, create_if_not_exist=True)
         assert path.exists()
 
     def test_created_file_has_default_values(self, tmp_path):
         path = tmp_path / 'data.json'
-        JsonModelAdapter(Item, path, create_if_not_exist=True)
+        JsonAdapter(Item, path, create_if_not_exist=True)
         data = json.loads(path.read_text())
         assert data == {'name': '', 'value': 0}
 
     def test_no_create_if_not_exist_does_not_create_file(self, tmp_path):
         path = tmp_path / 'data.json'
-        JsonModelAdapter(Item, path, create_if_not_exist=False)
+        JsonAdapter(Item, path, create_if_not_exist=False)
         assert not path.exists()
 
     def test_read_existing_file(self, tmp_path):
         path = tmp_path / 'data.json'
         path.write_text(json.dumps({'name': 'hello', 'value': 42}))
-        adapter = JsonModelAdapter(Item, path, create_if_not_exist=False)
+        adapter = JsonAdapter(Item, path, create_if_not_exist=False)
         item = adapter.read(0)
         assert item.name == 'hello'
         assert item.value == 42
 
     def test_update_writes_to_file(self, tmp_path):
         path = tmp_path / 'data.json'
-        adapter = JsonModelAdapter(Item, path, create_if_not_exist=True)
+        adapter = JsonAdapter(Item, path, create_if_not_exist=True)
         adapter.update(Item(name='updated', value=7), '0')
         data = json.loads(path.read_text())
         assert data['name'] == 'updated'
@@ -198,36 +198,36 @@ class TestJsonModelAdapter:
 
     def test_update_returns_same_object(self, tmp_path):
         path = tmp_path / 'data.json'
-        adapter = JsonModelAdapter(Item, path, create_if_not_exist=True)
+        adapter = JsonAdapter(Item, path, create_if_not_exist=True)
         item = Item(name='x', value=3)
         result = adapter.update(item, '0')
         assert result is item  # same object — preserves references held by nested widgets
 
     def test_path_is_directory_raises(self, tmp_path):
         with pytest.raises(ValueError):
-            JsonModelAdapter(Item, tmp_path, create_if_not_exist=False)
+            JsonAdapter(Item, tmp_path, create_if_not_exist=False)
 
     def test_invalid_item_type_raises(self, tmp_path):
         path = tmp_path / 'data.json'
         with pytest.raises(TypeError):
-            JsonModelAdapter(str, path)  # type: ignore
+            JsonAdapter(str, path)  # type: ignore
 
     def test_read_missing_file_raises(self, tmp_path):
         path = tmp_path / 'data.json'
-        adapter = JsonModelAdapter(Item, path, create_if_not_exist=False)
+        adapter = JsonAdapter(Item, path, create_if_not_exist=False)
         with pytest.raises(FileNotFoundError):
             adapter.read('0')
 
     def test_read_invalid_json_raises(self, tmp_path):
         path = tmp_path / 'data.json'
         path.write_text('not valid json', encoding='utf-8')
-        adapter = JsonModelAdapter(Item, path, create_if_not_exist=False)
+        adapter = JsonAdapter(Item, path, create_if_not_exist=False)
         with pytest.raises(Exception):
             adapter.read('0')
 
     def test_update_is_atomic(self, tmp_path):
         path = tmp_path / 'data.json'
-        adapter = JsonModelAdapter(Item, path, create_if_not_exist=True)
+        adapter = JsonAdapter(Item, path, create_if_not_exist=True)
         adapter.update(Item(name='v2', value=2), '0')
         # temp file must not linger
         assert not path.with_suffix('.tmp').exists()
@@ -236,27 +236,27 @@ class TestJsonModelAdapter:
     def test_create_if_not_exist_false_with_existing_file(self, tmp_path):
         path = tmp_path / 'data.json'
         path.write_text('{"name": "existing", "value": 7}', encoding='utf-8')
-        adapter = JsonModelAdapter(Item, path, create_if_not_exist=False)
+        adapter = JsonAdapter(Item, path, create_if_not_exist=False)
         item = adapter.read('0')
 
         assert item.name == 'existing'
 
 
 # ---------------------------------------------------------------------------
-# JsonListModelAdapter
+# JsonListAdapter
 # ---------------------------------------------------------------------------
 
-class TestJsonListModelAdapterInit:
+class TestJsonListAdapterInit:
     def test_creates_empty_file_if_not_exist(self, tmp_path):
         path = tmp_path / 'items.json'
-        JsonListModelAdapter(Item, path)
+        JsonListAdapter(Item, path)
         assert path.exists()
         assert json.loads(path.read_text()) == []
 
     def test_loads_existing_items(self, tmp_path):
         path = tmp_path / 'items.json'
         path.write_text(json.dumps([{'name': 'a', 'value': 1}, {'name': 'b', 'value': 2}]), encoding='utf-8')
-        adapter = JsonListModelAdapter(Item, path)
+        adapter = JsonListAdapter(Item, path)
         items = list(adapter)
         assert len(items) == 2
         assert items[0].name == 'a'
@@ -264,27 +264,27 @@ class TestJsonListModelAdapterInit:
 
     def test_create_if_not_exist_false_missing_file_raises(self, tmp_path):
         with pytest.raises(FileNotFoundError):
-            JsonListModelAdapter(Item, tmp_path / 'missing.json', create_if_not_exist=False)
+            JsonListAdapter(Item, tmp_path / 'missing.json', create_if_not_exist=False)
 
     def test_create_if_not_exist_false_with_existing_file(self, tmp_path):
         path = tmp_path / 'items.json'
         path.write_text(json.dumps([{'name': 'x', 'value': 9}]), encoding='utf-8')
-        adapter = JsonListModelAdapter(Item, path, create_if_not_exist=False)
+        adapter = JsonListAdapter(Item, path, create_if_not_exist=False)
         assert list(adapter)[0].name == 'x'
 
     def test_path_is_directory_raises(self, tmp_path):
         with pytest.raises(ValueError):
-            JsonListModelAdapter(Item, tmp_path)
+            JsonListAdapter(Item, tmp_path)
 
     def test_invalid_item_type_raises(self, tmp_path):
         with pytest.raises(TypeError):
-            JsonListModelAdapter(str, tmp_path / 'items.json')  # type: ignore
+            JsonListAdapter(str, tmp_path / 'items.json')  # type: ignore
 
 
-class TestJsonListModelAdapterCreate:
+class TestJsonListAdapterCreate:
     def test_create_appends_and_persists(self, tmp_path):
         path = tmp_path / 'items.json'
-        adapter = JsonListModelAdapter(Item, path)
+        adapter = JsonListAdapter(Item, path)
         adapter.create(Item(name='z', value=99))
         raw = json.loads(path.read_text(encoding='utf-8'))
         assert len(raw) == 1
@@ -292,27 +292,27 @@ class TestJsonListModelAdapterCreate:
 
     def test_create_returns_item(self, tmp_path):
         path = tmp_path / 'items.json'
-        adapter = JsonListModelAdapter(Item, path)
+        adapter = JsonListAdapter(Item, path)
         new_item = Item(name='z')
         result = adapter.create(new_item)
         assert result is new_item
 
     def test_create_readable_by_key(self, tmp_path):
         path = tmp_path / 'items.json'
-        adapter = JsonListModelAdapter(Item, path)
+        adapter = JsonListAdapter(Item, path)
         new_item = adapter.create(Item(name='z'))
         key = adapter.key_from_item(new_item)
         assert adapter.read(key).name == 'z'
 
 
-class TestJsonListModelAdapterUpdate:
+class TestJsonListAdapterUpdate:
     def setup_method(self):
         pass
 
     def test_update_persists_to_file(self, tmp_path):
         path = tmp_path / 'items.json'
         path.write_text(json.dumps([{'name': 'a', 'value': 1}]), encoding='utf-8')
-        adapter = JsonListModelAdapter(Item, path)
+        adapter = JsonListAdapter(Item, path)
         item = list(adapter)[0]
         key = adapter.key_from_item(item)
         adapter.update(Item(name='X', value=99), key)
@@ -322,7 +322,7 @@ class TestJsonListModelAdapterUpdate:
     def test_update_returns_item(self, tmp_path):
         path = tmp_path / 'items.json'
         path.write_text(json.dumps([{'name': 'a', 'value': 1}]), encoding='utf-8')
-        adapter = JsonListModelAdapter(Item, path)
+        adapter = JsonListAdapter(Item, path)
         item = list(adapter)[0]
         key = adapter.key_from_item(item)
         updated = Item(name='X')
@@ -330,11 +330,11 @@ class TestJsonListModelAdapterUpdate:
         assert result is updated
 
 
-class TestJsonListModelAdapterDelete:
+class TestJsonListAdapterDelete:
     def test_delete_removes_and_persists(self, tmp_path):
         path = tmp_path / 'items.json'
         path.write_text(json.dumps([{'name': 'a', 'value': 1}, {'name': 'b', 'value': 2}]), encoding='utf-8')
-        adapter = JsonListModelAdapter(Item, path)
+        adapter = JsonListAdapter(Item, path)
         items = list(adapter)
         key = adapter.key_from_item(items[0])
         adapter.delete(key)
@@ -345,17 +345,17 @@ class TestJsonListModelAdapterDelete:
     def test_key_stable_after_delete(self, tmp_path):
         path = tmp_path / 'items.json'
         path.write_text(json.dumps([{'name': 'a', 'value': 1}, {'name': 'b', 'value': 2}]), encoding='utf-8')
-        adapter = JsonListModelAdapter(Item, path)
+        adapter = JsonListAdapter(Item, path)
         items = list(adapter)
         key_b = adapter.key_from_item(items[1])
         adapter.delete(adapter.key_from_item(items[0]))
         assert adapter.read(key_b).name == 'b'
 
 
-class TestJsonListModelAdapterReload:
+class TestJsonListAdapterReload:
     def test_reload_picks_up_external_changes(self, tmp_path):
         path = tmp_path / 'items.json'
-        adapter = JsonListModelAdapter(Item, path)
+        adapter = JsonListAdapter(Item, path)
         adapter.create(Item(name='a'))
         # external write
         path.write_text(json.dumps([{'name': 'external', 'value': 42}]), encoding='utf-8')
@@ -365,14 +365,14 @@ class TestJsonListModelAdapterReload:
     def test_reload_replaces_all_items(self, tmp_path):
         path = tmp_path / 'items.json'
         path.write_text(json.dumps([{'name': 'a'}, {'name': 'b'}]), encoding='utf-8')
-        adapter = JsonListModelAdapter(Item, path)
+        adapter = JsonListAdapter(Item, path)
         path.write_text(json.dumps([{'name': 'only'}]), encoding='utf-8')
         adapter.reload()
         assert len(list(adapter)) == 1
 
     def test_atomic_write_no_tmp_left(self, tmp_path):
         path = tmp_path / 'items.json'
-        adapter = JsonListModelAdapter(Item, path)
+        adapter = JsonListAdapter(Item, path)
         adapter.create(Item(name='x'))
         assert not path.with_suffix('.tmp').exists()
 
@@ -386,14 +386,14 @@ class TestJsonListModelAdapterReload:
 class TestModelGridFromAdapter:
     def test_from_adapter_creates_grid(self):
         items = [Item(name='a')]
-        adapter = ListModelAdapter(Item, items)
+        adapter = ListAdapter(Item, items)
         grid = ModelGrid.from_adapter(Item, adapter)
         assert isinstance(grid, ModelGrid)
         assert grid._data is adapter
 
     def test_inline_edit_from_adapter_creates_correct_type(self):
         items = [Item(name='a')]
-        adapter = ListModelAdapter(Item, items)
+        adapter = ListAdapter(Item, items)
         grid = ModelGridInlineEdit.from_adapter(Item, adapter)
         assert isinstance(grid, ModelGridInlineEdit)
 
@@ -407,7 +407,7 @@ class TestModelGridFromList:
     def test_from_list_adapter_is_list_adapter(self):
         items = [Item(name='a')]
         grid = ModelGrid.from_list(Item, items)
-        assert isinstance(grid._data, ListModelAdapter)
+        assert isinstance(grid._data, ListAdapter)
 
     def test_from_list_empty_list_allowed(self):
         grid = ModelGrid.from_list(Item, [])
@@ -422,7 +422,7 @@ class TestModelGridFromList:
         items = [Item(name='a')]
         grid = ModelGridInlineEdit.from_list(Item, items)
         assert isinstance(grid, ModelGridInlineEdit)
-        assert isinstance(grid._data, ListModelAdapter)
+        assert isinstance(grid._data, ListAdapter)
 
 
 # ---------------------------------------------------------------------------
@@ -436,7 +436,7 @@ class TestModelGridFromJson:
     def test_from_json_adapter_is_json_list(self, tmp_path):
         path = tmp_path / 'items.json'
         grid = ModelGrid.from_json(Item, path)
-        assert isinstance(grid._data, JsonListModelAdapter)
+        assert isinstance(grid._data, JsonListAdapter)
 
     def test_from_json_creates_file(self, tmp_path):
         path = tmp_path / 'items.json'
@@ -453,7 +453,7 @@ class TestModelGridFromJson:
         path = tmp_path / 'items.json'
         grid = ModelGridInlineEdit.from_json(Item, path)
         assert isinstance(grid, ModelGridInlineEdit)
-        assert isinstance(grid._data, JsonListModelAdapter)
+        assert isinstance(grid._data, JsonListAdapter)
 
     def test_from_json_missing_file_raises_when_no_create(self, tmp_path):
         path = tmp_path / 'items.json'

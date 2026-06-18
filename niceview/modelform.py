@@ -12,7 +12,7 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 from nicegui import ui
 from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, handle_event
 
-from niceview.dataadapter import JsonModelAdapter, ModelDataAdapter, SingleItemAdapter, SqlModelAdapter
+from niceview.dataadapter import JsonAdapter, CollectionAdapter, SingleItemAdapter, SqlModelAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 
@@ -64,7 +64,7 @@ class ModelForm():
     _item_type: type[BaseModel]
     _item_model: SingleItemAdapter | None
     _item_key: str | int | None
-    _model_repositories: dict[str, ModelDataAdapter]
+    _model_repositories: dict[str, CollectionAdapter]
     _change_handler: Handler[FieldChangeEventArguments]
 
     _fields: Fields
@@ -172,7 +172,7 @@ class ModelForm():
     @classmethod
     def from_adapter(cls, item_type: type[BaseModel], adapter: SingleItemAdapter, key: str | int, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
-        Create a ModelForm bound to any ModelDataAdapter.
+        Create a ModelForm bound to any CollectionAdapter.
         """
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
@@ -183,13 +183,13 @@ class ModelForm():
     @classmethod
     def from_json(cls, item_type: type[BaseModel], json_path: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
-        Create a ModelForm bound to a JSON file via JsonModelAdapter.
+        Create a ModelForm bound to a JSON file via JsonAdapter.
         """
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
-        adapter = JsonModelAdapter(item_type, json_path, create_if_not_exist=create_if_not_exist)
+        adapter = JsonAdapter(item_type, json_path, create_if_not_exist=create_if_not_exist)
         instance = cls(item_type, **kwargs)
-        instance.load(adapter, JsonModelAdapter.DEFAULT_KEY)
+        instance.load(adapter, JsonAdapter.DEFAULT_KEY)
         return instance
 
     @property
@@ -229,7 +229,7 @@ class ModelForm():
         self.item = item
         return self
     
-    def set_model_repositories(self, repositories: dict[str, ModelDataAdapter]) -> Self:
+    def set_model_repositories(self, repositories: dict[str, CollectionAdapter]) -> Self:
         """
         Set the model repositories for the modelselect widgets in the form.
         This is a dictionary of model data adapters that can be used to read and write items.
@@ -324,7 +324,7 @@ class ModelForm():
     def _render_editgrid_widget(self, field_name: str, field_info: FieldInfo) -> Any:
         from niceview.modeledit import EditGridWrapper
         from niceview.modelgrid import ModelGrid, TableItemEventArguments
-        from niceview.dataadapter import ListModelAdapter
+        from niceview.dataadapter import ListAdapter
 
         def notify_change(e: TableItemEventArguments) -> None:
             if self.autosave:
@@ -344,7 +344,7 @@ class ModelForm():
             raise ValueError(f"Field {field_name} is a list but no item type is specified in FieldInfo or as a pydantic model type")
 
         # work directly on the validated item instead of the current item because there is no need for validation
-        data = ListModelAdapter(field_info.item_type, getattr(self._validated_item, field_name))
+        data = ListAdapter(field_info.item_type, getattr(self._validated_item, field_name))
         widget = ModelGrid(
             field_info.item_type, data,
             classes=self.classes, style=self.style, props=self.props,

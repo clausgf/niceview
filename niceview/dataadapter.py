@@ -29,7 +29,7 @@ class ReloadableAdapter(Protocol):
     def reload(self) -> None: ...
 
 
-class ModelDataAdapter(SingleItemAdapter[T], Protocol):
+class CollectionAdapter(SingleItemAdapter[T], Protocol):
     """
     Full adapter protocol for list-backed components (ModelGrid, EditGridWrapper).
 
@@ -44,7 +44,7 @@ class ModelDataAdapter(SingleItemAdapter[T], Protocol):
     def query_all_strs(self) -> Iterator[tuple[str, str]]: ...
 
 
-class SqlModelAdapter(ModelDataAdapter[T]):
+class SqlModelAdapter(CollectionAdapter[T]):
     """
     An adapter for SQLModel / SQLAlchemy to work with ModelForm and ModelGrid.
 
@@ -176,7 +176,7 @@ class SqlModelAdapter(ModelDataAdapter[T]):
             session.commit()
 
 
-class ListModelAdapter(ModelDataAdapter[T]):
+class ListAdapter(CollectionAdapter[T]):
     """
     An adapter for an in-memory list.
 
@@ -224,7 +224,7 @@ class ListModelAdapter(ModelDataAdapter[T]):
         del self._items[self._find_index(key)]
 
 
-class JsonModelAdapter(SingleItemAdapter[T]):
+class JsonAdapter(SingleItemAdapter[T]):
     """
     A data adapter for a JSON file containing a single Pydantic model instance.
     Implements SingleItemAdapter (read + update only). Writes are atomic (.tmp → rename).
@@ -255,11 +255,11 @@ class JsonModelAdapter(SingleItemAdapter[T]):
         return item  # return same object to preserve in-memory references (e.g. nested grid adapters)
 
 
-class JsonListModelAdapter(ListModelAdapter[T]):
+class JsonListAdapter(ListAdapter[T]):
     """
     A data adapter that persists a list of Pydantic models as a JSON array.
 
-    Items are kept in memory (like ListModelAdapter) and written to disk after
+    Items are kept in memory (like ListAdapter) and written to disk after
     every mutating operation. Writes are atomic: the full list is serialized to
     a .tmp file that is then renamed over the target path.
 

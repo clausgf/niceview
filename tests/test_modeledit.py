@@ -2,7 +2,7 @@ import pydantic
 import pytest
 from fastapi import HTTPException
 
-from niceview.dataadapter import ListModelAdapter
+from niceview.dataadapter import ListAdapter
 from niceview.modelgrid import ModelGrid
 from niceview.modeledit import EditGridWrapper
 

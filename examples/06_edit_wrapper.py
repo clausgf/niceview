@@ -21,7 +21,7 @@ import json
 import pydantic
 from typing import Literal
 from nicegui import ui
-from niceview.dataadapter import ListModelAdapter
+from niceview.dataadapter import ListAdapter
 from niceview.modelform import ModelForm
 from niceview.modelgrid import ModelGrid
 from niceview.modeledit import EditGridWrapper, EditFormWrapper
@@ -57,7 +57,7 @@ def page():
 
     with ui.card().classes('w-full'):
         ui.label('EditFormWrapper').classes('text-h6')
-        adapter = ListModelAdapter(Task, tasks)
+        adapter = ListAdapter(Task, tasks)
         key = adapter.key_from_item(tasks[0])
         form = ModelForm.from_adapter(Task, adapter, key, classes='w-96')
         EditFormWrapper(form).render()
