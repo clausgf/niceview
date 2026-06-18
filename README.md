@@ -299,7 +299,7 @@ Open Questions / TODO
 - provide examples and tests for tables with edit buttons
 - provide examples and tests for nested data structures
 - display collections in a responsive card grid
-- find a way to support configure the layout (what does niceview offer?); keep hardcoded layout to a minimum, but provide sensible defaults
+- **Context-specific layouts**: How to render the same Pydantic model differently in different forms or grids (different fields, labels, widgets, order)? `include`/`exclude` covers simple filtering; `field_infos={}` allows per-call overrides but requires repetition. Options to decide between: (A) named profiles in `Meta` (`profile='summary'`), (B) Pydantic model subclasses with their own `Meta`, (C) explicit layout classes à la Django's `ModelForm`. Need to decide which fits NiceView's design best.
 - provide optional search and filtering mechanims to the tables
 - Collections: allow querying specific subsets
 - Collections: analyze efficiency, caching, paging
