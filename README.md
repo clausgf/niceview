@@ -279,6 +279,30 @@ Accepted Technical Debt
 
 Open Questions / TODO
 ---------------------
-- **Inline EditGridWrapper grid not refreshing**: When a `list[BaseModel]` field is rendered as an inline `EditGridWrapper` inside a `ModelForm`, Create/Edit/Delete dialogs work but the AgGrid table may not visually update afterwards. (See example 02, `tags` field.) Standalone `EditGridWrapper` (example 06) uses `widget.update()` which triggers a full grid recreate on the client.
+- rename Adapters: SingleItemAdapter, CollectionAdapter (good name?), ListAdapter, JsonSingleAdapter, JsonListAdapter
+- why do we need the reloadable adapter? who uses it? Are there different, more consistent and elegant implementations (optional protocol methods?)?
+- 
+- rethink bindings and observables; keep updates to a minimum
+- NiceView widget support (_FieldInfoInputs/FieldInfo for relevant options, pydantic type, test cases, add to example 2): 
+    - textarea
+    - radio (alternative to select)
+    - toggle (alternative to select)
+    - slider (alternative to number for int, float)
+    - rating
+    - date_input (compare to current solution)
+    - time_input (compare to current solution)
+    - color_input
+- Do we need multiselect support?
+- EditGridWrapper is not a complete dialog, but the interface needed to edit a collection. The refresh button is the only button to affect the table as a whole (refresh the UI from the model). For collections, we never have a *save* semantics. That to conclude for EditFormWrapper?
+  - refresh button possible and makes sense, but already provided by ModelForm
+  - save button also provided
+- provide examples and tests for tables with edit buttons
+- provide examples and tests for nested data structures
+- display collections in a responsive card grid
+- find a way to support configure the layout (what does niceview offer?); keep hardcoded layout to a minimum, but provide sensible defaults
+- provide optional search and filtering mechanims to the tables
+- Collections: allow querying specific subsets
+- Collections: analyze efficiency, caching, paging
+- Already fixed??? **Inline EditGridWrapper grid not refreshing**: When a `list[BaseModel]` field is rendered as an inline `EditGridWrapper` inside a `ModelForm`, Create/Edit/Delete dialogs work but the AgGrid table may not visually update afterwards. (See example 02, `tags` field.) Standalone `EditGridWrapper` (example 06) uses `widget.update()` which triggers a full grid recreate on the client.
 - **Support binding in tables**: Two-way sync between grid rows and the in-memory model (no manual `update_rows()` needed).
 - **Support dataclasses**: In addition to Pydantic models.
