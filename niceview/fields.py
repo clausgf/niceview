@@ -147,6 +147,10 @@ class Fields(typing.Mapping[str, FieldInfo]):
 
         nv_field_info.field_type = field_type
 
+        # always extract Literal args so render methods can use them as fallback
+        if typing.get_origin(field_type) == typing.Literal:
+            nv_field_info.literal_options = list(typing.get_args(field_type))
+
         # determine widget type from field type
         if nv_field_info.widget_type is None:
             # remove the Optional from a type

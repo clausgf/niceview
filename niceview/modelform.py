@@ -290,18 +290,34 @@ class ModelForm():
         Render a select widget for the given field name and field info.
         The select options are determined by the field info.
         """
-        if not field_info.select_options:
-            raise ValueError(f"Field {field_name} has no select options defined in FieldInfo")
-        if callable(field_info.select_options):
-            kwargs['options'] = (field_info.select_options)()
-        else:
-            kwargs['options'] = field_info.select_options
+        raw = field_info.select_options or field_info.literal_options
+        if not raw:
+            raise ValueError(f"Field {field_name} has no select_options defined in FieldInfo")
+        kwargs['options'] = raw() if callable(raw) else raw
 
         widget = ui.select(**kwargs)
 
         self._from_current_item_to_widget_value(field_name, 'ui.select', widget)
         widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate_and_change(field_name, vce))
         widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
+        return widget
+
+
+    def _render_radio_widget(self, field_name: str, field_info: FieldInfo) -> ui.radio:
+        """
+        Render a radio widget for the given field name and field info.
+        The options are taken from radio_options if set, falling back to literal_options.
+        """
+        raw = field_info.radio_options or field_info.literal_options
+        if not raw:
+            raise ValueError(f"Field {field_name} has no radio_options (or literal_options) defined in FieldInfo")
+        options = raw() if callable(raw) else raw
+        with ui.column().classes('gap-0'):
+            if field_info.label:
+                ui.label(field_info.label).classes('text-caption text-grey-7')
+            widget = ui.radio(options).props('inline')
+        self._from_current_item_to_widget_value(field_name, 'ui.radio', widget)
+        widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate_and_change(field_name, vce))
         return widget
 
 
@@ -415,6 +431,9 @@ class ModelForm():
 
         elif widget_type == 'ui.select':
             widget = self._render_select_widget(field_name, field_info, get_kwargs_from_field_info(['label', 'with_input', 'multiple', 'clearable']))
+
+        elif widget_type == 'ui.radio':
+            widget = self._render_radio_widget(field_name, field_info)
 
         elif widget_type == 'ui.input_chips':
             widget = ui.input_chips(**get_kwargs_from_field_info(['label', 'new_value_mode']))

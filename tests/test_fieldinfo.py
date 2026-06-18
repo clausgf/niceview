@@ -60,6 +60,18 @@ class TestInit:
     def test_set_classes(self):
         assert FieldInfo(classes='text-red-500').classes == 'text-red-500'
 
+    def test_set_radio_options_list(self):
+        fi = FieldInfo(radio_options=['a', 'b', 'c'])
+        assert fi.radio_options == ['a', 'b', 'c']
+
+    def test_set_radio_options_dict(self):
+        fi = FieldInfo(radio_options={'a': 'Option A', 'b': 'Option B'})
+        assert fi.radio_options == {'a': 'Option A', 'b': 'Option B'}
+
+    def test_set_widget_type_radio(self):
+        fi = FieldInfo(widget_type='ui.radio')
+        assert fi.widget_type == 'ui.radio'
+
 
 class TestRepr:
     def test_repr_is_non_empty(self):

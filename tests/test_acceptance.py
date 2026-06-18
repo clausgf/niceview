@@ -14,7 +14,9 @@ import pydantic
 import pytest
 from nicegui import ui
 from nicegui.testing import User
+from typing import Annotated, Literal
 
+import niceview
 from niceview.modelform import ModelForm
 from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
 from niceview.modeledit import EditGridWrapper
@@ -139,6 +141,48 @@ class TestModelFormInteraction:
         await user.open('/')
         await user.should_see('Name')
         await user.should_not_see(ui.switch)
+
+
+# ---------------------------------------------------------------------------
+# ModelForm — ui.radio widget
+# ---------------------------------------------------------------------------
+
+class Choice(pydantic.BaseModel):
+    # Literal auto-infers select_options; widget_type override picks them up as radio options
+    color: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.radio')] = 'green'
+
+
+class TestModelFormRadioWidget:
+    async def test_radio_widget_present(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(Choice()).render()
+
+        await user.open('/')
+        await user.should_see(ui.radio)
+
+    async def test_radio_initial_value_in_model(self, user: User) -> None:
+        item = Choice(color='red')
+
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(item).render()
+
+        await user.open('/')
+        await user.should_see(ui.radio)
+        # model value unchanged after render
+        assert item.color == 'red'
+
+    async def test_radio_change_updates_model(self, user: User) -> None:
+        item = Choice(color='green')
+
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(item).render()
+
+        await user.open('/')
+        user.find('red').click()
+        assert item.color == 'red'
 
 
 # ---------------------------------------------------------------------------
