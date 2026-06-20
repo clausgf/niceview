@@ -13,6 +13,7 @@ One form showing all field types supported by NiceView:
 | `datetime.datetime` | HTML datetime-local input |
 | `datetime.timedelta` | `ui.input` (ISO 8601 duration) |
 | `Literal[...]` | `ui.select`, `ui.radio`, or `ui.toggle` (via `widget_type` override) |
+| `str` (color) | `ui.color_input` (via `widget_type` override) |
 | `list[str]` | `ui.input_chips` |
 | `list[int]`, `list[float]`, `list[bool]` | `ui.input` |
 | `list[BaseModel]` | Inline `EditGridWrapper` |
@@ -58,6 +59,7 @@ class AllTypes(pydantic.BaseModel):
     choice: Literal['red', 'green', 'blue'] = 'green'
     choice_radio: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.radio', props='inline')] = 'green'
     choice_toggle: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.toggle')] = 'green'
+    color: Annotated[str, niceview.Field(widget_type='ui.color_input', label='Color', color_preview=True)] = '#4a90e2'
     chips: list[str] = pydantic.Field(default_factory=lambda: ['foo', 'bar'], title='Chips (list[str])')
     tags: list[Tag] = pydantic.Field(
         default_factory=lambda: [Tag(label='important')],

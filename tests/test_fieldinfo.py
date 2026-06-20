@@ -80,6 +80,17 @@ class TestInit:
         fi = FieldInfo(widget_type='ui.toggle')
         assert fi.widget_type == 'ui.toggle'
 
+    def test_color_preview_default_false(self):
+        assert FieldInfo().color_preview is False
+
+    def test_set_color_preview(self):
+        fi = FieldInfo(color_preview=True)
+        assert fi.color_preview is True
+
+    def test_set_widget_type_color_input(self):
+        fi = FieldInfo(widget_type='ui.color_input')
+        assert fi.widget_type == 'ui.color_input'
+
 
 class TestRepr:
     def test_repr_is_non_empty(self):

@@ -21,7 +21,7 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
     editable: bool
     help_text: str
     widget_type: Literal[
-        'ui.input', 'ui.number', 'ui.textarea', 'ui.checkbox', 'ui.switch', 'ui.select', 'ui.radio', 'ui.toggle', 'ui.input_chips',
+        'ui.input', 'ui.number', 'ui.textarea', 'ui.checkbox', 'ui.switch', 'ui.select', 'ui.radio', 'ui.toggle', 'ui.color_input', 'ui.input_chips',
         'datetime', 'date', 'time', 'timedelta',
         'editgrid', 'modelselect',
     ]
@@ -58,6 +58,9 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
 
     # additional options when field is rendered as ui.toggle
     toggle_options: Union[List, Dict, Callable[[], list]]
+
+    # additional options when field is rendered as ui.color_input
+    color_preview: bool
 
     # additional options when the field is rendered as ui.input_chips
     new_value_mode: Literal['add', 'add-unique', 'toggle']
@@ -97,7 +100,7 @@ class FieldInfo():
     help_text: str | None = None
     # widget type for the field  (default infered from field type)
     widget_type: Literal[
-        'ui.input', 'ui.number', 'ui.textarea', 'ui.checkbox', 'ui.switch', 'ui.select', 'ui.radio', 'ui.toggle', 'ui.input_chips',
+        'ui.input', 'ui.number', 'ui.textarea', 'ui.checkbox', 'ui.switch', 'ui.select', 'ui.radio', 'ui.toggle', 'ui.color_input', 'ui.input_chips',
         'datetime', 'date', 'time', 'timedelta',
         'editgrid', 'modelselect',
     ] | None = None
@@ -137,6 +140,9 @@ class FieldInfo():
 
     # additional options when field is rendered as ui.toggle
     toggle_options: Union[None, List, Dict, Callable[[], list]] = None
+
+    # additional options when field is rendered as ui.color_input
+    color_preview: bool = False
 
     # options inferred from Literal type args — set by Fields, not user-settable
     literal_options: Union[None, List] = None

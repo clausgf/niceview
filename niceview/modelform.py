@@ -460,6 +460,11 @@ class ModelForm():
             widget = self._render_toggle_widget(field_name, field_info)
             # for toggle, we consider the validation errors irrelevant
 
+        elif widget_type == 'ui.color_input':
+            widget = ui.color_input(**get_kwargs_from_field_info(['label', 'placeholder']), preview=field_info.color_preview)
+            self._from_current_item_to_widget_value(field_name, widget_type, widget)
+            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate_and_change(field_name, vce))
+
         elif widget_type == 'ui.input_chips':
             widget = ui.input_chips(**get_kwargs_from_field_info(['label', 'new_value_mode']))
             self._from_current_item_to_widget_value(field_name, widget_type, widget)

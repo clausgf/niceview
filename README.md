@@ -287,7 +287,6 @@ Open Questions / TODO
     - rating
     - date_input (compare to current solution)
     - time_input (compare to current solution)
-    - color_input
 - EditGridWrapper is not a complete dialog, but the interface needed to edit a collection. The refresh button is the only button to affect the table as a whole (refresh the UI from the model). For collections, we never have a *save* semantics. That to conclude for EditFormWrapper?
   - refresh button possible and makes sense, but already provided by ModelForm
   - save button also provided

@@ -153,6 +153,10 @@ class Choice(pydantic.BaseModel):
     color_toggle: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.toggle')] = 'green'
 
 
+class ColorItem(pydantic.BaseModel):
+    bg: Annotated[str, niceview.Field(widget_type='ui.color_input', label='Background', color_preview=True)] = '#ffffff'
+
+
 class TestModelFormRadioWidget:
     async def test_radio_widget_present(self, user: User) -> None:
         @ui.page('/')
@@ -184,6 +188,26 @@ class TestModelFormRadioWidget:
         await user.open('/')
         user.find('red').click()
         assert item.color == 'red'
+
+
+class TestModelFormColorInputWidget:
+    async def test_color_input_widget_present(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(ColorItem()).render()
+
+        await user.open('/')
+        await user.should_see(ui.color_input)
+
+    async def test_color_input_initial_value_in_model(self, user: User) -> None:
+        item = ColorItem(bg='#123456')
+
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(item).render()
+
+        await user.open('/')
+        assert item.bg == '#123456'
 
 
 class TestModelFormToggleWidget:
