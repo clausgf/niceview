@@ -5,7 +5,7 @@ One form showing all field types supported by NiceView:
 
 | Python type | Widget |
 |---|---|
-| `str` | `ui.input` |
+| `str` | `ui.input` or `ui.textarea` (via `widget_type` override) |
 | `int`, `float` | `ui.number` |
 | `bool` | `ui.switch` or `ui.checkbox` |
 | `datetime.date` | HTML date input |
@@ -40,6 +40,7 @@ class Tag(pydantic.BaseModel):
 
 class AllTypes(pydantic.BaseModel):
     text: str = pydantic.Field(default='hello', title='Text (str)')
+    text_area: Annotated[str, niceview.Field(widget_type='ui.textarea', label='Text area (str)')] = 'hello\nworld'
     number_int: int = pydantic.Field(default=42, ge=0, le=1000, title='Integer')
     number_float: float = pydantic.Field(default=3.14, title='Float')
     flag_switch: bool = pydantic.Field(default=True, title='Bool (switch)')
