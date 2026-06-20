@@ -72,6 +72,14 @@ class TestInit:
         fi = FieldInfo(widget_type='ui.radio')
         assert fi.widget_type == 'ui.radio'
 
+    def test_set_toggle_options_list(self):
+        fi = FieldInfo(toggle_options=['a', 'b', 'c'])
+        assert fi.toggle_options == ['a', 'b', 'c']
+
+    def test_set_widget_type_toggle(self):
+        fi = FieldInfo(widget_type='ui.toggle')
+        assert fi.widget_type == 'ui.toggle'
+
 
 class TestRepr:
     def test_repr_is_non_empty(self):

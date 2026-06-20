@@ -283,7 +283,6 @@ Open Questions / TODO
 - Styling/Layout: We can modify the string labels e.g. for the refresh button. Is it possible to give a configured ui.element or ui.button? Do we need a css class for all refresh buttons? Quasar? Alternatives?
 - rethink bindings and observables; keep updates to a minimum
 - NiceView widget support (_FieldInfoInputs/FieldInfo for relevant options, pydantic type, test cases, add to example 2): 
-    - toggle (alternative to select)
     - slider (alternative to number for int, float)
     - rating
     - date_input (compare to current solution)

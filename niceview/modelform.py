@@ -320,6 +320,23 @@ class ModelForm():
         return widget
 
 
+    def _render_toggle_widget(self, field_name: str, field_info: FieldInfo) -> ui.toggle:
+        """
+        Render a toggle widget for the given field name and field info.
+        The options are taken from toggle_options if set, falling back to literal_options.
+        """
+        raw = field_info.toggle_options or field_info.literal_options
+        if not raw:
+            raise ValueError(f"Field {field_name} has no toggle_options (or literal_options) defined in FieldInfo")
+        options = raw() if callable(raw) else raw
+
+        widget = ui.toggle(options)
+
+        self._from_current_item_to_widget_value(field_name, 'ui.toggle', widget)
+        widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate_and_change(field_name, vce))
+        return widget
+
+
     def _render_modelselect_widget(self, field_name: str, field_info: FieldInfo, kwargs) -> ui.select:
         """
         Render a model select widget for the given field name and field info.
@@ -438,6 +455,10 @@ class ModelForm():
         elif widget_type == 'ui.radio':
             widget = self._render_radio_widget(field_name, field_info)
             # for radio, we consider the validation errors irrelevant
+
+        elif widget_type == 'ui.toggle':
+            widget = self._render_toggle_widget(field_name, field_info)
+            # for toggle, we consider the validation errors irrelevant
 
         elif widget_type == 'ui.input_chips':
             widget = ui.input_chips(**get_kwargs_from_field_info(['label', 'new_value_mode']))

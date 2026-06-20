@@ -148,8 +148,9 @@ class TestModelFormInteraction:
 # ---------------------------------------------------------------------------
 
 class Choice(pydantic.BaseModel):
-    # Literal auto-infers select_options; widget_type override picks them up as radio options
+    # Literal auto-infers select_options; widget_type override picks them up as radio/toggle options
     color: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.radio')] = 'green'
+    color_toggle: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.toggle')] = 'green'
 
 
 class TestModelFormRadioWidget:
@@ -183,6 +184,27 @@ class TestModelFormRadioWidget:
         await user.open('/')
         user.find('red').click()
         assert item.color == 'red'
+
+
+class TestModelFormToggleWidget:
+    async def test_toggle_widget_present(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(Choice()).render()
+
+        await user.open('/')
+        await user.should_see(ui.toggle)
+
+    async def test_toggle_initial_value_in_model(self, user: User) -> None:
+        item = Choice(color_toggle='red')
+
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(item).render()
+
+        await user.open('/')
+        await user.should_see(ui.toggle)
+        assert item.color_toggle == 'red'
 
 
 # ---------------------------------------------------------------------------
