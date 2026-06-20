@@ -39,10 +39,10 @@ def populated_wrapper():
 # ---------------------------------------------------------------------------
 
 class TestApplyCreate:
-    def test_adds_item_to_adapter(self, wrapper, items):
+    def test_adds_item_to_adapter(self, wrapper):
         new_item = User(name='Alice', age=30)
         wrapper._apply_create(new_item)
-        assert len(items) == 1
+        assert len(list(wrapper.grid._data)) == 1
 
     def test_returns_created_item(self, wrapper):
         new_item = User(name='Alice', age=30)
@@ -50,10 +50,10 @@ class TestApplyCreate:
         assert result.name == 'Alice'
         assert result.age == 30
 
-    def test_create_multiple_items(self, wrapper, items):
+    def test_create_multiple_items(self, wrapper):
         wrapper._apply_create(User(name='Alice', age=30))
         wrapper._apply_create(User(name='Bob', age=25))
-        assert len(items) == 2
+        assert len(list(wrapper.grid._data)) == 2
 
     def test_raises_on_wrong_type(self, wrapper):
         with pytest.raises(TypeError):
@@ -97,7 +97,7 @@ class TestApplyDelete:
         wrapper, items = populated_wrapper
         key = wrapper.grid._data.key_from_item(items[0])
         wrapper._apply_delete(key)
-        assert len(items) == 1
+        assert len(list(wrapper.grid._data)) == 1
 
     def test_removes_correct_item(self, populated_wrapper):
         wrapper, items = populated_wrapper

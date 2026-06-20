@@ -52,8 +52,8 @@ class TestListAdapterCreate:
     def test_create_appends_item(self):
         new_item = Item(name='z', value=99)
         self.adapter.create(new_item)
-        assert len(self.items) == 2
-        assert self.items[-1].name == 'z'
+        assert len(self.adapter._items) == 2
+        assert self.adapter._items[-1].name == 'z'
 
     def test_create_returns_item(self):
         new_item = Item(name='z')
@@ -80,7 +80,7 @@ class TestListAdapterUpdate:
         key = self.adapter.key_from_item(self.items[0])
         updated = Item(name='X', value=99)
         self.adapter.update(updated, key)
-        assert self.items[0].name == 'X'
+        assert self.adapter._items[0].name == 'X'
 
     def test_update_returns_item(self):
         key = self.adapter.key_from_item(self.items[0])
@@ -107,9 +107,9 @@ class TestListAdapterDelete:
     def test_delete_removes_item(self):
         key = self.adapter.key_from_item(self.items[1])
         self.adapter.delete(key)
-        assert len(self.items) == 2
-        assert self.items[0].name == 'a'
-        assert self.items[1].name == 'c'
+        assert len(self.adapter._items) == 2
+        assert self.adapter._items[0].name == 'a'
+        assert self.adapter._items[1].name == 'c'
 
     def test_delete_unknown_key_raises(self):
         with pytest.raises(KeyError):

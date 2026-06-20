@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from nicegui import ui
 from nicegui.events import Handler, ClickEventArguments, ValueChangeEventArguments, handle_event
 
+from nicegui.observables import ObservableList
 from niceview.dataadapter import CollectionAdapter, ListAdapter, JsonListAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
@@ -221,6 +222,12 @@ class ModelGrid:
         self.widget.style(self.style)
         self.widget.props(self.props)
         self.widget.on('selectionChanged', self._handle_selection_changed)
+
+        if (not hasattr(self, '_auto_update_registered')
+                and hasattr(self._data, '_items')
+                and isinstance(self._data._items, ObservableList)):
+            self._data._items.on_change(lambda _: self.update_rows())
+            self._auto_update_registered = True
 
         return self
 
