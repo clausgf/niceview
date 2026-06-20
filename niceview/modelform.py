@@ -62,7 +62,7 @@ class ModelForm():
     or as keyword arguments when creating the form.
     """
     _item_type: type[BaseModel]
-    _item_model: SingleItemAdapter | None
+    _item_adapter: SingleItemAdapter | None
     _item_key: str | int | None
     _model_repositories: dict[str, CollectionAdapter]
     _change_handler: Handler[FieldChangeEventArguments]
@@ -111,7 +111,7 @@ class ModelForm():
             raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
 
         self._item_type = item_type
-        self._item_model = None
+        self._item_adapter = None
         self._item_key = None
         self._model_repositories = {}
         self._change_handlers: list[Handler[FieldChangeEventArguments]] = []
@@ -144,11 +144,15 @@ class ModelForm():
         if len(kwargs) > 0:
             raise TypeError(f"Unexpected keyword arguments: {', '.join(kwargs.keys())}")
 
+    # --- factory methods for form creation --------------------------------
 
     @classmethod
     def from_item(cls, item_type_or_item: 'type[BaseModel] | BaseModel', item: 'BaseModel | None' = None, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
-        Create a ModelForm from a model instance.
+        Create a ModelForm from a model instance. 
+        The form directly edits the given item, so changes to the form are reflected 
+        in the item. 
+        Changes to the item, however, are currently not reflected in the form. This might change in the future.
 
         Two call forms for API symmetry with from_adapter() and from_json():
           from_item(instance)         — convenience; item_type inferred from instance
@@ -173,6 +177,9 @@ class ModelForm():
     def from_adapter(cls, item_type: type[BaseModel], adapter: SingleItemAdapter, key: str | int, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
         Create a ModelForm bound to any CollectionAdapter.
+        Adapters are considered "offline" data sources, so the form will 
+        not automatically update when the data in the adapter changes and vice versa.
+        However, the form supports autosave (on change) as well as manual refresh and save buttons.
         """
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
@@ -184,6 +191,9 @@ class ModelForm():
     def from_json(cls, item_type: type[BaseModel], json_path: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
         Create a ModelForm bound to a JSON file via JsonAdapter.
+        JsonAdapter is considered an "offline" data source, so the form will
+        not automatically update when the data in the adapter changes and vice versa.
+        However, the form supports autosave (on change) as well as manual refresh and save buttons.
         """
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
@@ -191,6 +201,8 @@ class ModelForm():
         instance = cls(item_type, **kwargs)
         instance.load(adapter, JsonAdapter.DEFAULT_KEY)
         return instance
+
+    # --- item and form state management -------------------------------------
 
     @property
     def item(self) -> BaseModel:
@@ -215,20 +227,50 @@ class ModelForm():
         self._validate()
         self._push_item_to_widgets()
 
+   # --- data adapter interaction -------------------------------------------
 
     def load(self, adapter: SingleItemAdapter, key: str | int) -> Self:
         """
         Load an item from a data adapter and make it the active item in the form.
         Use this for master-detail navigation (switching the displayed item at runtime).
         """
-        self._item_model = adapter
+        self._item_adapter = adapter
         self._item_key = key
-        item = self._item_model.read(key)
+        item = self._item_adapter.read(key)
         if not isinstance(item, BaseModel):
             raise TypeError(f"item must be a BaseModel instance, got {type(item)}")
         self.item = item
         return self
     
+    def _refresh(self) -> None:
+        """
+        Refresh the form by reloading the item from the adapter and pushing
+        the new values into all rendered widgets.
+        """
+        if self._item_adapter is None or self._item_key is None:
+            raise ValueError("No adapter set. Use from_adapter(), from_json(), or load() first.")
+        self.load(self._item_adapter, self._item_key)
+        ui.notify('Form refreshed', color='positive')
+
+    def _save(self) -> None:
+        """
+        Save the current item to the data adapter.
+        """
+        if self._item_adapter is None or self._item_key is None:
+            raise ValueError("No adapter set. Use from_adapter(), from_json(), or load() first.")
+
+        if self.has_validation_errors():
+            ui.notify('Cannot save form: validation errors present', color='negative')
+            return
+
+        updated = self._item_adapter.update(self.item, str(self._item_key))
+        if updated is not None and updated is not self._validated_item:
+            self._validated_item = updated
+            self._current_item = updated.model_copy()
+        ui.notify('Form saved', color='positive')
+
+    # --- widget management and event handling --------------------------------
+
     def set_model_repositories(self, repositories: dict[str, CollectionAdapter]) -> Self:
         """
         Set the model repositories for the modelselect widgets in the form.
@@ -246,34 +288,6 @@ class ModelForm():
             if widget_type and widget_type != 'editgrid':
                 self._from_current_item_to_widget_value(field_name, widget_type, widget)
 
-    def _refresh(self) -> None:
-        """
-        Refresh the form by reloading the item from the model and pushing
-        the new values into all rendered widgets.
-        """
-        if self._item_model is None or self._item_key is None:
-            raise ValueError("No adapter set. Use from_adapter(), from_json(), or load() first.")
-        self.load(self._item_model, self._item_key)
-        ui.notify('Form refreshed', color='positive')
-
-    def _save(self) -> None:
-        """
-        Save the current item to the model.
-        """
-        if self._item_model is None or self._item_key is None:
-            raise ValueError("No adapter set. Use from_adapter(), from_json(), or load() first.")
-
-        if self.has_validation_errors():
-            ui.notify('Cannot save form: validation errors present', color='negative')
-            return
-
-        updated = self._item_model.update(self.item, str(self._item_key))
-        if updated is not None and updated is not self._validated_item:
-            self._validated_item = updated
-            self._current_item = updated.model_copy()
-        ui.notify('Form saved', color='positive')
-
-
     def on_change(self, callback: Handler[FieldChangeEventArguments]) -> Self:
         """
         Add a callback to be invoked when the form values change and 
@@ -284,6 +298,7 @@ class ModelForm():
         self._change_handlers.append(callback)
         return self
 
+    # --- widget rendering methods --------------------------------
 
     def _render_select_widget(self, field_name: str, field_info: FieldInfo, kwargs) -> ui.select:
         """
@@ -480,14 +495,20 @@ class ModelForm():
             widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
 
         elif widget_type == 'date':
+            # Prefer the native html date input over NiceGUI/Quasar's date_input because it is more 
+            # lightweight and has better browser support. Unfortunately, it also has a different 
+            # value format (YYYY-MM-DD) which requires custom handling in the form.
             widget = ui.input(**get_kwargs_from_field_info(['label', 'placeholder'])).props('type=date')
+            # widget = ui.date_input(**get_kwargs_from_field_info(['label', 'placeholder']))
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
             widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate(field_name, vce))
             widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
             widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
 
         elif widget_type == 'time':
+            # Discussion see above. Prefer the native html time input over NiceGUI/Quasar.
             widget = ui.input(**get_kwargs_from_field_info(['label', 'placeholder'])).props('type=time').props('step=1')
+            # widget = ui.time_input(**get_kwargs_from_field_info(['label', 'placeholder']))
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
             widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate(field_name, vce))
             widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
@@ -533,7 +554,7 @@ class ModelForm():
             with ui.row().classes('w-full'):
                 if self.title:
                     ui.label(self.title).classes('text-h6')
-                has_adapter = self._item_model is not None
+                has_adapter = self._item_adapter is not None
                 if (self.refresh_button is not None and has_adapter) or (self.save_button is not None and has_adapter):
                     ui.space()
                     with ui.button_group():
@@ -561,6 +582,7 @@ class ModelForm():
 
         return self
 
+    # --- value conversion -----------------------------------------------
 
     def _from_current_item_to_widget_value(self, field_name: str, widget_type: str, widget) -> Self:
         """
@@ -580,7 +602,7 @@ class ModelForm():
         elif type(value) is datetime.datetime:
             tz = ZoneInfo(self.local_tz) if self.local_tz else None
             value = value.astimezone(tz).replace(tzinfo=None).isoformat()
-        
+
         elif widget_type == 'timedelta':
             timedelta_adapter = TypeAdapter(datetime.timedelta)
             value = timedelta_adapter.dump_python(value, mode="json")
@@ -644,6 +666,7 @@ class ModelForm():
 
         setattr(self._current_item, field_name, value)
 
+    # --- validation and event handling -------------------------------------
 
     def _validation_errors(self, field_name: str, value) -> str | None:
         return self._validation_error_messages.get(field_name, None)
@@ -714,7 +737,7 @@ class ModelForm():
         setattr(self._validated_item, field_name, new_value)
 
         # handle autosave (only if a model adapter is set; with from_item the item is already modified in-place)
-        if self.autosave and self._item_model is not None:
+        if self.autosave and self._item_adapter is not None:
             self._save()
 
         # call the change handlers

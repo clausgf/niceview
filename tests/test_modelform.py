@@ -162,7 +162,7 @@ class TestFromAdapter:
         adapter = ListAdapter(User, items)
         key = adapter.key_from_item(items[0])
         form = ModelForm.from_adapter(User, adapter, key)
-        assert form._item_model is adapter
+        assert form._item_adapter is adapter
 
     def test_from_adapter_non_model_type_raises(self):
         items = [User()]

@@ -270,11 +270,12 @@ to verify render output and widget↔model interaction. AgGrid cell content is J
 not inspectable via the `User` fixture; row data is covered by unit tests instead.
 
 
-Accepted Technical Debt
------------------------
+Design decisions and Accepted Technical Debt
+--------------------------------------------
 - **Form navigation / dirty state**: No detection when the user leaves an unsaved form. Options: (a) track dirty state via `on_change` and expose `is_dirty` property; (b) use a JS `beforeunload` guard (requires NiceGUI `ui.run_javascript`). Neither covers in-app navigation — NiceGUI has no built-in route guard.
 - **NiceGUI element lifecycle**: When are elements instantiated, active, deleted? `render()` must be called inside a NiceGUI page context; elements created outside a client context silently fail. No lifecycle hooks for cleanup.
 - **Tests for async dialog flows**: `create_item` / `update_item` / `delete_item` open a NiceGUI dialog (`await dialog`) and cannot be tested without a browser. The CRUD data operations are covered via `_apply_create`, `_apply_update`, `_apply_delete` (unit tests) and the render/button presence via acceptance tests. Full dialog flow testing would require the `Screen` fixture (Playwright-based).
+- Design decision **date/time/datetime**: Use Python data types and HTML native widgets instead of NiceGUI/Quasar widgets with strings.
 
 
 Open Questions / TODO
@@ -285,8 +286,6 @@ Open Questions / TODO
 - NiceView widget support (_FieldInfoInputs/FieldInfo for relevant options, pydantic type, test cases, add to example 2): 
     - slider (alternative to number for int, float)
     - rating
-    - date_input (compare to current solution)
-    - time_input (compare to current solution)
 - EditGridWrapper is not a complete dialog, but the interface needed to edit a collection. The refresh button is the only button to affect the table as a whole (refresh the UI from the model). For collections, we never have a *save* semantics. That to conclude for EditFormWrapper?
   - refresh button possible and makes sense, but already provided by ModelForm
   - save button also provided
