@@ -55,11 +55,11 @@ class AllTypes(pydantic.BaseModel):
         title='Timedelta',
     )
     choice: Literal['red', 'green', 'blue'] = 'green'
-    choice_radio: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.radio')] = 'green'
+    choice_radio: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.radio', props='inline')] = 'green'
     chips: list[str] = pydantic.Field(default_factory=lambda: ['foo', 'bar'], title='Chips (list[str])')
     tags: list[Tag] = pydantic.Field(
         default_factory=lambda: [Tag(label='important')],
-        title='Tags (list[BaseModel])',
+        title='Tags (list[BaseModel] with __str__ method)',
     )
 
 

@@ -312,10 +312,9 @@ class ModelForm():
         if not raw:
             raise ValueError(f"Field {field_name} has no radio_options (or literal_options) defined in FieldInfo")
         options = raw() if callable(raw) else raw
-        with ui.column().classes('gap-0'):
-            if field_info.label:
-                ui.label(field_info.label).classes('text-caption text-grey-7')
-            widget = ui.radio(options).props('inline')
+
+        widget = ui.radio(options)
+
         self._from_current_item_to_widget_value(field_name, 'ui.radio', widget)
         widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate_and_change(field_name, vce))
         return widget
@@ -393,7 +392,10 @@ class ModelForm():
         widget_type = field_info.widget_type
         if not widget_type:
             raise ValueError(f"Widget type for field {field_name} not found in field info")
-        is_simple_widget = True  # whether the widget is a simple widget (e.g. input, number, textarea, checkbox, switch, select)
+        # For nativ NiceGUI wigets, we set the standard properties disable, tooltip, 
+        # classes, style, props after widget creation. Disable the option for custom widgets.
+        # Widget creation still has to handle constructor-only parameters like label, placeholder, ...
+        is_native_widget = True
         widget: Any = None
 
         if widget_type == 'ui.input':
@@ -431,9 +433,11 @@ class ModelForm():
 
         elif widget_type == 'ui.select':
             widget = self._render_select_widget(field_name, field_info, get_kwargs_from_field_info(['label', 'with_input', 'multiple', 'clearable']))
+            # the render method handels validation
 
         elif widget_type == 'ui.radio':
             widget = self._render_radio_widget(field_name, field_info)
+            # for radio, we consider the validation errors irrelevant
 
         elif widget_type == 'ui.input_chips':
             widget = ui.input_chips(**get_kwargs_from_field_info(['label', 'new_value_mode']))
@@ -472,7 +476,7 @@ class ModelForm():
 
         elif widget_type == 'editgrid':
             widget = self._render_editgrid_widget(field_name, field_info)
-            is_simple_widget = False
+            is_native_widget = False
 
         elif widget_type == 'modelselect':
             widget = self._render_modelselect_widget(field_name, field_info, get_kwargs_from_field_info(['label', 'with_input', 'multiple', 'clearable']))
@@ -480,15 +484,17 @@ class ModelForm():
         if not widget:
             raise ValueError(f"Invalid widget class: {widget_type}")
 
-        if is_simple_widget:
+        if is_native_widget:
             if not field_info.editable and hasattr(widget, 'disable') and callable(widget.disable):
                 widget.disable()
             if field_info.tooltip and hasattr(widget, 'tooltip') and callable(widget.tooltip):
                 widget.tooltip(field_info.tooltip)
-
-            widget.classes(self.classes)
-            widget.style(self.style)
-            widget.props(self.props)
+            if field_info.classes and hasattr(widget, 'classes') and callable(widget.classes):
+                widget.classes(field_info.classes)
+            if field_info.style and hasattr(widget, 'style') and callable(widget.style):
+                widget.style(field_info.style)
+            if field_info.props and hasattr(widget, 'props') and callable(widget.props):
+                widget.props(field_info.props)
 
         return widget
 
