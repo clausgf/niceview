@@ -9,8 +9,7 @@ from pydantic import BaseModel
 from nicegui import ui
 from nicegui.events import Handler, ClickEventArguments, ValueChangeEventArguments, handle_event
 
-from nicegui.observables import ObservableList
-from niceview.dataadapter import CollectionAdapter, ListAdapter, JsonListAdapter
+from niceview.dataadapter import CollectionAdapter, ListAdapter, JsonListAdapter, ReactiveAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 
@@ -85,8 +84,6 @@ class ModelGrid:
     _selection_handlers: List[Handler[ValueChangeEventArguments]]
     _cols: list[dict[str, str]]
     _rows: list[dict[str, Any]]
-    _auto_update_registered: bool
-
     widget: ui.aggrid | None = None
     classes: str
     style: str
@@ -124,11 +121,20 @@ class ModelGrid:
         self.defaultColDef = copy(kwargs.pop('defaultColDef', {}))
         self.rowSelection = kwargs.pop('rowSelection', None)
         self.cell_renderers = copy(kwargs.pop('cell_renderers', {}))
+        self._auto_update_registered = False
 
     @classmethod
     def from_list(cls, item_type: type[T], items: list[T], **kwargs: Unpack[_ModelGridOptionInputs]) -> Self:
         """
-        Create an instance from an in-memory list.
+        Create a grid from an in-memory list.
+
+        Pass a plain list for manual control: the grid updates only when update_rows()
+        is called explicitly (e.g. via the EditGridWrapper Refresh button).
+
+        Pass an ObservableList for automatic updates: the grid re-renders whenever
+        the list is mutated structurally (append, delete, replace) without any
+        explicit update_rows() call.
+
         Return type is Self so subclasses (e.g. ModelGridInlineEdit) are returned as their own type.
         """
         data = ListAdapter(item_type, items)
@@ -223,11 +229,10 @@ class ModelGrid:
         self.widget.props(self.props)
         self.widget.on('selectionChanged', self._handle_selection_changed)
 
-        # register auto update of rows when using ObservableList as data source
-        if (not hasattr(self, '_auto_update_registered')
-                and hasattr(self._data, '_items')
-                and isinstance(self._data._items, ObservableList)):
-            self._data._items.on_change(lambda _: self.update_rows())
+        if not self._auto_update_registered and isinstance(self._data, ReactiveAdapter):
+            def _on_data_change() -> None:
+                self.update_rows()
+            self._data.on_change(_on_data_change)
             self._auto_update_registered = True
 
         return self

@@ -44,11 +44,12 @@ class EditGridWrapper():
         self.grid.rowSelection = 'single'
 
         default_edit = None if isinstance(self.grid, ModelGridInlineEdit) else ''
+        default_refresh = ''
         self.title = kwargs.pop('title', f'{self.grid._fields._item_type.__name__} List')
         self.delete_button = kwargs.pop('delete_button', '')
         self.add_button = kwargs.pop('add_button', '')
         self.edit_button = kwargs.pop('edit_button', default_edit)
-        self.refresh_button = kwargs.pop('refresh_button', '')
+        self.refresh_button = kwargs.pop('refresh_button', default_refresh)
 
         self._change_handlers = []
 

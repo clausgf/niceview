@@ -2,7 +2,7 @@ import datetime
 import json
 import logging
 from pathlib import Path
-from typing import Any, Generic, TypeVar, Iterator, Protocol, runtime_checkable
+from typing import Any, Callable, Generic, TypeVar, Iterator, Protocol, runtime_checkable
 from fastapi import HTTPException, status
 from sqlalchemy import Engine
 import pydantic
@@ -29,6 +29,34 @@ class ReloadableAdapter(Protocol):
     def reload(self) -> None: ...
 
 
+@runtime_checkable
+class ReactiveAdapter(Protocol):
+    """Protocol for adapters that support push-based change notification.
+
+    All built-in CollectionAdapters (ListAdapter, JsonListAdapter, SqlModelAdapter)
+    implement this protocol. ModelGrid.render() detects it and registers update_rows()
+    automatically — no explicit call needed after adapter mutations.
+
+    For ListAdapter backed by an ObservableList, direct mutations on the list object
+    (bypassing the adapter) also fire the callback.
+    """
+    def on_change(self, handler: Callable[[], None]) -> None: ...
+
+
+class _ChangeNotifier:
+    """Mixin: callback registry for structural data change notifications."""
+
+    def _init_notifier(self) -> None:
+        self._change_handlers: list[Callable[[], None]] = []
+
+    def on_change(self, handler: Callable[[], None]) -> None:
+        self._change_handlers.append(handler)
+
+    def _notify(self) -> None:
+        for h in self._change_handlers:
+            h()
+
+
 class CollectionAdapter(SingleItemAdapter[T], Protocol):
     """
     Full adapter protocol for list-backed components (ModelGrid, EditGridWrapper).
@@ -44,7 +72,7 @@ class CollectionAdapter(SingleItemAdapter[T], Protocol):
     def query_all_strs(self) -> Iterator[tuple[str, str]]: ...
 
 
-class SqlModelAdapter(CollectionAdapter[T]):
+class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T]):
     """
     An adapter for SQLModel / SQLAlchemy to work with ModelForm and ModelGrid.
 
@@ -65,6 +93,7 @@ class SqlModelAdapter(CollectionAdapter[T]):
         self._engine = engine
         self._key_field = key_field
         self._lock_field = lock_field
+        self._init_notifier()
 
 
     def __iter__(self) -> Iterator[T]:
@@ -113,6 +142,7 @@ class SqlModelAdapter(CollectionAdapter[T]):
             session.commit()
             session.refresh(item)
             item = self._item_type.model_validate(item)
+        self._notify()
         return item
 
 
@@ -163,7 +193,9 @@ class SqlModelAdapter(CollectionAdapter[T]):
             session.add(db_item)
             session.commit()
             session.refresh(db_item)
-            return self._item_type.model_validate(db_item)
+            result = self._item_type.model_validate(db_item)
+        self._notify()
+        return result
 
 
     def delete(self, key: str | int) -> None:
@@ -174,18 +206,33 @@ class SqlModelAdapter(CollectionAdapter[T]):
 
             session.delete(item)
             session.commit()
+        self._notify()
 
 
-class ListAdapter(CollectionAdapter[T]):
+class ListAdapter(_ChangeNotifier, CollectionAdapter[T]):
     """
     An adapter for an in-memory list.
 
     Keys are the Python object identity (id()) of each item expressed as a string,
     so keys remain stable after deletions (no index shifting).
+
+    Implements ReactiveAdapter: on_change() handlers fire after every structural
+    mutation via the adapter (create/update/delete). When the backing list is an
+    ObservableList, direct mutations on the list object (bypassing the adapter)
+    also fire the handlers — useful for integrating with NiceGUI's reactive primitives.
     """
     def __init__(self, item_type: type[T], items: list[T]) -> None:
         self._item_type = item_type
         self._items = items
+        self._init_notifier()
+        self._in_mutation = False
+        from nicegui.observables import ObservableList
+        if isinstance(items, ObservableList):
+            items.on_change(self._on_observable_change)
+
+    def _on_observable_change(self, _: Any = None) -> None:
+        if not self._in_mutation:
+            self._notify()
 
     def __iter__(self) -> Iterator[T]:
         return iter(self._items)
@@ -210,18 +257,33 @@ class ListAdapter(CollectionAdapter[T]):
     def create(self, item: T) -> T:
         if not isinstance(item, self._item_type):
             raise TypeError(f"Expected item to be an instance of {self._item_type}, got {type(item)}")
-        self._items.append(item)
+        self._in_mutation = True
+        try:
+            self._items.append(item)
+        finally:
+            self._in_mutation = False
+        self._notify()
         return item
 
     def read(self, key: str | int) -> T:
         return self._items[self._find_index(key)]
 
     def update(self, item: T, key: str) -> T:
-        self._items[self._find_index(key)] = item
+        self._in_mutation = True
+        try:
+            self._items[self._find_index(key)] = item
+        finally:
+            self._in_mutation = False
+        self._notify()
         return item
 
     def delete(self, key: str) -> None:
-        del self._items[self._find_index(key)]
+        self._in_mutation = True
+        try:
+            del self._items[self._find_index(key)]
+        finally:
+            self._in_mutation = False
+        self._notify()
 
 
 class JsonAdapter(SingleItemAdapter[T]):

@@ -14,3 +14,4 @@ uv run python examples/01_form_basic.py
 | 05 | `05_grid.py` | `ModelGrid` (read-only), `ModelGridInlineEdit`, JSON backend | in-memory + JSON |
 | 06 | `06_edit_wrapper.py` | `EditGridWrapper` and `EditFormWrapper` (Add / Edit / Delete dialogs) | in-memory |
 | 07 | `07_sqlmodel.py` | `SqlModelAdapter` with two related SQLModel tables | SQLite |
+| 08 | `08_reactive_grid.py` | Reactive grids: adapter mutations auto-update the grid; ObservableList also catches direct list mutations | in-memory |

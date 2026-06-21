@@ -122,6 +122,85 @@ class TestListAdapterDelete:
         assert self.adapter.read(key_c).name == 'c'
 
 
+class TestListAdapterReactive:
+    def test_on_change_fires_on_create_with_plain_list(self):
+        adapter = ListAdapter(Item, [])
+        called: list[bool] = []
+        adapter.on_change(lambda: called.append(True))
+        adapter.create(Item(name='x'))
+        assert called == [True]
+
+    def test_on_change_fires_on_delete_with_plain_list(self):
+        item = Item(name='x')
+        adapter = ListAdapter(Item, [item])
+        called: list[bool] = []
+        adapter.on_change(lambda: called.append(True))
+        adapter.delete(adapter.key_from_item(item))
+        assert called == [True]
+
+    def test_on_change_fires_on_update_with_plain_list(self):
+        item = Item(name='x')
+        adapter = ListAdapter(Item, [item])
+        called: list[bool] = []
+        adapter.on_change(lambda: called.append(True))
+        adapter.update(Item(name='y'), adapter.key_from_item(item))
+        assert called == [True]
+
+    def test_on_change_fires_on_create_with_observable_list(self):
+        from nicegui.observables import ObservableList
+        adapter = ListAdapter(Item, ObservableList([]))
+        called: list[bool] = []
+        adapter.on_change(lambda: called.append(True))
+        adapter.create(Item(name='x'))
+        assert called == [True]
+
+    def test_on_change_fires_on_delete_with_observable_list(self):
+        from nicegui.observables import ObservableList
+        item = Item(name='x')
+        adapter = ListAdapter(Item, ObservableList([item]))
+        called: list[bool] = []
+        adapter.on_change(lambda: called.append(True))
+        adapter.delete(adapter.key_from_item(item))
+        assert called == [True]
+
+    def test_on_change_fires_on_update_with_observable_list(self):
+        from nicegui.observables import ObservableList
+        item = Item(name='x')
+        adapter = ListAdapter(Item, ObservableList([item]))
+        called: list[bool] = []
+        adapter.on_change(lambda: called.append(True))
+        adapter.update(Item(name='y'), adapter.key_from_item(item))
+        assert called == [True]
+
+    def test_on_change_no_double_fire_with_observable_list(self):
+        from nicegui.observables import ObservableList
+        adapter = ListAdapter(Item, ObservableList([]))
+        called: list[bool] = []
+        adapter.on_change(lambda: called.append(True))
+        adapter.create(Item(name='x'))
+        assert called == [True]  # exactly once, not twice
+
+    def test_on_change_fires_on_direct_observable_list_mutation(self):
+        from nicegui.observables import ObservableList
+        obs: ObservableList = ObservableList([])
+        adapter = ListAdapter(Item, obs)
+        called: list[bool] = []
+        adapter.on_change(lambda: called.append(True))
+        obs.append(Item(name='direct'))  # bypass adapter
+        assert called == [True]
+
+    def test_isinstance_reactive_adapter_with_observable_list(self):
+        from nicegui.observables import ObservableList
+        from niceview.dataadapter import ReactiveAdapter
+        adapter = ListAdapter(Item, ObservableList([]))
+        assert isinstance(adapter, ReactiveAdapter)
+
+    def test_isinstance_reactive_adapter_with_plain_list(self):
+        from niceview.dataadapter import ReactiveAdapter
+        adapter = ListAdapter(Item, [])
+        assert isinstance(adapter, ReactiveAdapter)
+
+
 class TestListAdapterKeys:
     def setup_method(self):
         self.items = [Item(name='a'), Item(name='b')]
@@ -694,3 +773,36 @@ class TestSqlModelAdapterKeys:
     def test_key_from_str_non_int_string(self, engine):
         adapter = SqlModelAdapter(DbItem, engine)
         assert adapter.key_from_str('abc') == 'abc'
+
+
+class TestSqlModelAdapterReactive:
+    def test_on_change_fires_on_create(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        called: list[bool] = []
+        adapter.on_change(lambda: called.append(True))
+        adapter.create(DbItem(name='x'))
+        assert called == [True]
+
+    def test_on_change_fires_on_update(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        item = adapter.create(DbItem(name='old'))
+        key = adapter.key_from_item(item)
+        called: list[bool] = []
+        adapter.on_change(lambda: called.append(True))
+        item.name = 'new'
+        adapter.update(item, key)
+        assert called == [True]
+
+    def test_on_change_fires_on_delete(self, engine):
+        adapter = SqlModelAdapter(DbItem, engine)
+        item = adapter.create(DbItem(name='del'))
+        key = adapter.key_from_item(item)
+        called: list[bool] = []
+        adapter.on_change(lambda: called.append(True))
+        adapter.delete(key)
+        assert called == [True]
+
+    def test_isinstance_reactive_adapter(self, engine):
+        from niceview.dataadapter import ReactiveAdapter
+        adapter = SqlModelAdapter(DbItem, engine)
+        assert isinstance(adapter, ReactiveAdapter)

@@ -149,7 +149,7 @@ or let the `from_*` factory methods create them transparently.
 
 | Adapter | Backs | Description |
 |---|---|---|
-| `ListAdapter(Type, list)` | Grid, Form | In-memory list |
+| `ListAdapter(Type, list)` | Grid | In-memory list |
 | `JsonAdapter(Type, path)` | Form | Single object in a JSON file |
 | `JsonListAdapter(Type, path)` | Grid | List of objects in a JSON file |
 | `SqlModelAdapter(Type, engine)` | Grid, Form | SQLModel / SQLAlchemy table |
@@ -163,7 +163,44 @@ All JSON adapters write atomically (`.tmp` → rename).
 |---|---|---|
 | `SingleItemAdapter[T]` | `read()`, `update()` | `ModelForm` |
 | `ReloadableAdapter` | `reload()` | `EditGridWrapper` (Refresh button) |
+| `ReactiveAdapter` | `on_change(handler)` | `ModelGrid` (auto-update) |
 | `CollectionAdapter[T]` | extends `SingleItemAdapter` + `__iter__`, `create`, `delete`, `key_from_item`, `key_from_str`, `query_all_strs` | `ModelGrid`, `EditGridWrapper` |
+
+**Reactive updates**
+
+All built-in adapters implement `ReactiveAdapter` via the `_ChangeNotifier` mixin.
+`ModelGrid.render()` detects this and registers `update_rows()` automatically, so
+structural mutations through the adapter (create / update / delete) refresh the grid
+without any manual call — for in-memory lists, JSON files, and SQL databases alike.
+
+What is **not** caught automatically: in-place attribute changes on existing items
+(`item.name = 'new'`). These bypass the adapter entirely. Use `grid.update_rows()`
+or the `EditGridWrapper` Refresh button for that case.
+
+```python
+# Adapter mutations → grid auto-updates (all adapter types)
+adapter = ListAdapter(User, items)
+grid = ModelGridInlineEdit.from_adapter(User, adapter)
+grid.render()
+adapter.create(User(name='Carol'))   # grid refreshes automatically
+adapter.delete(key)                  # grid refreshes automatically
+
+# In-place attribute change → manual refresh needed
+items[0].name = 'new name'
+grid.update_rows()                   # must call explicitly
+```
+
+**ObservableList** additionally catches direct mutations on the list object that
+bypass the adapter — useful when non-NiceView code appends to the same list:
+
+```python
+from nicegui.observables import ObservableList
+
+obs = ObservableList([User(name='Alice')])
+grid = ModelGrid.from_list(User, obs)
+grid.render()
+obs.append(User(name='Bob'))   # also triggers update_rows(), no adapter call needed
+```
 
 ```python
 from niceview.dataadapter import SqlModelAdapter
@@ -241,7 +278,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 250 tests (234 unit + 16 acceptance)
+uv run pytest          # 275 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 
@@ -282,7 +319,6 @@ Open Questions / TODO
 ---------------------
 - **ReloadableAdapter rethink**: why do we need it? who uses it? Are there more consistent implementations (optional protocol methods?)?
 - Styling/Layout: We can modify the string labels e.g. for the refresh button. Is it possible to give a configured ui.element or ui.button? Do we need a css class for all refresh buttons? Quasar? Alternatives?
-- rethink bindings and observables; keep updates to a minimum
 - NiceView widget support (_FieldInfoInputs/FieldInfo for relevant options, pydantic type, test cases, add to example 2): 
     - slider (alternative to number for int, float)
     - rating
@@ -297,5 +333,4 @@ Open Questions / TODO
 - Collections: allow querying specific subsets
 - Collections: analyze efficiency, caching, paging
 - Already fixed??? **Inline EditGridWrapper grid not refreshing**: When a `list[BaseModel]` field is rendered as an inline `EditGridWrapper` inside a `ModelForm`, Create/Edit/Delete dialogs work but the AgGrid table may not visually update afterwards. (See example 02, `tags` field.) Standalone `EditGridWrapper` (example 06) uses `widget.update()` which triggers a full grid recreate on the client.
-- **Support binding in tables**: Two-way sync between grid rows and the in-memory model (no manual `update_rows()` needed).
 - **Support dataclasses**: In addition to Pydantic models.
