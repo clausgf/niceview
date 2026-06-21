@@ -186,7 +186,8 @@ class ListAdapter(CollectionAdapter[T]):
     """
     def __init__(self, item_type: type[T], items: list[T]) -> None:
         self._item_type = item_type
-        self._items: ObservableList = items if isinstance(items, ObservableList) else ObservableList(items)
+        #self._items: ObservableList = items if isinstance(items, ObservableList) else ObservableList(items)
+        self._items = items
 
     def __iter__(self) -> Iterator[T]:
         return iter(self._items)

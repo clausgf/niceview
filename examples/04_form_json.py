@@ -53,8 +53,11 @@ def page():
 
     with ui.row().classes('w-full items-start gap-4'):
         with ui.card().classes('flex-1'):
-            ui.label('Autosave').classes('text-h6')
-            ModelForm.from_json(AppConfig, AUTOSAVE_PATH, autosave=True, classes='w-full').render()
+            ModelForm.from_json(AppConfig, AUTOSAVE_PATH, 
+                                title='Edit JSON (autosaves on change)',
+                                autosave=True, 
+                                classes='w-full'
+                                ).render()
 
         with ui.card().classes('flex-1'):
             ui.label(f'JSON — {AUTOSAVE_PATH.name}').classes('text-h6')
@@ -62,10 +65,10 @@ def page():
 
     with ui.row().classes('w-full items-start gap-4 mt-4'):
         with ui.card().classes('flex-1'):
-            ui.label('Save / Refresh buttons').classes('text-h6')
             ModelForm.from_json(
                 AppConfig, BUTTONS_PATH,
-                save_button='Save', refresh_button='Refresh',
+                title='Edit JSON (uses Save / Refresh buttons)',
+                save_button='', refresh_button='',
                 classes='w-full',
             ).render()
 

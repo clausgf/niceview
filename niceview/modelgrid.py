@@ -86,6 +86,7 @@ class ModelGrid:
     _selection_handlers: List[Handler[ValueChangeEventArguments]]
     _cols: list[dict[str, str]]
     _rows: list[dict[str, Any]]
+    _auto_update_registered: bool
 
     widget: ui.aggrid | None = None
     classes: str
@@ -223,6 +224,7 @@ class ModelGrid:
         self.widget.props(self.props)
         self.widget.on('selectionChanged', self._handle_selection_changed)
 
+        # register auto update of rows when using ObservableList as data source
         if (not hasattr(self, '_auto_update_registered')
                 and hasattr(self._data, '_items')
                 and isinstance(self._data._items, ObservableList)):

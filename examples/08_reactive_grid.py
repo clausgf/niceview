@@ -6,16 +6,21 @@ by an **ObservableList**.
 
 | | Plain `list` | `ObservableList` |
 |---|---|---|
-| Add / change **via adapter** | auto-updates grid ✓ | auto-updates grid ✓ |
+| Add / change **via adapter** | grid stays stale ✗ | auto-updates grid ✓ |
 | Add / change **directly** on the original list | grid stays stale ✗ | auto-updates grid ✓ |
+| Change item attributes (e.g. `done`) | grid stays stale ✗ | grid stays stale ✗ |
+| Grid edit (e.g. toggle `done`) | updates original list ✓ | updates original list ✓ |
 
-`ListAdapter` always wraps its input in an `ObservableList` internally. When the input
-is already an `ObservableList`, the adapter uses **the same object**, so direct mutations
-on the original list propagate immediately to the grid without any explicit `update_rows()`.
+If you create a grid usign `from_list`, the list adapter is created internally.
+
+When the input is already an `ObservableList`, the adapter uses **the same object**, so direct mutations
+on the original list propagate immediately to the grid. `update_rows()` or the refresh button always update the grid.
 """
 # Allows running without prior install. With uv: `uv run python examples/<file>.py`.
 import sys
 from pathlib import Path
+
+from niceview.modeledit import EditGridWrapper
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pydantic
@@ -23,7 +28,7 @@ from nicegui import ui
 from nicegui.observables import ObservableList
 
 from niceview.dataadapter import ListAdapter
-from niceview.modelgrid import ModelGrid
+from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
 
 
 class Task(pydantic.BaseModel):
@@ -35,7 +40,7 @@ class Task(pydantic.BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Section A: plain list
+# Section A: plain list via ListAdapter
 #   plain_adapter._items is a NEW ObservableList — a copy of plain_tasks.
 #   Direct mutations on plain_tasks are invisible to the adapter and the grid.
 # ---------------------------------------------------------------------------
@@ -58,92 +63,105 @@ obs_tasks: ObservableList = ObservableList([
 obs_adapter = ListAdapter(Task, obs_tasks)
 
 
-def _fmt(original: list, adapter_items: list) -> str:
-    if original is adapter_items:
-        lines = [f"original list = adapter._items ({type(original).__name__}, {len(original)} items):"]
-        lines += [f"  {r!r}" for r in original]
-    else:
-        lines = [f"original list ({type(original).__name__}, {len(original)} items):"]
-        lines += [f"  {r!r}" for r in original]
-        lines += ['', f"adapter._items (ObservableList, {len(adapter_items)} items):"]
-        lines += [f"  {r!r}" for r in adapter_items]
+_blink_on = False
+
+def _fmt(original: list) -> str:
+    global _blink_on
+    _blink_on = not _blink_on
+    blink = '*' if _blink_on else ' '
+
+    lines = [f"{blink} original list = adapter._items ({type(original).__name__}, {len(original)} items)"]
+    lines += [f"  {r!r}" for r in original]
     return '\n'.join(lines)
 
 
 @ui.page('/')
 def page():
-    ui.markdown(__doc__ or '')
-    ui.separator()
+    with ui.tabs().classes('w-full') as tabs:
+        tab_home = ui.tab('Documentation')
+        tab_plain_list = ui.tab('Plain List')
+        tab_observablelist = ui.tab('ObservableList')
 
-    # --- A: plain list ---
-    with ui.card().classes('w-full'):
-        ui.label('A — Plain list').classes('text-h6')
-        ui.markdown(
-            'The adapter copies the plain list into an internal `ObservableList`. '
-            'Adapter CRUD auto-updates the grid; direct mutations to the original list do **not**.'
-        )
+    with ui.tab_panels(tabs, value=tab_home).classes('w-full') as panels:
 
-        grid_a = ModelGrid.from_adapter(Task, plain_adapter, classes='w-full')
-        grid_a.render()
+        with ui.tab_panel(tab_home):
+            ui.markdown(__doc__ or '')
 
-        code_a = ui.code(_fmt(plain_tasks, plain_adapter._items)).classes('w-full')
+        with ui.tab_panel(tab_plain_list):
 
-        def add_via_plain_adapter():
-            n = len(list(plain_adapter._items)) + 1
-            plain_adapter.create(Task(title=f'Task A{n} (via adapter)'))
-            code_a.set_content(_fmt(plain_tasks, plain_adapter._items))
+            # --- A: plain list ---
+            with ui.card().classes('w-full'):
+                ui.markdown(
+                    '**Plain list**: '
+                    'Adapter CRUD auto-updates the grid; direct mutations to the original list do **not** propagate.'
+                )
 
-        def add_to_plain_list():
-            n = len(plain_tasks) + 1
-            plain_tasks.append(Task(title=f'Task A{n} (direct — grid not updated!)'))
-            code_a.set_content(_fmt(plain_tasks, plain_adapter._items))
+                wrapper_a = EditGridWrapper(
+                    ModelGridInlineEdit.from_adapter(Task, plain_adapter, classes='w-full'),
+                    title='Tasks (Plain List)',
+                )
+                wrapper_a.render()
 
-        def toggle_first_plain():
-            if plain_tasks:
-                plain_tasks[0].done = not plain_tasks[0].done
-                grid_a.update_rows()  # explicit call needed: item attribute change ≠ list change
-                code_a.set_content(_fmt(plain_tasks, plain_adapter._items))
+                code_a = ui.code(_fmt(plain_tasks)).classes('w-full')
+                ui.timer(1, lambda: code_a.set_content(_fmt(plain_tasks)))
 
-        with ui.row():
-            ui.button('Add via adapter (auto-update)', on_click=add_via_plain_adapter)
-            ui.button('Add to original list (no grid update)', on_click=add_to_plain_list).props('color=warning')
-            ui.button('Toggle first item (explicit update_rows)', on_click=toggle_first_plain).props('color=secondary')
+                def add_via_plain_adapter():
+                    n = len(list(plain_adapter._items)) + 1
+                    plain_adapter.create(Task(title=f'Task A{n} (via adapter)'))
 
-    ui.separator()
+                def add_to_plain_list():
+                    n = len(plain_tasks) + 1
+                    plain_tasks.append(Task(title=f'Task A{n} (direct — grid not updated!)'))
 
-    # --- B: ObservableList ---
-    with ui.card().classes('w-full'):
-        ui.label('B — ObservableList').classes('text-h6')
-        ui.markdown(
-            'The adapter receives an `ObservableList` and uses it directly. '
-            'Both adapter CRUD **and** direct mutations to `obs_tasks` auto-update the grid.'
-        )
+                def toggle_first_plain():
+                    if plain_tasks:
+                        plain_tasks[0].done = not plain_tasks[0].done
 
-        grid_b = ModelGrid.from_adapter(Task, obs_adapter, classes='w-full')
-        grid_b.render()
+                with ui.row():
+                    ui.button('update_rows', on_click=wrapper_a.grid.update_rows).props('color=positive')
+                    ui.button('Add via adapter (no grid update)', on_click=add_via_plain_adapter)
+                    ui.button('Direct add to list (no grid update)', on_click=add_to_plain_list).props('color=secondary')
+                    ui.button('Toggle first item (no grid update)', on_click=toggle_first_plain).props('color=accent')
 
-        code_b = ui.code(_fmt(obs_tasks, obs_tasks)).classes('w-full')
+        with ui.tab_panel(tab_observablelist):
 
-        obs_tasks.on_change(lambda _: code_b.set_content(_fmt(obs_tasks, obs_tasks)))
+            # --- B: ObservableList ---
+            with ui.card().classes('w-full'):
+                ui.markdown(
+                    '**ObservableList**: '
+                    'Both adapter CRUD **and** direct mutations to `obs_tasks` auto-update the grid. '
+                    'Direct changes to list items, however, still require `update_rows()` or the refresh button.'
+                )
 
-        def add_via_obs_adapter():
-            n = len(obs_tasks) + 1
-            obs_adapter.create(Task(title=f'Task B{n} (via adapter)'))
+                wrapper_b = EditGridWrapper(
+                    ModelGridInlineEdit.from_adapter(Task, obs_adapter, classes='w-full'),
+                    title='Tasks (ObservableList)',
+                )
+                wrapper_b.render()
 
-        def add_to_obs_list():
-            n = len(obs_tasks) + 1
-            obs_tasks.append(Task(title=f'Task B{n} (direct — also auto-updates!)'))
+                code_b = ui.code(_fmt(obs_tasks)).classes('w-full')
+                ui.timer(1, lambda: code_b.set_content(_fmt(obs_tasks)))
 
-        def toggle_first_obs():
-            if obs_tasks:
-                obs_tasks[0].done = not obs_tasks[0].done
-                grid_b.update_rows()  # still needed: attribute change ≠ list change
-                code_b.set_content(_fmt(obs_tasks, obs_tasks))
+                obs_tasks.on_change(lambda _: code_b.set_content(_fmt(obs_tasks)))
 
-        with ui.row():
-            ui.button('Add via adapter (auto-update)', on_click=add_via_obs_adapter)
-            ui.button('Add to ObservableList (auto-update)', on_click=add_to_obs_list).props('color=positive')
-            ui.button('Toggle first item (explicit update_rows)', on_click=toggle_first_obs).props('color=secondary')
+                def add_via_obs_adapter():
+                    n = len(obs_tasks) + 1
+                    obs_adapter.create(Task(title=f'Task B{n} (via adapter)'))
+
+                def add_to_obs_list():
+                    n = len(obs_tasks) + 1
+                    obs_tasks.append(Task(title=f'Task B{n} (direct — also auto-updates!)'))
+
+                def toggle_first_obs():
+                    if obs_tasks:
+                        obs_tasks[0].done = not obs_tasks[0].done
+                        #wrapper_b.grid.update_rows()  # still needed: attribute change ≠ list change
+
+                with ui.row():
+                    ui.button('update_rows', on_click=wrapper_b.grid.update_rows).props('color=positive')
+                    ui.button('Add via adapter (auto-update)', on_click=add_via_obs_adapter)
+                    ui.button('Add to ObservableList (auto-update)', on_click=add_to_obs_list).props('color=positive')
+                    ui.button('Toggle first item (no grid update)', on_click=toggle_first_obs).props('color=secondary')
 
 
 ui.run(title='08 — Reactive Grid')
