@@ -16,9 +16,12 @@ _FIELD_INFO_KWARGS = set(_FieldInfoInputs.__annotations__.keys())
 
 def _merge_field_infos(base: FieldInfo, override: FieldInfo) -> FieldInfo:
     """Return a new FieldInfo with base values overridden by explicitly set values from override."""
-    base_dict = {k: getattr(base, k) for k in _FIELD_INFO_KWARGS if hasattr(base, k)}
-    override_dict = {k: v for k, v in vars(override).items() if k in _FIELD_INFO_KWARGS}
-    return FieldInfo(**{**base_dict, **override_dict})
+    merged = FieldInfo()
+    merged.__dict__.update(base.__dict__)  # copy all instance attrs incl. field_type, literal_options, etc.
+    for k, v in vars(override).items():
+        if k in _FIELD_INFO_KWARGS:
+            setattr(merged, k, v)
+    return merged
 
 
 class Fields(typing.Mapping[str, FieldInfo]):

@@ -1,11 +1,9 @@
 from dataclasses import dataclass
 import datetime
-from enum import StrEnum
 from typing import Any, List, Literal, Self, Unpack
 import typing
 from pathlib import Path
 from zoneinfo import ZoneInfo
-from sqlalchemy import Enum
 import typing_extensions
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
@@ -65,7 +63,7 @@ class ModelForm():
     _item_adapter: SingleItemAdapter | None
     _item_key: str | int | None
     _model_repositories: dict[str, CollectionAdapter]
-    _change_handler: Handler[FieldChangeEventArguments]
+    _change_handlers: list[Handler[FieldChangeEventArguments]]
 
     _fields: Fields
     _current_item: BaseModel | None

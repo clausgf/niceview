@@ -7,7 +7,6 @@ from fastapi import HTTPException, status
 from sqlalchemy import Engine
 import pydantic
 import sqlmodel
-from nicegui.observables import ObservableList
 
 log = logging.getLogger('niceview')
 
@@ -186,7 +185,6 @@ class ListAdapter(CollectionAdapter[T]):
     """
     def __init__(self, item_type: type[T], items: list[T]) -> None:
         self._item_type = item_type
-        #self._items: ObservableList = items if isinstance(items, ObservableList) else ObservableList(items)
         self._items = items
 
     def __iter__(self) -> Iterator[T]:

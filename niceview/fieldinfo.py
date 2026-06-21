@@ -159,7 +159,7 @@ class FieldInfo():
     table_align: Literal['left', 'center', 'right'] | None = None
     table_cell_style: str = ''
     table_sortable: bool = True
-    table_sort: Literal[None, 'asc', 'dsc'] | None = None
+    table_sort: Literal[None, 'asc', 'desc'] | None = None
     table_filterable: bool = True
     table_floating_filter: bool = False
     aggrid_type: str | None = None

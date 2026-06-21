@@ -19,8 +19,6 @@ on the original list propagate immediately to the grid. `update_rows()` or the r
 # Allows running without prior install. With uv: `uv run python examples/<file>.py`.
 import sys
 from pathlib import Path
-
-from niceview.modeledit import EditGridWrapper
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pydantic
@@ -28,7 +26,8 @@ from nicegui import ui
 from nicegui.observables import ObservableList
 
 from niceview.dataadapter import ListAdapter
-from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
+from niceview.modelgrid import ModelGridInlineEdit
+from niceview.modeledit import EditGridWrapper
 
 
 class Task(pydantic.BaseModel):
@@ -93,7 +92,7 @@ def page():
             with ui.card().classes('w-full'):
                 ui.markdown(
                     '**Plain list**: '
-                    'Adapter CRUD auto-updates the grid; direct mutations to the original list do **not** propagate.'
+                    'Adapter CRUD or direct mutations to the original list do **not** propagate.'
                 )
 
                 wrapper_a = EditGridWrapper(
@@ -142,8 +141,6 @@ def page():
                 code_b = ui.code(_fmt(obs_tasks)).classes('w-full')
                 ui.timer(1, lambda: code_b.set_content(_fmt(obs_tasks)))
 
-                obs_tasks.on_change(lambda _: code_b.set_content(_fmt(obs_tasks)))
-
                 def add_via_obs_adapter():
                     n = len(obs_tasks) + 1
                     obs_adapter.create(Task(title=f'Task B{n} (via adapter)'))
@@ -160,8 +157,8 @@ def page():
                 with ui.row():
                     ui.button('update_rows', on_click=wrapper_b.grid.update_rows).props('color=positive')
                     ui.button('Add via adapter (auto-update)', on_click=add_via_obs_adapter)
-                    ui.button('Add to ObservableList (auto-update)', on_click=add_to_obs_list).props('color=positive')
-                    ui.button('Toggle first item (no grid update)', on_click=toggle_first_obs).props('color=secondary')
+                    ui.button('Add to ObservableList (auto-update)', on_click=add_to_obs_list).props('color=secondary')
+                    ui.button('Toggle first item (no grid update)', on_click=toggle_first_obs).props('color=accent')
 
 
 ui.run(title='08 — Reactive Grid')

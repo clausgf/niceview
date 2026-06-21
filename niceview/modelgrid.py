@@ -80,7 +80,6 @@ class ModelGrid:
     """
     A AgGrid class that can be used to create tables for Pydantic models.
     """
-    #_items: Iterable
     _fields: Fields
     _data: CollectionAdapter
     _selection_handlers: List[Handler[ValueChangeEventArguments]]
