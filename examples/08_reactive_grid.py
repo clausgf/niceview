@@ -6,7 +6,7 @@ by an **ObservableList**.
 
 | | Plain `list` | `ObservableList` |
 |---|---|---|
-| Add / change **via adapter** | grid stays stale ✗ | auto-updates grid ✓ |
+| Add / change **via adapter** | auto-updates grid ✓ | auto-updates grid ✓ |
 | Add / change **directly** on the original list | grid stays stale ✗ | auto-updates grid ✓ |
 | Change item attributes (e.g. `done`) | grid stays stale ✗ | grid stays stale ✗ |
 | Grid edit (e.g. toggle `done`) | updates original list ✓ | updates original list ✓ |
@@ -19,6 +19,7 @@ on the original list propagate immediately to the grid. `update_rows()` or the r
 # Allows running without prior install. With uv: `uv run python examples/<file>.py`.
 import sys
 from pathlib import Path
+from time import time
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pydantic
@@ -63,10 +64,13 @@ obs_adapter = ListAdapter(Task, obs_tasks)
 
 
 _blink_on = False
+_last_blink_time = time()
 
 def _fmt(original: list) -> str:
-    global _blink_on
-    _blink_on = not _blink_on
+    global _blink_on, _last_blink_time
+    if (time() - _last_blink_time) > 0.5:
+        _blink_on = not _blink_on
+        _last_blink_time = time()
     blink = '*' if _blink_on else ' '
 
     lines = [f"{blink} original list = adapter._items ({type(original).__name__}, {len(original)} items)"]
@@ -92,7 +96,7 @@ def page():
             with ui.card().classes('w-full'):
                 ui.markdown(
                     '**Plain list**: '
-                    'Adapter CRUD or direct mutations to the original list do **not** propagate.'
+                    'Adapter CRUD mutations probagate, but direct mutations to the original list do **not**.'
                 )
 
                 wrapper_a = EditGridWrapper(
@@ -118,7 +122,7 @@ def page():
 
                 with ui.row():
                     ui.button('update_rows', on_click=wrapper_a.grid.update_rows).props('color=positive')
-                    ui.button('Add via adapter (no grid update)', on_click=add_via_plain_adapter)
+                    ui.button('Add via adapter (auto-update)', on_click=add_via_plain_adapter)
                     ui.button('Direct add to list (no grid update)', on_click=add_to_plain_list).props('color=secondary')
                     ui.button('Toggle first item (no grid update)', on_click=toggle_first_plain).props('color=accent')
 
