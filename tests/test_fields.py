@@ -260,6 +260,40 @@ class TestMetaClass:
 
 
 # ---------------------------------------------------------------------------
+# Merge preserves framework-internal attributes (field_type, literal_options)
+# ---------------------------------------------------------------------------
+
+class LiteralMetaModel(pydantic.BaseModel):
+    color: Literal['red', 'green', 'blue'] = 'red'
+
+    class Meta:
+        field_info = {
+            'color': FieldInfo(widget_type='ui.radio'),
+        }
+
+
+class TestMergePreservesInternalAttrs:
+    def test_literal_options_preserved_after_meta_override(self):
+        # Regression: _merge_field_infos used to lose literal_options because it is
+        # not in _FIELD_INFO_KWARGS and was not copied from the base FieldInfo.
+        fields = Fields(LiteralMetaModel)
+        assert fields['color'].literal_options == ['red', 'green', 'blue']
+
+    def test_literal_options_preserved_after_field_infos_kwarg(self):
+        fields = Fields(LiteralModel, field_infos={'color': FieldInfo(widget_type='ui.radio')})
+        assert fields['color'].literal_options == ['red', 'green', 'blue']
+
+    def test_field_type_preserved_after_meta_override(self):
+        fields = Fields(MetaModel, field_infos={'name': FieldInfo(label='Full Name')})
+        assert fields['name'].field_type == str
+
+    def test_field_type_preserved_after_field_infos_kwarg(self):
+        # field_type is also framework-internal and was lost in the same bug
+        fields = Fields(SimpleModel, field_infos={'age': FieldInfo(label='Age')})
+        assert fields['age'].field_type == int
+
+
+# ---------------------------------------------------------------------------
 # Mapping protocol
 # ---------------------------------------------------------------------------
 
