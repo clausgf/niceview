@@ -13,8 +13,8 @@ Features shown:
 
 The database is re-created on every run.
 
-Pages: `/` → Authors grid, `/authors/{id}` → edit author,
-`/books` → Books grid, `/books/{id}` → edit book
+Pages: [`/` → Authors grid](/), [`/authors/{id}` → Edit Author](/authors/1),
+[`/books` → Books grid](/books), [`/books/{id}` → Edit Book](/books/1)
 """
 # Allows running without prior install. With uv: `uv run python examples/<file>.py`.
 import sys
@@ -35,6 +35,7 @@ from niceview.modelgrid import ModelGrid
 from niceview.modeledit import EditFormWrapper, EditGridWrapper
 
 log = logging.getLogger('niceview-example')
+logging.getLogger('niceview').setLevel(logging.DEBUG)
 
 
 def _now():
@@ -47,6 +48,10 @@ class Author(sqlmodel.SQLModel, table=True):
     email: str = sqlmodel.Field(max_length=100, title='Email')
     books: list['Book'] = sqlmodel.Relationship(back_populates='author')
     updated_at: Annotated[datetime.datetime, sqlmodel.Field(default_factory=_now), niceview.Field(hidden=True)]
+
+    class Meta:
+        # provide field order because SQLModel doesn't preserve declaration order
+        field_order = ['name', 'email', 'books']
 
     def __str__(self):
         return self.name
@@ -64,6 +69,7 @@ class Book(sqlmodel.SQLModel, table=True):
         field_info = {
             'author': niceview.Field(label='Author', tooltip='Select the author of this book'),
         }
+        field_order = ['title', 'author']  # partial field order, with remaining field at the end
 
     def __str__(self):
         return self.title
@@ -117,12 +123,17 @@ engine = sqlmodel.create_engine(f'sqlite:///{DB_PATH}')
 sqlmodel.SQLModel.metadata.create_all(engine)
 
 with sqlmodel.Session(engine) as session:
-    author = Author(name='Jane Doe', email='jane@example.com')
-    session.add(author)
+    author1 = Author(name='Jane Doe', email='jane@example.com')
+    session.add(author1)
     session.commit()
-    session.refresh(author)
-    session.add(Book(title="Jane's First Book", author=author))  # type: ignore
-    session.add(Book(title="Jane's Second Book", author=author, published=datetime.date(2023, 6, 1)))  # type: ignore
+    session.refresh(author1)
+    session.add(Book(title="Jane's First Book", author=author1))  # type: ignore
+    session.add(Book(title="Jane's Second Book", author=author1, published=datetime.date(2023, 6, 1)))  # type: ignore
+    author2 = Author(name='John Smith', email='john@example.com')
+    session.add(author2)
+    session.commit()
+    session.refresh(author2)
+    session.add(Book(title="John's Only Book", author=author2))  # type: ignore
     session.commit()
 
 ui.run(title='07 — SQLModel')

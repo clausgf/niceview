@@ -317,20 +317,16 @@ Design decisions and Accepted Technical Debt
 
 Open Questions / TODO
 ---------------------
-- **ReloadableAdapter rethink**: why do we need it? who uses it? Are there more consistent implementations (optional protocol methods?)?
-- Styling/Layout: We can modify the string labels e.g. for the refresh button. Is it possible to give a configured ui.element or ui.button? Do we need a css class for all refresh buttons? Quasar? Alternatives?
 - NiceView widget support (_FieldInfoInputs/FieldInfo for relevant options, pydantic type, test cases, add to example 2): 
     - slider (alternative to number for int, float)
     - rating
 - EditGridWrapper is not a complete dialog, but the interface needed to edit a collection. The refresh button is the only button to affect the table as a whole (refresh the UI from the model). For collections, we never have a *save* semantics. That to conclude for EditFormWrapper?
   - refresh button possible and makes sense, but already provided by ModelForm
   - save button also provided
-- provide examples and tests for tables with edit buttons
 - provide examples and tests for nested data structures
 - display collections in a responsive card grid in addition got grid/table
 - **Context-specific layouts**: How to render the same Pydantic model differently in different forms or grids (different fields, labels, widgets, order)? `include`/`exclude` covers simple filtering; `field_infos={}` allows per-call overrides but requires repetition. Options to decide between: (A) named profiles in `Meta` (`profile='summary'`), (B) Pydantic model subclasses with their own `Meta`, (C) explicit layout classes à la Django's `ModelForm`. Need to decide which fits NiceView's design best.
 - provide optional search and filtering mechanims to the tables
 - Collections: allow querying specific subsets
 - Collections: analyze efficiency, caching, paging
-- Already fixed??? **Inline EditGridWrapper grid not refreshing**: When a `list[BaseModel]` field is rendered as an inline `EditGridWrapper` inside a `ModelForm`, Create/Edit/Delete dialogs work but the AgGrid table may not visually update afterwards. (See example 02, `tags` field.) Standalone `EditGridWrapper` (example 06) uses `widget.update()` which triggers a full grid recreate on the client.
 - **Support dataclasses**: In addition to Pydantic models.

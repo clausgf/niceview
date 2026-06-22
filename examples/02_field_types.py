@@ -17,6 +17,8 @@ One form showing all field types supported by NiceView:
 | `list[str]` | `ui.input_chips` |
 | `list[int]`, `list[float]`, `list[bool]` | `ui.input` |
 | `list[BaseModel]` | Inline `EditGridWrapper` |
+
+This example also demonstrates how to customize the widgets, layout and style via `niceview.Field` metadata, ui.grid() and `ElementFilter`.
 """
 # Allows running without prior install. With uv: `uv run python examples/<file>.py`.
 import sys
@@ -26,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import datetime
 from typing import Annotated, Literal
 import pydantic
-from nicegui import ui
+from nicegui import ElementFilter, ui
 
 import niceview
 from niceview.modelform import ModelForm
@@ -40,12 +42,12 @@ class Tag(pydantic.BaseModel):
 
 
 class AllTypes(pydantic.BaseModel):
-    text: str = pydantic.Field(default='hello', title='Text (str)')
-    text_area: Annotated[str, niceview.Field(widget_type='ui.textarea', label='Text area (str)')] = 'hello\nworld'
-    number_int: int = pydantic.Field(default=42, ge=0, le=1000, title='Integer')
+    text: str = pydantic.Field(default='hello', title='String')
+    text_area: Annotated[str, niceview.Field(widget_type='ui.textarea', label='String in Textarea')] = 'hello\nworld'
+    number_int: int = pydantic.Field(default=42, ge=0, le=1000, title='Integer (0-1000)')
     number_float: float = pydantic.Field(default=3.14, title='Float')
-    flag_switch: bool = pydantic.Field(default=True, title='Bool (switch)')
-    flag_checkbox: Annotated[bool, pydantic.Field(title='Bool (checkbox)'), niceview.Field(widget_type='ui.checkbox')] = False
+    flag_switch: bool = pydantic.Field(default=True, title='Bool')
+    flag_checkbox: Annotated[bool, pydantic.Field(title='Bool in Checkbox'), niceview.Field(widget_type='ui.checkbox')] = False
     date: datetime.date = pydantic.Field(default_factory=datetime.date.today, title='Date')
     time: datetime.time = pydantic.Field(default_factory=lambda: datetime.time(9, 0), title='Time')
     dt: datetime.datetime = pydantic.Field(
@@ -56,23 +58,36 @@ class AllTypes(pydantic.BaseModel):
         default_factory=lambda: datetime.timedelta(hours=1, minutes=30),
         title='Timedelta',
     )
-    choice: Literal['red', 'green', 'blue'] = 'green'
+    choice: Literal['red', 'green', 'blue'] = 'green' # label and widget are auto-detected from the Literal type
     choice_radio: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.radio', props='inline')] = 'green'
     choice_toggle: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.toggle')] = 'green'
     color: Annotated[str, niceview.Field(widget_type='ui.color_input', label='Color', color_preview=True)] = '#4a90e2'
     chips: list[str] = pydantic.Field(default_factory=lambda: ['foo', 'bar'], title='Chips (list[str])')
     tags: list[Tag] = pydantic.Field(
         default_factory=lambda: [Tag(label='important')],
-        title='Tags (list[BaseModel] with __str__ method)',
+        title='Tags (list of BaseModel with __str__ method)',
     )
-
 
 @ui.page('/')
 def page():
-    ui.markdown(__doc__ or '')
-    ui.separator()
-    with ui.card().classes('w-full'):
-        ModelForm.from_item(AllTypes(), classes='w-full').render()
+    # Styling example: make all inputs outlined and dense
+    #app.colors(primary='#800000)
+    #ui.input.default_props('outlined dense')
 
+    with ui.tabs().classes('w-full') as tabs:
+        tab_home = ui.tab('Documentation')
+        tab_all_types = ui.tab('All Types')
+
+    with ui.tab_panels(tabs, value=tab_home).classes('w-full') as panels:
+
+        with ui.tab_panel(tab_home):
+            ui.markdown(__doc__ or '')
+
+        with ui.tab_panel(tab_all_types):
+            with ui.grid().classes('w-full gap-4 grid-cols-1 lg:grid-cols-2').mark('my-form'):
+                ModelForm.from_item(AllTypes()).render()
+
+    # Styling example: make all my-form elements outlined and dense
+    ElementFilter().within(marker='my-form').props('outlined dense')
 
 ui.run(title='02 — Field Types')

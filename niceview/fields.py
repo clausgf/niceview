@@ -48,6 +48,7 @@ class Fields(typing.Mapping[str, FieldInfo]):
     def is_included(self, field_name: str) -> bool:
         """
         Check if the field is included (and not excluded) in the fields.
+        Exclude private fields (starting with '_') by default.
         """
         if field_name.startswith('_'):
             return False
@@ -124,6 +125,18 @@ class Fields(typing.Mapping[str, FieldInfo]):
             else:
                 log.debug(f"{self._item_type.__name__}.{field_name} type={field_type} has no additional info")
 
+        # apply Meta.field_order if present
+        meta = getattr(self._item_type, 'Meta', None)
+        field_order: list[str] | None = getattr(meta, 'field_order', None) if meta is not None else None
+        if field_order is not None:
+            unknown = [f for f in field_order if f not in self._field_infos]
+            if unknown:
+                raise ValueError(f"Meta.field_order contains unknown field(s) for '{self._item_type.__name__}': {unknown}")
+            ordered = [f for f in field_order if f in self._field_names]
+            remaining = [f for f in self._field_names if f not in set(field_order)]
+            self._field_names = ordered + remaining
+            log.debug(f"{self._item_type.__name__}: field_order applied -> {self._field_names}")
+
 
     def _label_from_name(self, name: str) -> str:
         """
@@ -134,8 +147,10 @@ class Fields(typing.Mapping[str, FieldInfo]):
 
     def _field_info_from_pydantic(self, field_name: str, py_field_info: pydantic.fields.FieldInfo) -> FieldInfo:
         """
-        Create a field info for the given field name.
+        Create a field info for the given field name for pydantic based fields.
         """
+        log.debug(f"_field_info_from_pydantic: {field_name=} annotation={py_field_info.annotation} metadata={py_field_info.metadata}")
+
         field_type = py_field_info.annotation
         if field_type is None:
             raise ValueError(f"Field '{field_name}' has no type annotation")
@@ -147,29 +162,37 @@ class Fields(typing.Mapping[str, FieldInfo]):
                 nv_field_info = i
         if nv_field_info is None:
             nv_field_info = FieldInfo()
+        log.debug(f"_field_info_from_pydantic: {field_name=} nv_field_info from metadata: {vars(nv_field_info)}")
 
         nv_field_info.field_type = field_type
 
         # always extract Literal args so render methods can use them as fallback
         if typing.get_origin(field_type) == typing.Literal:
             nv_field_info.literal_options = list(typing.get_args(field_type))
+            log.debug(f"_field_info_from_pydantic: {field_name=} Literal options: {nv_field_info.literal_options}")
 
         # determine widget type from field type
         if nv_field_info.widget_type is None:
             # remove the Optional from a type
             if typing.get_origin(field_type) is typing.Union:
                 # if the field type is a Union, get the first non-None type
-                union_types = next((t for t in typing.get_args(field_type) if t is not type(None)), None)
-                if len(union_types) == 1: # type: ignore
-                    field_type = union_types[0] # type: ignore
+                #union_types = next((t for t in typing.get_args(field_type) if t is not type(None)), None)
+                union_types = [t for t in typing.get_args(field_type) if t is not type(None)]
+                if len(union_types) == 1:
+                    field_type = union_types[0]
+                    log.debug(f"_field_info_from_pydantic: {field_name=} unwrapped Optional -> {field_type}")
+                else:
+                    log.warning(f"Field '{field_name}' has a Union type with multiple non-None types, cannot determine widget type: {field_type=} {union_types=}")
 
             if field_type in self._widget_lookup:
                 nv_field_info.widget_type = self._widget_lookup[field_type] # type: ignore
+                log.debug(f"_field_info_from_pydantic: {field_name=} widget_type from lookup: {nv_field_info.widget_type}")
 
             elif typing.get_origin(field_type) == typing.Literal:
                 nv_field_info.widget_type = 'ui.select'
                 if nv_field_info.select_options is None:
                     nv_field_info.select_options = list(typing.get_args(field_type))
+                log.debug(f"_field_info_from_pydantic: {field_name=} widget_type=ui.select select_options={nv_field_info.select_options}")
 
             elif typing.get_origin(field_type) == list:
                 if nv_field_info.item_type is None:
@@ -187,9 +210,14 @@ class Fields(typing.Mapping[str, FieldInfo]):
                     nv_field_info.widget_type = 'ui.input_chips'
                 else:
                     nv_field_info.widget_type = 'ui.input'
+                log.debug(f"_field_info_from_pydantic: {field_name=} list field -> widget_type={nv_field_info.widget_type} item_type={nv_field_info.item_type}")
 
             else:
                 nv_field_info.widget_type = 'ui.input'  # default widget type if not specified
+                log.debug(f"_field_info_from_pydantic: {field_name=} unrecognised type {field_type}, defaulting widget_type=ui.input")
+
+        else:
+            log.debug(f"_field_info_from_pydantic: {field_name=} widget_type already set: {nv_field_info.widget_type}")
 
         # merge regular field info with FieldInfo
         if not nv_field_info.label and py_field_info.title:
@@ -216,7 +244,8 @@ class Fields(typing.Mapping[str, FieldInfo]):
                     nv_field_info.max = float(constraint.le)  # type: ignore[arg-type]
                 if nv_field_info.step is None and isinstance(constraint, annotated_types.MultipleOf):
                     nv_field_info.step = float(constraint.multiple_of)  # type: ignore[arg-type]
-        
+
+        log.debug(f"_field_info_from_pydantic: {field_name=} result: widget_type={nv_field_info.widget_type} label={nv_field_info.label!r} required={nv_field_info.required} min={nv_field_info.min} max={nv_field_info.max} step={nv_field_info.step}")
         return nv_field_info
     
 

@@ -17,14 +17,15 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import json
+from time import time
 import pydantic
 from typing import Literal
 from nicegui import ui
 from niceview.dataadapter import ListAdapter
 from niceview.modelform import ModelForm
-from niceview.modelgrid import ModelGrid
+from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
 from niceview.modeledit import EditGridWrapper, EditFormWrapper
+
 
 class Task(pydantic.BaseModel):
     title: str = pydantic.Field(default='', min_length=1, max_length=40, title='Title')
@@ -40,29 +41,53 @@ tasks = [
 ]
 
 
+_blink_on = False
+_last_blink_time = time()
+
+def _fmt(original: list) -> str:
+    global _blink_on, _last_blink_time
+    if (time() - _last_blink_time) > 0.5:
+        _blink_on = not _blink_on
+        _last_blink_time = time()
+    blink = '*' if _blink_on else ' '
+
+    lines = [f"{blink} {type(original).__name__} ({len(original)} items)"]
+    lines += [f"  {r!r}" for r in original]
+    return '\n'.join(lines)
+
+
 @ui.page('/')
 def page():
     ui.markdown(__doc__ or '')
     ui.separator()
 
     with ui.card().classes('w-full'):
-        ui.label('EditGridWrapper').classes('text-h6')
         wrapper = EditGridWrapper(
             ModelGrid.from_list(Task, tasks),
-            title='Tasks',
+            title='Tasks (EditGridWrapper with default buttons and dialogs)',
         )
         wrapper.render()
-        data_grid = ui.code(str(tasks)).classes('w-full')
-        wrapper.on_change(lambda e: data_grid.set_content(str(tasks)))
 
     with ui.card().classes('w-full'):
-        ui.label('EditFormWrapper').classes('text-h6')
-        adapter = ListAdapter(Task, tasks)
-        key = adapter.key_from_item(tasks[0])
-        form = ModelForm.from_adapter(Task, adapter, key, classes='w-96')
-        EditFormWrapper(form).render()
-        data_form = ui.code(str(t1)).classes('w-full')
-        form.on_change(lambda e: data_form.set_content(str(t1)))
+        ui.label('EditGridWrapper').classes('text-h6')
+        wrapper = EditGridWrapper(
+            ModelGridInlineEdit.from_list(Task, tasks),
+            title='Tasks (EditGridWrapper with inline editing)',
+        )
+        wrapper.render()
+    
+    with ui.card().classes('w-full'):
+        code_b = ui.code(_fmt(tasks)).classes('w-full')
+        ui.timer(1, lambda: code_b.set_content(_fmt(tasks)))
+
+    # with ui.card().classes('w-full'):
+    #     ui.label('EditFormWrapper').classes('text-h6')
+    #     adapter = ListAdapter(Task, tasks)
+    #     key = adapter.key_from_item(tasks[0])
+    #     form = ModelForm.from_adapter(Task, adapter, key, classes='w-96')
+    #     EditFormWrapper(form).render()
+    #     data_form = ui.code(str(t1)).classes('w-full')
+    #     form.on_change(lambda e: data_form.set_content(str(t1)))
 
 
 ui.run(title='06 — Edit Wrappers')
