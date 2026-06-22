@@ -298,7 +298,7 @@ class ModelForm():
 
     # --- widget rendering methods --------------------------------
 
-    def _render_select_widget(self, field_name: str, field_info: FieldInfo, kwargs) -> ui.select:
+    def _render_select_widget(self, field_name: str, field_info: FieldInfo, kwargs, value_widget_type: str = 'ui.select') -> ui.select:
         """
         Render a select widget for the given field name and field info.
         The select options are determined by the field info.
@@ -310,7 +310,7 @@ class ModelForm():
 
         widget = ui.select(**kwargs)
 
-        self._from_current_item_to_widget_value(field_name, 'ui.select', widget)
+        self._from_current_item_to_widget_value(field_name, value_widget_type, widget)
         widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate_and_change(field_name, vce))
         widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
         return widget
@@ -362,7 +362,7 @@ class ModelForm():
             raise ValueError(f"Model repository for {field_info.item_type} not found in form's model repositories")
 
         field_info.select_options = dict(self._model_repositories[field_info.item_type.__name__].query_all_strs())
-        widget = self._render_select_widget(field_name, field_info, kwargs)
+        widget = self._render_select_widget(field_name, field_info, kwargs, value_widget_type='modelselect')
         return widget
 
 
@@ -595,7 +595,7 @@ class ModelForm():
             repository = self._model_repositories[item_type.__name__]
             if not repository:
                 raise ValueError(f"Model repository for {item_type.__name__} not found in form's model repositories")
-            value = repository.key_from_item(value)
+            value = repository.key_from_item(value) if value is not None else None
 
         elif type(value) is datetime.datetime:
             tz = ZoneInfo(self.local_tz) if self.local_tz else None
@@ -660,7 +660,15 @@ class ModelForm():
             repository = self._model_repositories[item_type.__name__]
             if not repository:
                 raise ValueError(f"Model repository for {item_type.__name__} not found in form's model repositories")
-            value = repository.read(value)
+            value = repository.read(value) if value is not None else None
+            # Sync FK field (e.g. author -> author_id) so pydantic validation sees the selection.
+            # Do NOT also set the relationship attribute: SQLAlchemy would cascade-insert the
+            # detached related instance, violating UNIQUE constraints on the related table.
+            fk_field = f'{field_name}_id'
+            if fk_field in getattr(type(self._current_item), 'model_fields', {}):
+                fk_val = repository.key_from_str(repository.key_from_item(value)) if value is not None else None
+                setattr(self._current_item, fk_field, fk_val)
+                return  # FK synced; skip setting the relationship object
 
         setattr(self._current_item, field_name, value)
 

@@ -114,16 +114,16 @@ class Fields(typing.Mapping[str, FieldInfo]):
                     if isinstance(fi, FieldInfo):
                         self._field_infos[field_name] = _merge_field_infos(self._field_infos[field_name], fi)
                     else:
-                        raise ValueError(f"Invalid field info in Meta class for field '{field_name}': {field_info}")
+                        raise ValueError(f"Fields(): Invalid field info in Meta class for field '{field_name}': {field_info}")
 
             # overwrite field info gathered so far with the FieldInfo provided
             if field_name in field_infos:
                 self._field_infos[field_name] = _merge_field_infos(self._field_infos[field_name], field_infos[field_name])
 
             if field_name in self._field_infos:
-                log.debug(f"{self._item_type.__name__}.{field_name} type={field_type} FieldInfo={self._field_infos[field_name]}")
+                log.debug(f"Fields(): {self._item_type.__name__}.{field_name} type={field_type} FieldInfo={self._field_infos[field_name]}")
             else:
-                log.debug(f"{self._item_type.__name__}.{field_name} type={field_type} has no additional info")
+                log.debug(f"Fields(): {self._item_type.__name__}.{field_name} type={field_type} has no additional info")
 
         # apply Meta.field_order if present
         meta = getattr(self._item_type, 'Meta', None)
@@ -135,7 +135,7 @@ class Fields(typing.Mapping[str, FieldInfo]):
             ordered = [f for f in field_order if f in self._field_names]
             remaining = [f for f in self._field_names if f not in set(field_order)]
             self._field_names = ordered + remaining
-            log.debug(f"{self._item_type.__name__}: field_order applied -> {self._field_names}")
+            log.debug(f"Fields(): {self._item_type.__name__}: field_order applied -> {self._field_names}")
 
 
     def _label_from_name(self, name: str) -> str:
@@ -149,11 +149,11 @@ class Fields(typing.Mapping[str, FieldInfo]):
         """
         Create a field info for the given field name for pydantic based fields.
         """
-        log.debug(f"_field_info_from_pydantic: {field_name=} annotation={py_field_info.annotation} metadata={py_field_info.metadata}")
+        log.debug(f"Fields._field_info_from_pydantic: {field_name=} annotation={py_field_info.annotation} metadata={py_field_info.metadata}")
 
         field_type = py_field_info.annotation
         if field_type is None:
-            raise ValueError(f"Field '{field_name}' has no type annotation")
+            raise ValueError(f"Fields._field_info_from_pydantic: Field '{field_name}' has no type annotation")
 
         # check for FieldInfo annotation
         nv_field_info = None
@@ -162,14 +162,13 @@ class Fields(typing.Mapping[str, FieldInfo]):
                 nv_field_info = i
         if nv_field_info is None:
             nv_field_info = FieldInfo()
-        log.debug(f"_field_info_from_pydantic: {field_name=} nv_field_info from metadata: {vars(nv_field_info)}")
 
         nv_field_info.field_type = field_type
 
         # always extract Literal args so render methods can use them as fallback
         if typing.get_origin(field_type) == typing.Literal:
             nv_field_info.literal_options = list(typing.get_args(field_type))
-            log.debug(f"_field_info_from_pydantic: {field_name=} Literal options: {nv_field_info.literal_options}")
+            log.debug(f"Fields._field_info_from_pydantic: {field_name=} Literal options: {nv_field_info.literal_options}")
 
         # determine widget type from field type
         if nv_field_info.widget_type is None:
@@ -180,19 +179,19 @@ class Fields(typing.Mapping[str, FieldInfo]):
                 union_types = [t for t in typing.get_args(field_type) if t is not type(None)]
                 if len(union_types) == 1:
                     field_type = union_types[0]
-                    log.debug(f"_field_info_from_pydantic: {field_name=} unwrapped Optional -> {field_type}")
+                    log.debug(f"Fields._field_info_from_pydantic: {field_name=} unwrapped Optional -> {field_type}")
                 else:
-                    log.warning(f"Field '{field_name}' has a Union type with multiple non-None types, cannot determine widget type: {field_type=} {union_types=}")
+                    log.warning(f"Fields._field_info_from_pydantic: Field '{field_name}' has a Union type with multiple non-None types, cannot determine widget type: {field_type=} {union_types=}")
 
             if field_type in self._widget_lookup:
                 nv_field_info.widget_type = self._widget_lookup[field_type] # type: ignore
-                log.debug(f"_field_info_from_pydantic: {field_name=} widget_type from lookup: {nv_field_info.widget_type}")
+                log.debug(f"Fields._field_info_from_pydantic: {field_name=} widget_type from lookup: {nv_field_info.widget_type}")
 
             elif typing.get_origin(field_type) == typing.Literal:
                 nv_field_info.widget_type = 'ui.select'
                 if nv_field_info.select_options is None:
                     nv_field_info.select_options = list(typing.get_args(field_type))
-                log.debug(f"_field_info_from_pydantic: {field_name=} widget_type=ui.select select_options={nv_field_info.select_options}")
+                log.debug(f"Fields._field_info_from_pydantic: {field_name=} widget_type=ui.select select_options={nv_field_info.select_options}")
 
             elif typing.get_origin(field_type) == list:
                 if nv_field_info.item_type is None:
@@ -203,21 +202,18 @@ class Fields(typing.Mapping[str, FieldInfo]):
                             nv_field_info.item_type = arg
                             break
                 if nv_field_info.item_type is None:
-                    raise ValueError(f"Field '{field_name}' is a list but no item type is specified in FieldInfo or as a pydantic model type")
+                    raise ValueError(f"Fields._field_info_from_pydantic: Field '{field_name}' is a list but no item type is specified in FieldInfo or as a pydantic model type")
                 elif issubclass(nv_field_info.item_type, pydantic.BaseModel):
                     nv_field_info.widget_type = 'editgrid'
                 elif issubclass(nv_field_info.item_type, str):
                     nv_field_info.widget_type = 'ui.input_chips'
                 else:
                     nv_field_info.widget_type = 'ui.input'
-                log.debug(f"_field_info_from_pydantic: {field_name=} list field -> widget_type={nv_field_info.widget_type} item_type={nv_field_info.item_type}")
+                log.debug(f"Fields._field_info_from_pydantic: {field_name=} list field -> widget_type={nv_field_info.widget_type} item_type={nv_field_info.item_type}")
 
             else:
                 nv_field_info.widget_type = 'ui.input'  # default widget type if not specified
-                log.debug(f"_field_info_from_pydantic: {field_name=} unrecognised type {field_type}, defaulting widget_type=ui.input")
-
-        else:
-            log.debug(f"_field_info_from_pydantic: {field_name=} widget_type already set: {nv_field_info.widget_type}")
+                log.debug(f"Fields._field_info_from_pydantic: {field_name=} unrecognised type {field_type}, defaulting widget_type=ui.input")
 
         # merge regular field info with FieldInfo
         if not nv_field_info.label and py_field_info.title:
@@ -245,7 +241,7 @@ class Fields(typing.Mapping[str, FieldInfo]):
                 if nv_field_info.step is None and isinstance(constraint, annotated_types.MultipleOf):
                     nv_field_info.step = float(constraint.multiple_of)  # type: ignore[arg-type]
 
-        log.debug(f"_field_info_from_pydantic: {field_name=} result: widget_type={nv_field_info.widget_type} label={nv_field_info.label!r} required={nv_field_info.required} min={nv_field_info.min} max={nv_field_info.max} step={nv_field_info.step}")
+        log.debug(f"Fields._field_info_from_pydantic: {field_name=} result: widget_type={nv_field_info.widget_type} label={nv_field_info.label!r} required={nv_field_info.required} min={nv_field_info.min} max={nv_field_info.max} step={nv_field_info.step}")
         return nv_field_info
     
 
@@ -269,7 +265,7 @@ class Fields(typing.Mapping[str, FieldInfo]):
             if rel_origin and rel_origin == list and rel_args:
                 # list of relationships (one-to-many or many-to-many)
                 if len(rel_args) != 1:
-                    raise ValueError(f"Field '{field_name}' is a list but has more than one type specified in FieldInfo or as a pydantic model type")
+                    raise ValueError(f"_field_info_from_sqlmodel: Field '{field_name}' is a list but has more than one type specified in FieldInfo or as a pydantic model type")
                 other_type = rel_args[0]
                 # normalize other_type
                 if isinstance(other_type, str):
@@ -286,11 +282,11 @@ class Fields(typing.Mapping[str, FieldInfo]):
                             mod = importlib.import_module(module)
                             resolved_type = getattr(mod, other_type, None)
                     if resolved_type is None or not isinstance(resolved_type, type):
-                        raise ValueError(f"Cannot resolve type '{other_type}' for field '{field_name}'")
+                        raise ValueError(f"Fields._field_info_from_sqlmodel: Cannot resolve type '{other_type}' for field '{field_name}'")
                     other_type = resolved_type
-                log.debug(f"Resolving sqlmodel {other_type=} (MRO: {getattr(other_type, '__mro__', None)})")
+                log.debug(f"Fields._field_info_from_sqlmodel: Resolving sqlmodel {other_type=} (MRO: {getattr(other_type, '__mro__', None)})")
                 if other_type is None or not issubclass(other_type, pydantic.BaseModel):
-                    raise ValueError(f"Field '{field_name}' is a list but no item type is specified in FieldInfo or as a pydantic model type")
+                    raise ValueError(f"Fields._field_info_from_sqlmodel: Field '{field_name}' is a list but no item type is specified in FieldInfo or as a pydantic model type")
                 # create a FieldInfo for an editgrid
                 field_info = FieldInfo(
                     label=self._label_from_name(field_name),
@@ -348,22 +344,41 @@ class Fields(typing.Mapping[str, FieldInfo]):
         field_error_lists: dict[str, list[str]] = {}
         nonfield_errors: list[str] = []
         try:
-            # validate the model
             self._item_type.model_validate(model_dict)
         except pydantic.ValidationError as e:
             for error in e.errors():
-                error_was_handled = False
-                # check if the error can be attributed to a known field
+                msg = error['msg']
+                attributed = False
+
+                # First pass: find a visible (non-hidden) field in the error location
                 for loc in error['loc']:
-                    if loc in self._field_names:
-                        field_name = loc
-                        if field_name not in field_error_lists:
-                            field_error_lists[field_name] = []
-                        field_error_lists[field_name].append(error['msg'])
-                        error_was_handled = True
-                if not error_was_handled:
-                    # if the error cannot be attributed to a known field, it is a non-field error
-                    nonfield_errors.append(error['msg'])
+                    if not isinstance(loc, str) or loc not in self._field_names:
+                        continue
+                    if not self._field_infos[loc].hidden:
+                        field_error_lists.setdefault(loc, []).append(msg)
+                        attributed = True
+                        break
+
+                if not attributed:
+                    # Second pass: find a hidden field, redirect FK errors to the visible relationship field
+                    for loc in error['loc']:
+                        if not isinstance(loc, str) or loc not in self._field_names:
+                            continue
+                        fi = self._field_infos[loc]
+                        if not fi.hidden:
+                            continue
+                        # e.g. author_id -> author
+                        base = loc.removesuffix('_id') if loc.endswith('_id') else None
+                        if base and base in self._field_names and not self._field_infos[base].hidden:
+                            field_error_lists.setdefault(base, []).append(msg)
+                        else:
+                            nonfield_errors.append(f"{fi.label or loc}: {msg}")
+                        attributed = True
+                        break
+
+                if not attributed:
+                    nonfield_errors.append(msg)
+
         field_errors: dict[str, str] = {k: ', '.join(v) for k, v in field_error_lists.items()}
         return field_errors, nonfield_errors
 

@@ -317,6 +317,8 @@ Design decisions and Accepted Technical Debt
 
 Open Questions / TODO
 ---------------------
+- ModelForm: Do we still need classes, style and props? Are the styling options form example 2 sufficient?
+- In addition to the dialog-based flow for editing tables and form, we could implement a more drill-down like interface. Which look&feel? Iphone-like? Breadcrumbs? Support more than one "flow" (dialogs, drill-down), ...
 - NiceView widget support (_FieldInfoInputs/FieldInfo for relevant options, pydantic type, test cases, add to example 2): 
     - slider (alternative to number for int, float)
     - rating

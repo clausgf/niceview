@@ -44,7 +44,7 @@ def _now():
 
 class Author(sqlmodel.SQLModel, table=True):
     id: Annotated[int | None, sqlmodel.Field(default=None, primary_key=True), niceview.Field(hidden=True)]
-    name: str = sqlmodel.Field(max_length=40, title='Name')
+    name: str = sqlmodel.Field(min_length=2, max_length=40, title='Name')
     email: str = sqlmodel.Field(max_length=100, title='Email')
     books: list['Book'] = sqlmodel.Relationship(back_populates='author')
     updated_at: Annotated[datetime.datetime, sqlmodel.Field(default_factory=_now), niceview.Field(hidden=True)]
@@ -59,7 +59,7 @@ class Author(sqlmodel.SQLModel, table=True):
 
 class Book(sqlmodel.SQLModel, table=True):
     id: Annotated[int | None, sqlmodel.Field(default=None, primary_key=True), niceview.Field(hidden=True)]
-    title: str = sqlmodel.Field(max_length=100, title='Title')
+    title: str = sqlmodel.Field(min_length=2, max_length=100, title='Title')
     published: datetime.date = sqlmodel.Field(default_factory=datetime.date.today, title='Published')
     author_id: Annotated[int, sqlmodel.Field(foreign_key='author.id'), niceview.Field(hidden=True)]
     author: Author = sqlmodel.Relationship(back_populates='books')
@@ -81,7 +81,7 @@ def authors_page():
     ui.separator()
     ui.label('Authors').classes('text-h5')
     authors = SqlModelAdapter(Author, engine)
-    EditGridWrapper(ModelGrid(Author, authors), title='Authors', refresh_button='').render()
+    EditGridWrapper(ModelGrid(Author, authors), title='Authors').render()
     ui.button('→ Books', on_click=lambda: ui.navigate.to('/books')).props('flat')
 
 
@@ -97,8 +97,11 @@ def author_edit_page(author_id: int):
 @ui.page('/books')
 def books_page():
     books = SqlModelAdapter(Book, engine)
+    authors = SqlModelAdapter(Author, engine)
     ui.label('Books').classes('text-h5')
-    EditGridWrapper(ModelGrid(Book, books), title='Books', refresh_button='').render()
+    wrapper = EditGridWrapper(ModelGrid(Book, books), title='Books')
+    wrapper.set_model_repositories({Author.__name__: authors})
+    wrapper.render()
     ui.button('← Authors', on_click=lambda: ui.navigate.to('/')).props('flat')
 
 

@@ -36,6 +36,7 @@ class EditGridWrapper():
     refresh_button: str | None
 
     _change_handlers: list[Handler[TableItemEventArguments]]
+    _model_repositories: dict[str, CollectionAdapter]
 
     def __init__(self, grid: ModelGrid, **kwargs: Unpack[_EditGridWrapperInputs]) -> None:
         self.grid = grid
@@ -52,6 +53,13 @@ class EditGridWrapper():
         self.refresh_button = kwargs.pop('refresh_button', default_refresh)
 
         self._change_handlers = []
+        self._model_repositories = {}
+
+
+    def set_model_repositories(self, repositories: dict[str, CollectionAdapter]) -> Self:
+        """Set model repositories used for modelselect widgets in create/edit dialogs."""
+        self._model_repositories = repositories
+        return self
 
 
     def on_change(self, callback: Handler[TableItemEventArguments]) -> Self:
@@ -208,6 +216,8 @@ class EditGridWrapper():
         Default edit handler that shows a dialog to edit the item.
         """
         form = ModelForm.from_item(item, classes='w-full')
+        if self._model_repositories:
+            form.set_model_repositories(self._model_repositories)
 
         def confirm():
             if form.has_validation_errors():
