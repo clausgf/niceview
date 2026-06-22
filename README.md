@@ -261,7 +261,10 @@ class User(pydantic.BaseModel):
         field_info = {
             'secret': niceview.Field(hidden=True),
         }
+        field_order = ['name', 'secret']   # explicit display order
 ```
+
+`Meta.field_order` is a list of field names that sets the display order. Fields not listed are appended at the end in their natural order. This is especially useful for SQLModel table classes, which do not guarantee declaration order.
 
 Key `FieldInfo` options: `label`, `placeholder`, `tooltip`, `hidden`, `editable`, `widget_type`, `min`, `max`, `classes`, `select_options`.
 
@@ -278,7 +281,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 275 tests
+uv run pytest          # 289 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 

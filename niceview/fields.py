@@ -1,5 +1,6 @@
 import datetime
 import logging
+import types
 import typing
 
 import annotated_types
@@ -173,8 +174,8 @@ class Fields(typing.Mapping[str, FieldInfo]):
 
         # determine widget type from field type
         if nv_field_info.widget_type is None:
-            # remove the Optional from a type
-            if typing.get_origin(field_type) is typing.Union:
+            # remove the Optional from a type — handles both typing.Union and int | None (types.UnionType)
+            if typing.get_origin(field_type) is typing.Union or isinstance(field_type, types.UnionType):
                 # if the field type is a Union, get the first non-None type
                 #union_types = next((t for t in typing.get_args(field_type) if t is not type(None)), None)
                 union_types = [t for t in typing.get_args(field_type) if t is not type(None)]

@@ -260,6 +260,69 @@ class TestMetaClass:
 
 
 # ---------------------------------------------------------------------------
+# Meta.field_order
+# ---------------------------------------------------------------------------
+
+class OrderedModel(pydantic.BaseModel):
+    a: str = ''
+    b: str = ''
+    c: str = ''
+
+    class Meta:
+        field_order = ['c', 'a', 'b']
+
+
+class PartialOrderModel(pydantic.BaseModel):
+    a: str = ''
+    b: str = ''
+    c: str = ''
+
+    class Meta:
+        field_order = ['c', 'a']
+
+
+class TestMetaFieldOrder:
+    def test_full_reorder(self):
+        fields = Fields(OrderedModel)
+        assert list(fields) == ['c', 'a', 'b']
+
+    def test_partial_order_remaining_appended(self):
+        fields = Fields(PartialOrderModel)
+        assert list(fields) == ['c', 'a', 'b']
+
+    def test_unknown_field_raises(self):
+        class BadOrderModel(pydantic.BaseModel):
+            x: str = ''
+            class Meta:
+                field_order = ['x', 'nonexistent']
+        with pytest.raises(ValueError, match='nonexistent'):
+            Fields(BadOrderModel)
+
+    def test_no_field_order_preserves_declaration_order(self):
+        fields = Fields(SimpleModel, include=['name', 'age'])
+        assert list(fields) == ['name', 'age']
+
+
+# ---------------------------------------------------------------------------
+# Optional / Union unwrapping
+# ---------------------------------------------------------------------------
+
+class OptionalModel(pydantic.BaseModel):
+    value: int | None = None
+    name: str | None = None
+
+
+class TestOptionalUnwrapping:
+    def test_optional_int_gets_number_widget(self):
+        fields = Fields(OptionalModel)
+        assert fields['value'].widget_type == 'ui.number'
+
+    def test_optional_str_gets_input_widget(self):
+        fields = Fields(OptionalModel)
+        assert fields['name'].widget_type == 'ui.input'
+
+
+# ---------------------------------------------------------------------------
 # Merge preserves framework-internal attributes (field_type, literal_options)
 # ---------------------------------------------------------------------------
 
