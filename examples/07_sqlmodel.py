@@ -88,7 +88,7 @@ def authors_page():
 def author_edit_page(author_id: int):
     authors = SqlModelAdapter(Author, engine)
     with ui.card().classes('w-full max-w-lg'):
-        EditFormWrapper.from_adapter(Author, authors, author_id, title='Edit Author', classes='w-full').render()
+        EditFormWrapper.from_adapter(Author, authors, str(author_id), title='Edit Author', classes='w-full').render()
     ui.button('← Back', on_click=lambda: ui.navigate.to('/')).props('flat')
 
 
@@ -108,7 +108,7 @@ def book_edit_page(book_id: int):
     books = SqlModelAdapter(Book, engine)
     authors = SqlModelAdapter(Author, engine)
     with ui.card().classes('w-full max-w-lg'):
-        wrapper = EditFormWrapper.from_adapter(Book, books, book_id, title='Edit Book', classes='w-full')
+        wrapper = EditFormWrapper.from_adapter(Book, books, str(book_id), title='Edit Book', classes='w-full')
         wrapper.set_model_repositories({Author.__name__: authors})
         wrapper.render()
     ui.button('← Back', on_click=lambda: ui.navigate.to('/books')).props('flat')

@@ -94,7 +94,7 @@ class BoundItem(Generic[T]):
         return self._adapter.update(item)
 
 
-class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T]):
+class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T], ReloadableAdapter):
     """
     An adapter for SQLModel / SQLAlchemy to work with ModelForm and ModelGrid.
 
@@ -226,6 +226,15 @@ class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T]):
             session.commit()
         self._notify()
 
+    def reload(self) -> None:
+        """Signal that the backing database may have changed.
+
+        Every read() already queries the database, so no in-memory state needs
+        refreshing. Fires on_change() handlers so any registered ModelGrid
+        re-renders from the current database state.
+        """
+        self._notify()
+
 
 class ListAdapter(_ChangeNotifier, CollectionAdapter[T]):
     """
@@ -355,7 +364,7 @@ class JsonAdapter(Generic[T]):
         return item  # return same object to preserve in-memory references (e.g. nested grid adapters)
 
 
-class JsonListAdapter(ListAdapter[T]):
+class JsonListAdapter(ListAdapter[T], ReloadableAdapter):
     """
     A data adapter that persists a list of Pydantic models as a JSON array.
 
@@ -363,8 +372,8 @@ class JsonListAdapter(ListAdapter[T]):
     every mutating operation. Writes are atomic: the full list is serialized to
     a .tmp file that is then renamed over the target path.
 
-    Keys are Python object-identity based (str(id(item))), so they are stable
-    within a session but change after reload().
+    Keys are monotonic counter strings (same as ListAdapter), stable across
+    deletions within a session but reassigned after reload().
     """
 
     def __init__(self, item_type: type[T], path_name: Path, create_if_not_exist: bool = True) -> None:
@@ -398,12 +407,23 @@ class JsonListAdapter(ListAdapter[T]):
     def reload(self) -> None:
         """Re-read items from the JSON file, replacing the in-memory list.
 
-        Existing keys become stale after this call; refresh the grid with
-        update_rows() afterwards.
+        Keys are reassigned to new counter values after reload, so any BoundItem
+        holding a previous key is invalidated. Registered on_change() handlers
+        (including ModelGrid) are notified automatically.
         """
         raw = json.loads(self._path_name.read_text(encoding='utf-8'))
-        self._items.clear()
-        self._items.extend(self._item_type.model_validate(d) for d in raw)
+        new_items = [self._item_type.model_validate(d) for d in raw]
+        self._in_mutation = True
+        try:
+            self._items.clear()
+            self._id_to_key.clear()
+            self._items.extend(new_items)
+            for item in new_items:
+                self._id_to_key[id(item)] = str(self._counter)
+                self._counter += 1
+        finally:
+            self._in_mutation = False
+        self._notify()
 
     def create(self, item: T) -> T:
         result = super().create(item)
