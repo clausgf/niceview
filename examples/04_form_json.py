@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pydantic
 from nicegui import ui
-from niceview.modelform import ModelForm
+from niceview.modeledit import EditFormWrapper
 
 
 class AppConfig(pydantic.BaseModel):
@@ -53,11 +53,11 @@ def page():
 
     with ui.row().classes('w-full items-start gap-4'):
         with ui.card().classes('flex-1'):
-            ModelForm.from_json(AppConfig, AUTOSAVE_PATH, 
-                                title='Edit JSON (autosaves on change)',
-                                autosave=True, 
-                                classes='w-full'
-                                ).render()
+            EditFormWrapper.from_json(AppConfig, AUTOSAVE_PATH,
+                                      title='Edit JSON (autosaves on change)',
+                                      autosave=True,
+                                      classes='w-full',
+                                      ).render()
 
         with ui.card().classes('flex-1'):
             ui.label(f'JSON — {AUTOSAVE_PATH.name}').classes('text-h6')
@@ -65,10 +65,9 @@ def page():
 
     with ui.row().classes('w-full items-start gap-4 mt-4'):
         with ui.card().classes('flex-1'):
-            ModelForm.from_json(
+            EditFormWrapper.from_json(
                 AppConfig, BUTTONS_PATH,
                 title='Edit JSON (uses Save / Refresh buttons)',
-                save_button='', refresh_button='',
                 classes='w-full',
             ).render()
 

@@ -30,7 +30,6 @@ from nicegui import ui
 
 import niceview
 from niceview.dataadapter import SqlModelAdapter
-from niceview.modelform import ModelForm
 from niceview.modelgrid import ModelGrid
 from niceview.modeledit import EditFormWrapper, EditGridWrapper
 
@@ -89,8 +88,7 @@ def authors_page():
 def author_edit_page(author_id: int):
     authors = SqlModelAdapter(Author, engine)
     with ui.card().classes('w-full max-w-lg'):
-        form = ModelForm.from_adapter(Author, authors, author_id, title='Edit Author', classes='w-full')
-        EditFormWrapper(form).render()
+        EditFormWrapper.from_adapter(Author, authors, author_id, title='Edit Author', classes='w-full').render()
     ui.button('← Back', on_click=lambda: ui.navigate.to('/')).props('flat')
 
 
@@ -110,9 +108,9 @@ def book_edit_page(book_id: int):
     books = SqlModelAdapter(Book, engine)
     authors = SqlModelAdapter(Author, engine)
     with ui.card().classes('w-full max-w-lg'):
-        form = ModelForm.from_adapter(Book, books, book_id, title='Edit Book', classes='w-full')
-        form.set_model_repositories({Author.__name__: authors})
-        EditFormWrapper(form).render()
+        wrapper = EditFormWrapper.from_adapter(Book, books, book_id, title='Edit Book', classes='w-full')
+        wrapper.set_model_repositories({Author.__name__: authors})
+        wrapper.render()
     ui.button('← Back', on_click=lambda: ui.navigate.to('/books')).props('flat')
 
 

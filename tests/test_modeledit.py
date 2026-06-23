@@ -1,10 +1,15 @@
+import json
+from pathlib import Path
+from unittest.mock import MagicMock
+
 import pydantic
 import pytest
 from fastapi import HTTPException
 
 from niceview.dataadapter import ListAdapter
+from niceview.modelform import ModelForm
 from niceview.modelgrid import ModelGrid
-from niceview.modeledit import EditGridWrapper
+from niceview.modeledit import EditFormWrapper, EditGridWrapper
 
 
 class User(pydantic.BaseModel):
@@ -153,3 +158,98 @@ class TestOnChange:
         wrapper.on_change(cb1).on_change(cb2)
         assert cb1 in wrapper._change_handlers
         assert cb2 in wrapper._change_handlers
+
+
+# ---------------------------------------------------------------------------
+# EditFormWrapper
+# ---------------------------------------------------------------------------
+
+class TestEditFormWrapperInit:
+    def test_from_item_no_buttons_by_default(self):
+        form = ModelForm.from_item(User())
+        w = EditFormWrapper(form)
+        assert w._save_button is None
+        assert w._refresh_button is None
+
+    def test_from_adapter_save_and_refresh_by_default(self):
+        items = [User()]
+        adapter = ListAdapter(User, items)
+        key = adapter.key_from_item(items[0])
+        form = ModelForm.from_adapter(User, adapter, key)
+        w = EditFormWrapper(form)
+        assert w._save_button == ''
+        assert w._refresh_button == ''
+
+    def test_autosave_suppresses_save_button(self):
+        items = [User()]
+        adapter = ListAdapter(User, items)
+        key = adapter.key_from_item(items[0])
+        form = ModelForm.from_adapter(User, adapter, key, autosave=True)
+        w = EditFormWrapper(form)
+        assert w._save_button is None
+
+    def test_explicit_save_button_overrides_preset(self):
+        form = ModelForm.from_item(User())
+        w = EditFormWrapper(form, save_button='Save')
+        assert w._save_button == 'Save'
+
+    def test_title_default_is_none(self):
+        form = ModelForm.from_item(User())
+        w = EditFormWrapper(form)
+        assert w._title is None
+
+    def test_title_kwarg(self):
+        form = ModelForm.from_item(User())
+        w = EditFormWrapper(form, title='Edit User')
+        assert w._title == 'Edit User'
+
+    def test_unknown_kwarg_raises(self):
+        form = ModelForm.from_item(User())
+        with pytest.raises(TypeError):
+            EditFormWrapper(form, unknown_param=True)  # type: ignore
+
+
+class TestEditFormWrapperFactoryMethods:
+    def test_from_item_creates_wrapper(self):
+        w = EditFormWrapper.from_item(User())
+        assert isinstance(w, EditFormWrapper)
+        assert isinstance(w.form, ModelForm)
+
+    def test_from_item_title_kwarg(self):
+        w = EditFormWrapper.from_item(User(), title='My Form')
+        assert w._title == 'My Form'
+
+    def test_from_item_form_kwarg_passed_through(self):
+        w = EditFormWrapper.from_item(User(), classes='w-96')
+        assert w.form.classes == 'w-96'
+
+    def test_from_json_shows_buttons_by_default(self, tmp_path):
+        path = tmp_path / 'u.json'
+        w = EditFormWrapper.from_json(User, path)
+        assert w._save_button == ''
+        assert w._refresh_button == ''
+
+    def test_from_json_autosave_hides_save(self, tmp_path):
+        path = tmp_path / 'u.json'
+        w = EditFormWrapper.from_json(User, path, autosave=True)
+        assert w._save_button is None
+
+    def test_from_adapter_shows_buttons_by_default(self):
+        items = [User()]
+        adapter = ListAdapter(User, items)
+        key = adapter.key_from_item(items[0])
+        w = EditFormWrapper.from_adapter(User, adapter, key)
+        assert w._save_button == ''
+        assert w._refresh_button == ''
+
+    def test_on_change_delegates_to_form(self):
+        w = EditFormWrapper.from_item(User())
+        cb = lambda e: None
+        w.on_change(cb)
+        assert cb in w.form._change_handlers
+
+    def test_set_model_repositories_delegates(self):
+        w = EditFormWrapper.from_item(User())
+        repos = {'Foo': MagicMock()}
+        w.set_model_repositories(repos)
+        assert w.form._model_repositories == repos

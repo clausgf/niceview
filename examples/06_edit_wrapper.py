@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from time import time
 import pydantic
 from typing import Literal
-from nicegui import ui
+from nicegui import ElementFilter, ui
 from niceview.dataadapter import ListAdapter
 from niceview.modelform import ModelForm
 from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
@@ -62,6 +62,11 @@ def page():
     ui.separator()
 
     with ui.card().classes('w-full'):
+        code_b = ui.code(_fmt(tasks)).classes('w-full')
+        ui.timer(1, lambda: code_b.set_content(_fmt(tasks)))
+        data_form = ui.code(f"Task {tasks[0]}").classes('w-full')
+
+    with ui.card().classes('w-full'):
         wrapper = EditGridWrapper(
             ModelGrid.from_list(Task, tasks),
             title='Tasks (EditGridWrapper with default buttons and dialogs)',
@@ -69,25 +74,23 @@ def page():
         wrapper.render()
 
     with ui.card().classes('w-full'):
-        ui.label('EditGridWrapper').classes('text-h6')
         wrapper = EditGridWrapper(
             ModelGridInlineEdit.from_list(Task, tasks),
             title='Tasks (EditGridWrapper with inline editing)',
         )
         wrapper.render()
     
-    with ui.card().classes('w-full'):
-        code_b = ui.code(_fmt(tasks)).classes('w-full')
-        ui.timer(1, lambda: code_b.set_content(_fmt(tasks)))
+    with ui.grid().classes('w-full gap-4 grid-cols-1 lg:grid-cols-2').mark('my-form'):
+        with ui.card().classes('w-full'):
+            efw = EditFormWrapper.from_item(Task, tasks[0], title='EditFromWrapper via item').render()
+            efw.on_change(lambda e: data_form.set_content(f"Task {efw.form.item}"))
 
-    # with ui.card().classes('w-full'):
-    #     ui.label('EditFormWrapper').classes('text-h6')
-    #     adapter = ListAdapter(Task, tasks)
-    #     key = adapter.key_from_item(tasks[0])
-    #     form = ModelForm.from_adapter(Task, adapter, key, classes='w-96')
-    #     EditFormWrapper(form).render()
-    #     data_form = ui.code(str(t1)).classes('w-full')
-    #     form.on_change(lambda e: data_form.set_content(str(t1)))
+        with ui.card().classes('w-full'):
+            adapter = ListAdapter(Task, tasks)
+            key = adapter.key_from_item(tasks[0])
+            efw = EditFormWrapper.from_adapter(Task, adapter, key, title='EditFromWrapper via adapter').render()
+            efw.on_change(lambda e: data_form.set_content(f"Task {efw.form.item}"))
+        ElementFilter().within(marker='my-form').props('dense').classes('w-full')
 
 
 ui.run(title='06 — Edit Wrappers')

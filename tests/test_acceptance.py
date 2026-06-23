@@ -19,7 +19,7 @@ from typing import Annotated, Literal
 import niceview
 from niceview.modelform import ModelForm
 from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
-from niceview.modeledit import EditGridWrapper
+from niceview.modeledit import EditFormWrapper, EditGridWrapper
 
 
 class Person(pydantic.BaseModel):
@@ -46,7 +46,7 @@ class TestModelFormRender:
     async def test_title_visible(self, user: User) -> None:
         @ui.page('/')
         def page():
-            ModelForm.from_item(Person(), title='Edit Person').render()
+            EditFormWrapper.from_item(Person(), title='Edit Person').render()
 
         await user.open('/')
         await user.should_see('Edit Person')

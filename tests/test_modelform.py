@@ -66,14 +66,11 @@ class TestModelFormInit:
 
     def test_defaults(self):
         form = ModelForm(User)
-        assert form.title == ''
         assert form.autosave is False
-        assert form.save_button is None
-        assert form.refresh_button is None
 
-    def test_title_kwarg(self):
-        form = ModelForm(User, title='My Form')
-        assert form.title == 'My Form'
+    def test_title_kwarg_raises(self):
+        with pytest.raises(TypeError):
+            ModelForm(User, title='My Form')  # type: ignore  # title belongs to EditFormWrapper
 
     def test_autosave_kwarg(self):
         form = ModelForm(User, autosave=True)
@@ -115,10 +112,9 @@ class TestFromItem:
         with pytest.raises(TypeError):
             ModelForm.from_item('not a model')  # type: ignore
 
-    def test_from_item_with_kwargs(self):
-        user = User()
-        form = ModelForm.from_item(user, title='Edit User')
-        assert form.title == 'Edit User'
+    def test_from_item_unknown_kwarg_raises(self):
+        with pytest.raises(TypeError):
+            ModelForm.from_item(User(), title='Edit User')  # type: ignore  # title belongs to EditFormWrapper
 
     def test_item_property_raises_when_not_set(self):
         form = ModelForm(User)
@@ -171,12 +167,12 @@ class TestFromAdapter:
         with pytest.raises(TypeError):
             ModelForm.from_adapter(str, adapter, key)  # type: ignore
 
-    def test_from_adapter_kwargs_passed_through(self):
+    def test_from_adapter_unknown_kwarg_raises(self):
         items = [User()]
         adapter = ListAdapter(User, items)
         key = adapter.key_from_item(items[0])
-        form = ModelForm.from_adapter(User, adapter, key, title='Test')
-        assert form.title == 'Test'
+        with pytest.raises(TypeError):
+            ModelForm.from_adapter(User, adapter, key, title='Test')  # type: ignore
 
     def test_from_adapter_returns_self(self):
         items = [User()]
@@ -213,10 +209,10 @@ class TestFromJson:
         with pytest.raises(TypeError):
             ModelForm.from_json(str, tmp_path / 'x.json')  # type: ignore
 
-    def test_kwargs_passed_through(self, tmp_path):
+    def test_unknown_kwarg_raises(self, tmp_path):
         path = tmp_path / 'user.json'
-        form = ModelForm.from_json(User, path, title='My Form')
-        assert form.title == 'My Form'
+        with pytest.raises(TypeError):
+            ModelForm.from_json(User, path, title='My Form')  # type: ignore
 
     def test_create_if_not_exist_false_with_existing_file(self, tmp_path):
         path = tmp_path / 'user.json'
@@ -233,7 +229,7 @@ class TestFromJson:
         path = tmp_path / 'user.json'
         form = ModelForm.from_json(User, path)
         form._validated_item.name = 'Alice'
-        form._save()
+        form.save()
         data = json.loads(path.read_text(encoding='utf-8'))
         assert data['name'] == 'Alice'
 
@@ -247,7 +243,7 @@ class TestFromJson:
         form = ModelForm.from_json(User, path)
         # externally overwrite the file
         path.write_text(json.dumps({'name': 'Dave', 'age': 50, 'active': True, 'tags': []}), encoding='utf-8')
-        form._refresh()
+        form.refresh()
         assert form.item.name == 'Dave'
         assert form.item.age == 50
 
@@ -258,7 +254,7 @@ class TestFromJson:
         form = ModelForm.from_json(User, path)
         nested_list = form.item.tags  # grab reference as a nested grid adapter would
         form._validated_item.name = 'Alice'
-        form._save()
+        form.save()
         assert form.item.tags is nested_list  # same object, not a new deserialized list
 
     def test_nested_list_changes_visible_after_save(self, tmp_path):
@@ -266,7 +262,7 @@ class TestFromJson:
         path = tmp_path / 'user.json'
         form = ModelForm.from_json(User, path)
         form.item.tags.append(Tag(label='dev'))  # simulate nested grid create
-        form._save()
+        form.save()
         data = json.loads(path.read_text(encoding='utf-8'))
         assert len(data['tags']) == 1
         assert data['tags'][0]['label'] == 'dev'
@@ -298,7 +294,7 @@ class TestRefresh:
     def test_refresh_without_model_raises(self):
         form = ModelForm(User)
         with pytest.raises(ValueError):
-            form._refresh()
+            form.refresh()
 
     def test_refresh_updates_validated_item(self):
         items = [User(name='Bob', age=25)]
@@ -309,7 +305,7 @@ class TestRefresh:
         # Modify the item in-place (simulates an external update visible through the adapter)
         items[0].name = 'Alice'
         items[0].age = 30
-        form._refresh()
+        form.refresh()
         assert form.item.name == 'Alice'
         assert form.item.age == 30
 

@@ -33,14 +33,15 @@ API Design
 
 NiceView follows a consistent factory pattern across all backends and UI components:
 
-| | **ModelForm** (single item) | **ModelGrid / ModelGridInlineEdit** (list) |
-|---|---|---|
-| **In-memory** | `ModelForm.from_item(Type, instance)` | `ModelGrid.from_list(Type, items)` |
-| **JSON file** | `ModelForm.from_json(Type, path)` | `ModelGrid.from_json(Type, path)` |
-| **Any adapter** | `ModelForm.from_adapter(Type, adapter, key)` | `ModelGrid.from_adapter(Type, adapter)` |
+| | **ModelForm** (single item, fields only) | **EditFormWrapper** (single item + chrome) | **ModelGrid / ModelGridInlineEdit** (list) |
+|---|---|---|---|
+| **In-memory** | `ModelForm.from_item(Type, instance)` | `EditFormWrapper.from_item(Type, instance)` | `ModelGrid.from_list(Type, items)`<br>`EditGridWrapper.from_list(Type, items)` |
+| **JSON file** | `ModelForm.from_json(Type, path)` | `EditFormWrapper.from_json(Type, path)` | `ModelGrid.from_json(Type, path)`<br>`EditGridWrapper.from_json(Type, path)` |
+| **Any adapter** | `ModelForm.from_adapter(Type, adapter, key)` | `EditFormWrapper.from_adapter(Type, adapter, key)` | `ModelGrid.from_adapter(Type, adapter)`<br>`EditGridWrapper.from_adapter(Type, adapter)` |
 
 All `from_*` methods accept the same keyword options (see below).
 `ModelGridInlineEdit` uses the same factory methods as `ModelGrid` via inheritance.
+`EditFormWrapper` wraps a `ModelForm` and adds a title, description, and action buttons.
 
 **Data adapters** are the abstraction layer between UI components and storage backends.
 The `from_*` convenience methods create and hide the adapter; pass an adapter explicitly
@@ -50,43 +51,32 @@ for full control or when using SQL / custom backends.
 ModelForm
 ---------
 
-`ModelForm` renders a Pydantic model as an editable form.
+`ModelForm` renders a Pydantic model as an editable form (fields only — no chrome).
+Use `EditFormWrapper` to add a title, description, and action buttons.
 
 ```python
 from niceview.modelform import ModelForm
-from pathlib import Path
 
-# In-memory: edits the instance in-place, no persistence
-form = ModelForm.from_item(user)           # type inferred from instance
-form = ModelForm.from_item(User, user)     # explicit type (for API symmetry)
+# In-memory item (explicit type optional)
+form = ModelForm.from_item(user)
+form = ModelForm.from_item(User, user)
 
-# JSON file: reads/writes a single object; created with defaults if missing
-form = ModelForm.from_json(User, Path('user.json'), autosave=True)
-form = ModelForm.from_json(User, Path('user.json'), save_button='', refresh_button='')
-form = ModelForm.from_json(User, Path('user.json'), create_if_not_exist=False)
+# JSON file — persists on save, supports refresh
+form = ModelForm.from_json(User, Path('user.json'))
 
-# Any adapter (e.g. SQL): full control over backend
-adapter = SqlModelAdapter(User, engine)
-form = ModelForm.from_adapter(User, adapter, key, save_button='', refresh_button='')
+# Any SingleItemAdapter — full control over storage
+form = ModelForm.from_adapter(User, adapter, key)
 
 form.render()
 ```
 
-**Master-detail navigation** — switch the displayed item at runtime:
-```python
-form.load(adapter, new_key)
-```
-
-**Options** (apply to all factory methods):
+**Options** (apply to all `ModelForm` factory methods):
 ```python
 ModelForm.from_item(user,
     include=['name', 'age'],    # or exclude=['active']
     autosave=True,              # save after every validated change
-    save_button='Save',         # show save button ('' = icon only)
-    refresh_button='',          # show refresh button ('' = icon only)
     local_tz='Europe/Berlin',   # timezone for datetime display
     on_change=my_callback,      # called after every validated change
-    title='Edit User',
     classes='w-full',
 )
 ```
@@ -126,18 +116,103 @@ grid.on_change(lambda e: print(e.row_key, e.field_name, e.new_value))
 EditGridWrapper / EditFormWrapper
 ----------------------------------
 
-Wrappers that add Add / Edit / Delete buttons on top of a grid or form:
+Both wrappers add a title, optional description, and action buttons as chrome above their inner component.
 
 ```python
 from niceview.modeledit import EditGridWrapper, EditFormWrapper
 
-# Full CRUD: popup dialog for Add/Edit, Delete button, optional Refresh
-EditGridWrapper(ModelGrid.from_list(User, user_list), title='Users').render()
-EditGridWrapper(ModelGridInlineEdit.from_json(User, Path('users.json')), title='Users').render()
+# Grid with CRUD buttons — factory methods create the ModelGrid automatically
+EditGridWrapper.from_list(User, user_list, title='Users').render()
+EditGridWrapper.from_json(User, Path('users.json'), title='Users').render()
+EditGridWrapper.from_adapter(User, adapter, title='Users').render()
 
-# Form wrapper with Save/Cancel/Refresh
-edit = EditFormWrapper(ModelForm.from_adapter(User, adapter, key))
-edit.render()
+# inline_edit=True uses ModelGridInlineEdit instead of ModelGrid
+EditGridWrapper.from_list(User, user_list, title='Users', inline_edit=True).render()
+
+# Or pass a pre-built grid for full control
+EditGridWrapper(ModelGrid.from_list(User, user_list), title='Users').render()
+
+# Form with chrome — factory methods mirror ModelForm's, accept all ModelForm options plus wrapper options
+EditFormWrapper.from_item(user, title='Edit User').render()
+EditFormWrapper.from_json(User, Path('user.json'), title='Config', autosave=True).render()
+EditFormWrapper.from_adapter(User, adapter, key, title='Edit User').render()
+
+# Wrap a pre-built ModelForm (when extra setup is needed first, e.g. model repositories)
+form = ModelForm.from_adapter(Book, books_adapter, book_id)
+wrapper = EditFormWrapper(form, title='Edit Book')
+wrapper.set_model_repositories({Author.__name__: authors_adapter})
+wrapper.render()
+```
+
+**`EditGridWrapper` button defaults** — all buttons shown by default (icon only):
+
+| Option | Default | Description |
+|---|---|---|
+| `add_button` | `''` (icon) | Opens create dialog |
+| `edit_button` | `''` (icon) | Opens edit dialog; `None` for `ModelGridInlineEdit` |
+| `delete_button` | `''` (icon) | Deletes selected row after confirmation |
+| `refresh_button` | `''` (icon) | Reloads from adapter |
+
+**`EditFormWrapper` button defaults** — depend on whether an adapter is bound:
+
+| Factory | `save_button` | `refresh_button` |
+|---|---|---|
+| `from_item()` | `None` (hidden) | `None` (hidden) |
+| `from_json()` | `''` (icon) | `''` (icon) |
+| `from_adapter()` | `''` (icon) | `''` (icon) |
+
+Autosave always suppresses `save_button`. Pass `None` to hide any button; pass a string to set its label (`''` = icon only).
+
+**Exposed NiceGUI elements** — after `render()`, chrome elements are accessible for further styling:
+```python
+# EditGridWrapper
+wrapper = EditGridWrapper(ModelGrid.from_list(User, user_list), title='Users')
+wrapper.render()
+wrapper.title                              # ui.label | None
+wrapper.description                        # ui.markdown | None
+wrapper.title_row                          # ui.row | None
+wrapper.add_button.props('color=primary')  # ui.button | None
+wrapper.edit_button                        # ui.button | None
+wrapper.delete_button                      # ui.button | None
+wrapper.refresh_button                     # ui.button | None
+
+# EditFormWrapper
+wrapper = EditFormWrapper.from_adapter(User, adapter, key, title='Edit User')
+wrapper.render()
+wrapper.title.classes('text-primary')      # ui.label | None
+wrapper.description                        # ui.markdown | None
+wrapper.title_row                          # ui.row | None
+wrapper.save_button.props('color=green')   # ui.button | None
+wrapper.refresh_button                     # ui.button | None
+```
+
+**`EditGridWrapper` options:**
+```python
+EditGridWrapper(grid,
+    title='Users',        # shown as text-h6; None = no title row
+    description='...',    # markdown below the title row
+    add_button='Add',     # label or '' for icon-only; None = hidden
+    edit_button='',       # same
+    delete_button='',     # same
+    refresh_button=None,  # same
+)
+wrapper.set_model_repositories({Author.__name__: authors_adapter})  # for modelselect fields in dialogs
+```
+
+**`EditFormWrapper` options** (all `ModelForm` options also accepted):
+```python
+EditFormWrapper.from_item(user,
+    title='Edit User',           # shown as text-h6; None = no title row
+    description='...',           # markdown below the title row
+    save_button='Save',          # label or '' for icon-only; None = hidden
+    refresh_button='',           # same
+    # ModelForm options:
+    include=['name', 'age'],
+    autosave=True,
+    local_tz='Europe/Berlin',
+    on_change=my_callback,
+    classes='w-full',
+)
 ```
 
 
@@ -208,9 +283,12 @@ from niceview.dataadapter import SqlModelAdapter
 adapter = SqlModelAdapter(Book, engine)                    # with optimistic locking (updated_at)
 adapter = SqlModelAdapter(Book, engine, lock_field=None)   # without locking
 
-# Form for a specific record
-form = ModelForm.from_adapter(Book, adapter, book_id, save_button='', refresh_button='')
+# Form for a specific record (fields only)
+form = ModelForm.from_adapter(Book, adapter, book_id)
 form.render()
+
+# Form with chrome (title + save/refresh buttons)
+EditFormWrapper.from_adapter(Book, adapter, book_id, title='Edit Book').render()
 
 # Grid over the full table
 ModelGrid(Book, adapter).render()
@@ -221,11 +299,13 @@ EditGridWrapper(ModelGrid(Book, adapter), title='Books').render()
 Supported Field Types
 ---------------------
 
+NiceView automatically selects a widget based on the Python type annotation:
+
 | Python type | Widget |
 |---|---|
 | `str` | `ui.input` |
 | `int`, `float` | `ui.number` |
-| `bool` | `ui.switch` or `ui.checkbox` |
+| `bool` | `ui.switch` |
 | `datetime.date` | HTML date input |
 | `datetime.time` | HTML time input |
 | `datetime.datetime` | HTML datetime-local input |
@@ -233,7 +313,19 @@ Supported Field Types
 | `Literal['a', 'b', ...]` | `ui.select` |
 | `list[str]` | `ui.input_chips` |
 | `list[BaseModel]` | Inline `EditGridWrapper` |
-| SQLModel relationship | `ui.select` (via model repository) |
+| `Optional[T]` | Unwrapped to `T`, then same as above |
+| SQLModel relationship (single) | `modelselect` (select backed by model repository) |
+| SQLModel relationship (list) | Inline `EditGridWrapper` |
+
+Additional widgets can be selected explicitly via `niceview.Field(widget_type='...')`:
+
+| `widget_type` | Widget | Typical use |
+|---|---|---|
+| `'ui.textarea'` | `ui.textarea` | Long text / multi-line strings |
+| `'ui.checkbox'` | `ui.checkbox` | Boolean (alternative to `ui.switch`) |
+| `'ui.radio'` | `ui.radio` | `Literal` / enum with radio buttons |
+| `'ui.toggle'` | `ui.toggle` | `Literal` / enum with toggle buttons |
+| `'ui.color_input'` | `ui.color_input` | Hex color picker |
 
 
 Field Customization
@@ -281,7 +373,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 289 tests
+uv run pytest          # 304 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 

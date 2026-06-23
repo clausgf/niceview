@@ -25,26 +25,19 @@ class FieldChangeEventArguments(UiEventArguments):
 
 class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
     """
-    Kwarg Options for the UiForm class.
+    Kwarg Options for the ModelForm class.
+    Chrome (title, description, save/refresh buttons) belongs to EditFormWrapper.
     """
     include: list[str] | str
     exclude: list[str] | str
     field_info: dict[str, FieldInfo]
 
-    title: str
-    description: str
     classes: str
     style: str
     props: str
 
     autosave: bool
     """Whether to automatically save the form on field change. Defaults to False (OFF)."""
-
-    refresh_button: str | None
-    """Text for the refresh button. Empty string shows icon only. Requires item_model. If not provided, no refresh button will be shown (default)."""
-
-    save_button: str | None
-    """Text for the save button. Empty string shows icon only. Requires item_model. If not provided, no save button will be shown (default)."""
 
     local_tz: str | None
     """Local timezone name for datetime display (e.g. 'Europe/Berlin'). Defaults to None (system local timezone)."""
@@ -73,16 +66,12 @@ class ModelForm():
     _nonfield_error_element: Any
     widgets: dict[str, ui.element]
 
-    title: str
-    description: str
     classes: str
     style: str
     props: str
 
     autosave: bool
     local_tz: str | None
-    refresh_button: str | None
-    save_button: str | None
 
     def __init__(self, item_type: type[BaseModel], **kwargs: Unpack[_ModelFormOptionInputs]) -> None:
         """
@@ -125,16 +114,12 @@ class ModelForm():
         self._nonfield_error_element = None
         self.widgets = {}
 
-        self.title = _get_param('title', '')
-        self.description = _get_param('description', '')
         self.classes = _get_param('classes', '')
         self.style = _get_param('style', '')
         self.props = _get_param('props', '')
 
         self.autosave = _get_param('autosave', False)
         self.local_tz = _get_param('local_tz', None)
-        self.refresh_button = _get_param('refresh_button', None)
-        self.save_button = _get_param('save_button', None)
 
         if on_change_callback := kwargs.pop('on_change', None):
             self.on_change(on_change_callback)
@@ -240,21 +225,27 @@ class ModelForm():
         self.item = item
         return self
     
-    def _refresh(self) -> None:
+    def is_adapter_bound(self) -> bool:
+        """
+        Return True if the form is bound to a data adapter, False otherwise.
+        """
+        return self._item_adapter is not None and self._item_key is not None
+    
+    def refresh(self) -> None:
         """
         Refresh the form by reloading the item from the adapter and pushing
         the new values into all rendered widgets.
         """
-        if self._item_adapter is None or self._item_key is None:
+        if not self.is_adapter_bound():
             raise ValueError("No adapter set. Use from_adapter(), from_json(), or load() first.")
         self.load(self._item_adapter, self._item_key)
         ui.notify('Form refreshed', color='positive')
 
-    def _save(self) -> None:
+    def save(self) -> None:
         """
         Save the current item to the data adapter.
         """
-        if self._item_adapter is None or self._item_key is None:
+        if not self.is_adapter_bound():
             raise ValueError("No adapter set. Use from_adapter(), from_json(), or load() first.")
 
         if self.has_validation_errors():
@@ -373,7 +364,7 @@ class ModelForm():
 
         def notify_change(e: TableItemEventArguments) -> None:
             if self.autosave:
-                self._save()
+                self.save()
             fce = FieldChangeEventArguments(
                 sender=e.sender,
                 client=e.client,
@@ -546,24 +537,8 @@ class ModelForm():
 
     def render(self) -> Self:
         """
-        Render the form
+        Render the form fields. Use EditFormWrapper for title, description and action buttons.
         """
-        if self.title or self.refresh_button is not None or self.save_button is not None:
-            with ui.row().classes('w-full'):
-                if self.title:
-                    ui.label(self.title).classes('text-h6')
-                has_adapter = self._item_adapter is not None
-                if (self.refresh_button is not None and has_adapter) or (self.save_button is not None and has_adapter):
-                    ui.space()
-                    with ui.button_group():
-                        if self.refresh_button is not None and has_adapter:
-                            ui.button(self.refresh_button, icon='refresh').tooltip('Refresh').props('dense flat').on_click(self._refresh)
-                        if self.save_button is not None and has_adapter:
-                            ui.button(self.save_button, icon='save').tooltip('Save').props('dense flat').on_click(self._save)
-
-        if self.description:
-            ui.markdown(self.description)
-
         self.widgets = {}
         for field_name in self._fields:
             field_info = self._fields[field_name]
@@ -744,7 +719,7 @@ class ModelForm():
 
         # handle autosave (only if a model adapter is set; with from_item the item is already modified in-place)
         if self.autosave and self._item_adapter is not None:
-            self._save()
+            self.save()
 
         # call the change handlers
         #event.args.update({'field_name': field_name, 'old_value': old_value, 'new_value': new_value})

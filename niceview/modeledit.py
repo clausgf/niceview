@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import logging
+from pathlib import Path
 from typing import Any, Awaitable, Callable, Iterable, Self, Unpack
 from fastapi import HTTPException
 import typing_extensions
@@ -7,9 +8,9 @@ from pydantic import BaseModel, ValidationError
 from nicegui import ui
 from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, ClickEventArguments, handle_event
 
-from niceview.dataadapter import ReloadableAdapter
-from niceview.modelform import ModelForm
-from niceview.modelgrid import ModelGridInlineEdit, CollectionAdapter, ModelGrid, T, TableItemEventArguments, TableItemFieldEventArguments
+from niceview.dataadapter import CollectionAdapter, ReloadableAdapter, SingleItemAdapter
+from niceview.modelform import ModelForm, FieldChangeEventArguments, _ModelFormOptionInputs
+from niceview.modelgrid import ModelGridInlineEdit, ModelGrid, T, TableItemEventArguments, TableItemFieldEventArguments
 from niceview.util import submit_dialog
 
 log = logging.getLogger('niceview')
@@ -17,23 +18,48 @@ log = logging.getLogger('niceview')
 
 class _EditGridWrapperInputs(typing_extensions.TypedDict, total=False):
     title: str | None
-    delete_button: str | None
-    add_button: str | None
-    edit_button: str | None
-    refresh_button: str | None
-
-
-class EditGridWrapper():
-    """
-    A table class that can be used to create editable tables for Pydantic models.
-    """
-    grid: ModelGrid
-    title: str | None
     description: str | None
     delete_button: str | None
     add_button: str | None
     edit_button: str | None
     refresh_button: str | None
+
+
+_GRID_WRAPPER_INPUT_KEYS = set(_EditGridWrapperInputs.__annotations__.keys())
+
+
+class EditGridWrapper():
+    """
+    Chrome wrapper for ModelGrid: renders title, description, and CRUD buttons
+    (add, edit, delete, refresh) above the grid.
+
+    After render(), the NiceGUI elements are exposed for further styling:
+        wrapper.title         → ui.label | None
+        wrapper.description   → ui.markdown | None
+        wrapper.title_row     → ui.row | None
+        wrapper.add_button    → ui.button | None
+        wrapper.edit_button   → ui.button | None
+        wrapper.delete_button → ui.button | None
+        wrapper.refresh_button → ui.button | None
+    """
+    grid: ModelGrid
+
+    # private config
+    _title: str | None
+    _description: str | None
+    _delete_button: str | None
+    _add_button: str | None
+    _edit_button: str | None
+    _refresh_button: str | None
+
+    # Exposed NiceGUI elements (populated by render())
+    title: ui.label | None
+    description: ui.markdown | None
+    title_row: ui.row | None
+    delete_button: ui.button | None
+    add_button: ui.button | None
+    edit_button: ui.button | None
+    refresh_button: ui.button | None
 
     _change_handlers: list[Handler[TableItemEventArguments]]
     _model_repositories: dict[str, CollectionAdapter]
@@ -45,16 +71,51 @@ class EditGridWrapper():
         self.grid.rowSelection = 'single'
 
         default_edit = None if isinstance(self.grid, ModelGridInlineEdit) else ''
-        default_refresh = ''
-        self.title = kwargs.pop('title', f'{self.grid._fields._item_type.__name__} List')
-        self.delete_button = kwargs.pop('delete_button', '')
-        self.add_button = kwargs.pop('add_button', '')
-        self.edit_button = kwargs.pop('edit_button', default_edit)
-        self.refresh_button = kwargs.pop('refresh_button', default_refresh)
+        self._title = kwargs.pop('title', f'{self.grid._fields._item_type.__name__} List')
+        self._description = kwargs.pop('description', None)
+        self._delete_button = kwargs.pop('delete_button', '')
+        self._add_button = kwargs.pop('add_button', '')
+        self._edit_button = kwargs.pop('edit_button', default_edit)
+        self._refresh_button = kwargs.pop('refresh_button', '')
+
+        self.title = None
+        self.description = None
+        self.title_row = None
+        self.delete_button = None
+        self.add_button = None
+        self.edit_button = None
+        self.refresh_button = None
 
         self._change_handlers = []
         self._model_repositories = {}
 
+    # --- factory methods ---------------------------------------------------
+
+    @classmethod
+    def from_list(cls, item_type: type[T], items: list[T], *, inline_edit: bool = False, **kwargs) -> Self:
+        """Create an EditGridWrapper backed by an in-memory list."""
+        wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _GRID_WRAPPER_INPUT_KEYS}
+        grid_cls = ModelGridInlineEdit if inline_edit else ModelGrid
+        grid = grid_cls.from_list(item_type, items, **kwargs)
+        return cls(grid, **wrapper_kwargs)  # type: ignore[arg-type]
+
+    @classmethod
+    def from_json(cls, item_type: type[T], path_name: Path, create_if_not_exist: bool = True, *, inline_edit: bool = False, **kwargs) -> Self:
+        """Create an EditGridWrapper backed by a JSON file."""
+        wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _GRID_WRAPPER_INPUT_KEYS}
+        grid_cls = ModelGridInlineEdit if inline_edit else ModelGrid
+        grid = grid_cls.from_json(item_type, path_name, create_if_not_exist, **kwargs)
+        return cls(grid, **wrapper_kwargs)  # type: ignore[arg-type]
+
+    @classmethod
+    def from_adapter(cls, item_type: type[T], data: CollectionAdapter, *, inline_edit: bool = False, **kwargs) -> Self:
+        """Create an EditGridWrapper backed by any CollectionAdapter."""
+        wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _GRID_WRAPPER_INPUT_KEYS}
+        grid_cls = ModelGridInlineEdit if inline_edit else ModelGrid
+        grid = grid_cls.from_adapter(item_type, data, **kwargs)
+        return cls(grid, **wrapper_kwargs)  # type: ignore[arg-type]
+
+    # --- configuration -----------------------------------------------------
 
     def set_model_repositories(self, repositories: dict[str, CollectionAdapter]) -> Self:
         """Set model repositories used for modelselect widgets in create/edit dialogs."""
@@ -106,23 +167,43 @@ class EditGridWrapper():
 
 
     def render(self) -> Self:
-        """
-        Render the grid with the title and buttons.
-        """
-        # render the title, add and delete buttons
-        with ui.row().classes('w-full'):
-            if self.title:
-                ui.label(self.title).classes('text-h6')
-                ui.space()
-            with ui.button_group():
-                if self.refresh_button is not None:
-                    ui.button(self.refresh_button, icon='refresh').tooltip('Refresh').props('dense flat').on_click(self.refresh)
-                if self.delete_button is not None:
-                    ui.button(self.delete_button, icon='delete').props('color=red').props('dense flat').tooltip('Delete selected item').on_click(self.delete_item)
-                if self.add_button is not None:
-                    ui.button(self.add_button, icon='add').tooltip('Add a new item').props('dense flat').on_click(self.create_item)
-                if self.edit_button is not None:
-                    ui.button(self.edit_button, icon='edit').tooltip('Edit item').props('dense flat').on_click(self.update_item)
+        self.title = None
+        self.description = None
+        self.title_row = None
+        self.delete_button = None
+        self.add_button = None
+        self.edit_button = None
+        self.refresh_button = None
+
+        has_buttons = any(b is not None for b in [self._refresh_button, self._delete_button, self._add_button, self._edit_button])
+        has_chrome = bool(self._title) or has_buttons
+        if has_chrome:
+            with ui.row().classes('w-full items-center flex-nowrap') as self.title_row:
+                if self._title:
+                    self.title = ui.label(self._title).classes('text-h6 grow')
+                if has_buttons:
+                    if not self._title:
+                        ui.space()
+                    with ui.button_group().style('width: fit-content; flex: none'):
+                        if self._refresh_button is not None:
+                            self.refresh_button = ui.button(self._refresh_button, icon='refresh').props('dense flat').on_click(self.refresh)
+                            with self.refresh_button:
+                                ui.tooltip('Refresh').style('width: fit-content')
+                        if self._delete_button is not None:
+                            self.delete_button = ui.button(self._delete_button, icon='delete').props('color=negative dense flat').on_click(self.delete_item)
+                            with self.delete_button:
+                                ui.tooltip('Delete selected item').style('width: fit-content')
+                        if self._add_button is not None:
+                            self.add_button = ui.button(self._add_button, icon='add').props('dense flat').on_click(self.create_item)
+                            with self.add_button:
+                                ui.tooltip('Add a new item').style('width: fit-content')
+                        if self._edit_button is not None:
+                            self.edit_button = ui.button(self._edit_button, icon='edit').props('dense flat').on_click(self.update_item)
+                            with self.edit_button:
+                                ui.tooltip('Edit item').style('width: fit-content')
+
+        if self._description:
+            self.description = ui.markdown(self._description)
 
         self.grid.render()
         return self
@@ -254,76 +335,139 @@ class EditGridWrapper():
 
 
 class _EditFormWrapperInputs(typing_extensions.TypedDict, total=False):
-    title: str
-    autosave: bool
-    refresh_button: str
-    cancel_button: str
-    apply_button: str
-    ok_button: str
+    title: str | None
+    description: str | None
+    save_button: str | None
+    refresh_button: str | None
+
+
+_FORM_WRAPPER_INPUT_KEYS = set(_EditFormWrapperInputs.__annotations__.keys())
 
 
 class EditFormWrapper():
     """
-    A wrapper for a ModelForm that can be used to create editable forms for Pydantic models.
-    """
-    refresh_button: str | None
-    cancel_button: str | None
-    apply_button: str | None
-    ok_button: str | None
+    Chrome wrapper for ModelForm: renders title, description, and action buttons
+    (save, refresh) above the form fields.
 
-    _form: ModelForm
-    _change_handlers: list[Handler[UiEventArguments]]
-    _item: BaseModel
+    Intelligent button presets based on the factory method used:
+    - from_item():    no buttons by default (in-memory, no adapter)
+    - from_json():    save + refresh shown by default (adapter exists)
+    - from_adapter(): save + refresh shown by default (adapter exists)
+    Autosave suppresses the save button regardless.
+
+    After render(), the NiceGUI elements are exposed for further styling:
+        wrapper.title   → ui.label | None
+        wrapper.save_btn    → ui.button | None
+        wrapper.refresh_btn → ui.button | None
+    """
+    _title: str | None
+    _description: str | None
+    _save_button: str | None
+    _refresh_button: str | None
+
+    # Exposed NiceGUI elements (populated by render())
+    title: ui.label | None
+    save_button: ui.button | None
+    refresh_button: ui.button | None
+    title_row: ui.row | None
+    description: ui.markdown | None
+    form: ModelForm
 
     def __init__(self, form: ModelForm, **kwargs: Unpack[_EditFormWrapperInputs]) -> None:
-        self._form = form
-        self.title = kwargs.pop('title', f'{self._form._item_type.__name__} Form')
-        self.autosave = kwargs.pop('autosave', False)
-        self.refresh_button = kwargs.pop('refresh_button', None if self.autosave else '')
-        self.cancel_button = kwargs.pop('cancel_button', None if self.autosave else '')
-        self.apply_button = kwargs.pop('apply_button', None if self.autosave else '')
-        self.ok_button = kwargs.pop('ok_button', None if self.autosave else '')
+        has_adapter = form.is_adapter_bound()
+        autosave = form.autosave
 
-        self._change_handlers = []
+        self._title = kwargs.pop('title', None)
+        self._description = kwargs.pop('description', None)
 
+        # Intelligent presets: show save/refresh when adapter exists, hide when autosave
+        default_save = None if autosave else ('' if has_adapter else None)
+        default_refresh = '' if has_adapter else None
+        self._save_button = kwargs.pop('save_button', default_save)
+        self._refresh_button = kwargs.pop('refresh_button', default_refresh)
 
-    def on_change(self, callback: Handler[UiEventArguments]) -> Self:
-        """
-        Add a callback to be invoked when the form values change after successful validation. 
-        """
-        if not callable(callback):
-            raise TypeError(f"callback must be callable, got {type(callback)}")
-        self._change_handlers.append(callback)
+        self.title = None
+        self.save_button = None
+        self.refresh_button = None
+        self.title_row = None
+        self.description = None
+        self.form = form
+
+        if kwargs:
+            raise TypeError(f"Unexpected keyword arguments for EditFormWrapper: {', '.join(kwargs.keys())}")
+
+    # --- factory methods ---------------------------------------------------
+
+    @classmethod
+    def from_item(cls, item_type_or_item: 'type[BaseModel] | BaseModel', item: 'BaseModel | None' = None, **kwargs) -> Self:
+        """Create an EditFormWrapper backed by an in-memory item (no persistence)."""
+        wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _FORM_WRAPPER_INPUT_KEYS}
+        form = ModelForm.from_item(item_type_or_item, item, **kwargs)
+        return cls(form, **wrapper_kwargs)
+
+    @classmethod
+    def from_json(cls, item_type: type[BaseModel], json_path: Path, create_if_not_exist: bool = True, **kwargs) -> Self:
+        """Create an EditFormWrapper backed by a JSON file. Save and Refresh buttons shown by default."""
+        wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _FORM_WRAPPER_INPUT_KEYS}
+        form = ModelForm.from_json(item_type, json_path, create_if_not_exist, **kwargs)
+        return cls(form, **wrapper_kwargs)
+
+    @classmethod
+    def from_adapter(cls, item_type: type[BaseModel], adapter: SingleItemAdapter, key: 'str | int', **kwargs) -> Self:
+        """Create an EditFormWrapper backed by any SingleItemAdapter. Save and Refresh buttons shown by default."""
+        wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _FORM_WRAPPER_INPUT_KEYS}
+        form = ModelForm.from_adapter(item_type, adapter, key, **kwargs)
+        return cls(form, **wrapper_kwargs)
+
+    # --- delegation --------------------------------------------------------
+
+    def set_model_repositories(self, repositories: dict) -> Self:
+        """Delegate to the inner ModelForm."""
+        self.form.set_model_repositories(repositories)
         return self
 
+    def on_change(self, callback: Handler[FieldChangeEventArguments]) -> Self:
+        """Delegate to the inner ModelForm's on_change."""
+        self.form.on_change(callback)
+        return self
 
-    def _invoke_change_handlers(self, event: UiEventArguments, item: BaseModel | None) -> None:
-        """
-        Invoke the change handlers with the given event, row key and item.
-        """
-        vce = ValueChangeEventArguments(
-            sender=event.sender, client=event.client,
-            value=item,
-            previous_value=None,
-        )
-        for handler in self._change_handlers:
-            handle_event(handler, vce)
+    def load(self, adapter: SingleItemAdapter, key: 'str | int') -> Self:
+        """Delegate to the inner ModelForm's load (master-detail navigation)."""
+        self.form.load(adapter, key)
+        return self
 
+    # --- render ------------------------------------------------------------
 
     def render(self) -> Self:
-        # with ui.row().classes('w-full'):
-        #     if self.title:
-        #         ui.label(self.title).classes('text-h6')
-        #     ui.space()
-        #     with ui.button_group():
-        #         if self.refresh_button is not None:
-        #             ui.button(self.refresh_button, icon='refresh').tooltip('Reload').props('dense flat').on_click(lambda _: self._form._refresh())
-        #         if self.cancel_button is not None:
-        #             ui.button(self.cancel_button, icon='cancel').tooltip('Discard edits').props('dense flat').on_click(lambda _: self._form._refresh())
-        #         if self.apply_button is not None:
-        #             ui.button(self.apply_button, icon='save').tooltip('Apply changes').props('dense flat').on_click(lambda _: self._form._save())
-        #         if self.ok_button is not None:
-        #             ui.button(self.ok_button, icon='check').tooltip('Save').props('dense flat').on_click(lambda _: self._form._save())
-        self._form.render()
+        self.title = None
+        self.save_button = None
+        self.refresh_button = None
+        self.title_row = None
+        self.description = None
+
+        has_chrome = bool(self._title) or any(
+            b is not None for b in [self._save_button, self._refresh_button]
+        )
+        if has_chrome:
+            with ui.row().classes('w-full items-center flex-nowrap') as self.title_row:
+                if self._title:
+                    self.title = ui.label(self._title).classes('text-h6 grow')
+                if self._refresh_button is not None or self._save_button is not None:
+                    if not self._title:
+                        ui.space()
+                    with ui.button_group().style('width: fit-content; flex: none'):
+                        if self._refresh_button is not None:
+                            self.refresh_button = ui.button(self._refresh_button, icon='refresh').props('dense flat').on_click(lambda _: self.form.refresh())
+                            with self.refresh_button:
+                                ui.tooltip('Refresh').style('width: fit-content')
+                        if self._save_button is not None:
+                            self.save_button = ui.button(self._save_button, icon='save').props('dense flat').on_click(lambda _: self.form.save())
+                            with self.save_button:
+                                ui.tooltip('Save').style('width: fit-content')
+
+        if self._description:
+            self.description = ui.markdown(self._description)
+
+        self.form.render()
         return self
 
