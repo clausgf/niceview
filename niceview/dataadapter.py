@@ -72,9 +72,8 @@ class CollectionAdapter(Generic[T], Protocol):
     def key_from_item(self, item: T) -> str: ...
     def read(self, key: str) -> T: ...
     def create(self, item: T) -> T: ...
-    def update(self, item: T, key: str) -> T: ...
+    def update(self, item: T) -> T: ...
     def delete(self, key: str) -> None: ...
-    def query_all_strs(self) -> Iterator[tuple[str, str]]: ...
 
 
 class BoundItem(Generic[T]):
@@ -92,7 +91,7 @@ class BoundItem(Generic[T]):
         return self._adapter.read(self._key)
 
     def save(self, item: T) -> T:
-        return self._adapter.update(item, self._key)
+        return self._adapter.update(item)
 
 
 class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T]):
@@ -174,10 +173,11 @@ class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T]):
         return item
 
 
-    def update(self, item: T, key: str) -> T:
+    def update(self, item: T) -> T:
         if not isinstance(item, sqlmodel.SQLModel):
             raise TypeError(f"Expected item to be an instance of {self._item_type}, got {type(item)}")
 
+        key = self.key_from_item(item)
         with sqlmodel.Session(self._engine) as session:
             if self._lock_field:
                 stmt = (
@@ -231,17 +231,19 @@ class ListAdapter(_ChangeNotifier, CollectionAdapter[T]):
     """
     An adapter for an in-memory list.
 
-    Keys are the Python object identity (id()) of each item expressed as a string,
-    so keys remain stable after deletions (no index shifting).
+    Keys are monotonic counter strings ("0", "1", ...) assigned at creation time,
+    stable across deletions. key_from_item() searches by object identity (O(n)).
 
     Implements ReactiveAdapter: on_change() handlers fire after every structural
     mutation via the adapter (create/update/delete). When the backing list is an
     ObservableList, direct mutations on the list object (bypassing the adapter)
-    also fire the handlers — useful for integrating with NiceGUI's reactive primitives.
+    also fire the handlers and the key map is reconciled automatically.
     """
     def __init__(self, item_type: type[T], items: list[T]) -> None:
         self._item_type = item_type
         self._items = items
+        self._counter = len(items)
+        self._id_to_key: dict[int, str] = {id(item): str(i) for i, item in enumerate(items)}
         self._init_notifier()
         self._in_mutation = False
         from nicegui.observables import ObservableList
@@ -250,30 +252,47 @@ class ListAdapter(_ChangeNotifier, CollectionAdapter[T]):
 
     def _on_observable_change(self, _: Any = None) -> None:
         if not self._in_mutation:
+            self._reconcile_keys()
             self._notify()
+
+    def _reconcile_keys(self) -> None:
+        current_ids = {id(item) for item in self._items}
+        for oid in list(self._id_to_key):
+            if oid not in current_ids:
+                del self._id_to_key[oid]
+        for item in self._items:
+            if id(item) not in self._id_to_key:
+                self._id_to_key[id(item)] = str(self._counter)
+                self._counter += 1
 
     def __iter__(self) -> Iterator[T]:
         return iter(self._items)
 
     def key_from_item(self, item: pydantic.BaseModel) -> str:
-        return str(id(item))
-
-    def _find_index(self, key: str) -> int:
-        for i, item in enumerate(self._items):
-            if str(id(item)) == key:
-                return i
-        raise KeyError(f"Item with key {key!r} not found in list.")
+        key = self._id_to_key.get(id(item))
+        if key is None:
+            raise KeyError(f"Item not found in adapter.")
+        return key
 
     def query_all_strs(self) -> Iterator[tuple[str, str]]:
         for item in self._items:
-            yield str(id(item)), str(item)
+            yield self.key_from_item(item), str(item)
+
+    def _find_index(self, key: str) -> int:
+        for i, item in enumerate(self._items):
+            if self._id_to_key.get(id(item)) == key:
+                return i
+        raise KeyError(f"Item with key {key!r} not found in list.")
 
     def create(self, item: T) -> T:
         if not isinstance(item, self._item_type):
             raise TypeError(f"Expected item to be an instance of {self._item_type}, got {type(item)}")
+        key = str(self._counter)
+        self._counter += 1
         self._in_mutation = True
         try:
             self._items.append(item)
+            self._id_to_key[id(item)] = key
         finally:
             self._in_mutation = False
         self._notify()
@@ -282,19 +301,28 @@ class ListAdapter(_ChangeNotifier, CollectionAdapter[T]):
     def read(self, key: str) -> T:
         return self._items[self._find_index(key)]
 
-    def update(self, item: T, key: str) -> T:
+    def update(self, item: T) -> T:
+        key = self.key_from_item(item)
+        idx = self._find_index(key)
         self._in_mutation = True
         try:
-            self._items[self._find_index(key)] = item
+            old_item = self._items[idx]
+            self._items[idx] = item
+            if old_item is not item:
+                del self._id_to_key[id(old_item)]
+                self._id_to_key[id(item)] = key
         finally:
             self._in_mutation = False
         self._notify()
         return item
 
     def delete(self, key: str) -> None:
+        idx = self._find_index(key)
         self._in_mutation = True
         try:
-            del self._items[self._find_index(key)]
+            old_item = self._items[idx]
+            del self._items[idx]
+            del self._id_to_key[id(old_item)]
         finally:
             self._in_mutation = False
         self._notify()
@@ -382,8 +410,8 @@ class JsonListAdapter(ListAdapter[T]):
         self._persist()
         return result
 
-    def update(self, item: T, key: str) -> T:
-        result = super().update(item, key)
+    def update(self, item: T) -> T:
+        result = super().update(item)
         self._persist()
         return result
 

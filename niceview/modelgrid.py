@@ -349,7 +349,7 @@ class ModelGridInlineEdit(ModelGrid):
         # update the model with the new value
         if len(errors) == 0:
             setattr(item, field_name, new_value)
-            self._data.update(item, row_key)
+            self._data.update(item)
         else:
             # if there are validation errors, revert the value to the old value
             ui.notify(f"Invalid input {new_value}: {errors}", color='negative')

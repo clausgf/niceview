@@ -219,9 +219,12 @@ class EditGridWrapper():
         """Persist a new item via the adapter. Raises on type mismatch or adapter error."""
         return self.grid._data.create(item)
 
-    def _apply_update(self, item: BaseModel, row_key: str) -> BaseModel:
+    def _apply_update(self, new_item: BaseModel, row_key: str) -> BaseModel:
         """Persist an updated item via the adapter. Raises on not-found or optimistic-lock conflict."""
-        return self.grid._data.update(item, row_key)
+        original = self.grid._data.read(row_key)
+        for field, value in new_item.model_dump().items():
+            setattr(original, field, value)
+        return self.grid._data.update(original)
 
     def _apply_delete(self, row_key: str) -> None:
         """Delete an item via the adapter. Raises if the key does not exist."""

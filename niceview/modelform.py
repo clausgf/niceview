@@ -336,7 +336,8 @@ class ModelForm():
         if field_info.item_type.__name__ not in self._model_repositories:
             raise ValueError(f"Model repository for {field_info.item_type} not found in form's model repositories")
 
-        field_info.select_options = dict(self._model_repositories[field_info.item_type.__name__].query_all_strs())
+        repo = self._model_repositories[field_info.item_type.__name__]
+        field_info.select_options = {repo.key_from_item(item): str(item) for item in repo}
         widget = self._render_select_widget(field_name, field_info, kwargs, value_widget_type='modelselect')
         return widget
 

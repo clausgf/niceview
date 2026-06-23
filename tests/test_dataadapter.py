@@ -76,26 +76,26 @@ class TestListAdapterUpdate:
         self.items = [Item(name='a', value=1), Item(name='b', value=2)]
         self.adapter = ListAdapter(Item, self.items)
 
-    def test_update_replaces_item(self):
-        key = self.adapter.key_from_item(self.items[0])
-        updated = Item(name='X', value=99)
-        self.adapter.update(updated, key)
+    def test_update_modifies_inplace(self):
+        original = self.items[0]
+        original.name = 'X'
+        original.value = 99
+        self.adapter.update(original)
         assert self.adapter._items[0].name == 'X'
 
     def test_update_returns_item(self):
-        key = self.adapter.key_from_item(self.items[0])
-        updated = Item(name='X')
-        result = self.adapter.update(updated, key)
-        assert result is updated
+        original = self.items[0]
+        original.name = 'X'
+        result = self.adapter.update(original)
+        assert result is original
 
-    def test_update_unknown_key_raises(self):
+    def test_update_unknown_item_raises(self):
         with pytest.raises(KeyError):
-            self.adapter.update(Item(), 'not-a-valid-key')
+            self.adapter.update(Item())  # Item() not registered in adapter
 
     def test_update_same_object_inplace(self):
-        key = self.adapter.key_from_item(self.items[0])
         self.items[0].name = 'modified'
-        result = self.adapter.update(self.items[0], key)
+        result = self.adapter.update(self.items[0])
         assert result.name == 'modified'
 
 
@@ -143,7 +143,8 @@ class TestListAdapterReactive:
         adapter = ListAdapter(Item, [item])
         called: list[bool] = []
         adapter.on_change(lambda: called.append(True))
-        adapter.update(Item(name='y'), adapter.key_from_item(item))
+        item.name = 'y'
+        adapter.update(item)
         assert called == [True]
 
     def test_on_change_fires_on_create_with_observable_list(self):
@@ -169,7 +170,8 @@ class TestListAdapterReactive:
         adapter = ListAdapter(Item, ObservableList([item]))
         called: list[bool] = []
         adapter.on_change(lambda: called.append(True))
-        adapter.update(Item(name='y'), adapter.key_from_item(item))
+        item.name = 'y'
+        adapter.update(item)
         assert called == [True]
 
     def test_on_change_no_double_fire_with_observable_list(self):
@@ -386,8 +388,9 @@ class TestJsonListAdapterUpdate:
         path.write_text(json.dumps([{'name': 'a', 'value': 1}]), encoding='utf-8')
         adapter = JsonListAdapter(Item, path)
         item = list(adapter)[0]
-        key = adapter.key_from_item(item)
-        adapter.update(Item(name='X', value=99), key)
+        item.name = 'X'
+        item.value = 99
+        adapter.update(item)
         raw = json.loads(path.read_text(encoding='utf-8'))
         assert raw[0]['name'] == 'X'
 
@@ -396,10 +399,9 @@ class TestJsonListAdapterUpdate:
         path.write_text(json.dumps([{'name': 'a', 'value': 1}]), encoding='utf-8')
         adapter = JsonListAdapter(Item, path)
         item = list(adapter)[0]
-        key = adapter.key_from_item(item)
-        updated = Item(name='X')
-        result = adapter.update(updated, key)
-        assert result is updated
+        item.name = 'X'
+        result = adapter.update(item)
+        assert result is item
 
 
 class TestJsonListAdapterDelete:
@@ -659,48 +661,44 @@ class TestSqlModelAdapterUpdate:
         item = adapter.create(DbItem(name='old', value=1))
         key = adapter.key_from_item(item)
         item.name = 'new'
-        adapter.update(item, key)
+        adapter.update(item)
         assert adapter.read(key).name == 'new'
 
     def test_update_returns_new_instance(self, engine):
         adapter = SqlModelAdapter(DbItem, engine)
         item = adapter.create(DbItem(name='x'))
-        key = adapter.key_from_item(item)
         item.name = 'y'
-        result = adapter.update(item, key)
+        result = adapter.update(item)
         assert result is not item
 
     def test_update_refreshes_lock_field(self, engine):
         adapter = SqlModelAdapter(DbItem, engine)
         item = adapter.create(DbItem(name='lock'))
-        key = adapter.key_from_item(item)
         before = item.updated_at
         item.name = 'changed'
-        result = adapter.update(item, key)
+        result = adapter.update(item)
         assert result.updated_at >= before
 
     def test_update_optimistic_lock_conflict_raises(self, engine):
         adapter = SqlModelAdapter(DbItem, engine)
         item = adapter.create(DbItem(name='conflict'))
-        key = adapter.key_from_item(item)
         item.name = 'v1'
-        v1 = adapter.update(item, key)
+        v1 = adapter.update(item)
         item.name = 'v2'
         with pytest.raises(ValueError, match='Optimistic Locking'):
-            adapter.update(item, key)  # stale lock field
+            adapter.update(item)  # stale lock field
 
     def test_update_missing_raises(self, engine):
         adapter = SqlModelAdapter(DbItem, engine)
         ghost = DbItem(id=9999, name='ghost', updated_at=_now())
         with pytest.raises(ValueError):
-            adapter.update(ghost, 9999)
+            adapter.update(ghost)
 
     def test_update_no_lock_field(self, engine):
         adapter = SqlModelAdapter(DbItemNoLock, engine, lock_field=None)
         item = adapter.create(DbItemNoLock(name='nolockitem'))
-        key = adapter.key_from_item(item)
         item.name = 'changed'
-        result = adapter.update(item, key)
+        result = adapter.update(item)
         assert result.name == 'changed'
 
 
@@ -766,11 +764,10 @@ class TestSqlModelAdapterReactive:
     def test_on_change_fires_on_update(self, engine):
         adapter = SqlModelAdapter(DbItem, engine)
         item = adapter.create(DbItem(name='old'))
-        key = adapter.key_from_item(item)
         called: list[bool] = []
         adapter.on_change(lambda: called.append(True))
         item.name = 'new'
-        adapter.update(item, key)
+        adapter.update(item)
         assert called == [True]
 
     def test_on_change_fires_on_delete(self, engine):
