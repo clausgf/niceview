@@ -7,7 +7,9 @@ import pydantic
 import pytest
 from nicegui import ui
 
-from niceview.dataadapter import BoundItem, ListAdapter
+import sqlmodel
+
+from niceview.dataadapter import BoundItem, ListAdapter, SqlModelAdapter
 from niceview.modelform import ModelForm
 
 
@@ -411,3 +413,45 @@ class TestOnChange:
         cb = lambda e: None
         form = ModelForm(User, on_change=cb)
         assert cb in form._change_handlers
+
+
+# ---------------------------------------------------------------------------
+# SqlModelAdapter integration
+# ---------------------------------------------------------------------------
+
+class SqlContact(sqlmodel.SQLModel, table=True):
+    __tablename__ = 'test_sqlcontacts_modelform'
+    id: int | None = sqlmodel.Field(default=None, primary_key=True)
+    name: str = ''
+    city: str = ''
+
+
+@pytest.fixture
+def sql_engine():
+    eng = sqlmodel.create_engine('sqlite://', connect_args={'check_same_thread': False})
+    sqlmodel.SQLModel.metadata.create_all(eng)
+    yield eng
+    sqlmodel.SQLModel.metadata.drop_all(eng)
+
+
+class TestModelFormSqlRefresh:
+    def test_refresh_picks_up_background_db_change(self, sql_engine):
+        adapter = SqlModelAdapter(SqlContact, sql_engine, lock_field=None)
+        contact = adapter.create(SqlContact(name='Alice', city='Berlin'))
+        key = adapter.key_from_item(contact)
+
+        form = ModelForm.from_adapter(SqlContact, adapter, key)
+        assert form.item.name == 'Alice'
+
+        # Simulate a background change directly in the DB (bypassing the adapter)
+        with sqlmodel.Session(sql_engine) as session:
+            db_contact = session.get(SqlContact, contact.id)
+            db_contact.name = 'Bob'
+            db_contact.city = 'Munich'
+            session.add(db_contact)
+            session.commit()
+
+        # refresh() must re-query the DB and reflect the new values
+        form.refresh()
+        assert form.item.name == 'Bob'
+        assert form.item.city == 'Munich'
