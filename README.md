@@ -230,16 +230,20 @@ or let the `from_*` factory methods create them transparently.
 | `SqlModelAdapter(Type, engine)` | Grid, Form | SQLModel / SQLAlchemy table |
 
 All JSON adapters write atomically (`.tmp` → rename).
-`JsonListAdapter` exposes `reload()` to re-read from disk after external changes.
+`JsonListAdapter` and `SqlModelAdapter` both implement `ReloadableAdapter`: `reload()` re-reads
+from disk (JSON) or fires a grid-refresh notification (SQL, where every `read()` is already live).
 
 **Adapter protocols** — implement these for custom backends:
 
 | Protocol | Methods | Used by |
 |---|---|---|
-| `SingleItemAdapter[T]` | `read()`, `update()` | `ModelForm` |
+| `ItemAdapter[T]` | `read() -> T`, `save(item) -> T` | `ModelForm` |
+| `CollectionAdapter[T]` | `__iter__`, `key_from_item(item)`, `read(key)`, `create(item)`, `update(item)`, `delete(key)` | `ModelGrid`, `EditGridWrapper` |
 | `ReloadableAdapter` | `reload()` | `EditGridWrapper` (Refresh button) |
 | `ReactiveAdapter` | `on_change(handler)` | `ModelGrid` (auto-update) |
-| `CollectionAdapter[T]` | extends `SingleItemAdapter` + `__iter__`, `create`, `delete`, `key_from_item`, `key_from_str`, `query_all_strs` | `ModelGrid`, `EditGridWrapper` |
+
+`BoundItem(adapter, key)` wraps a `CollectionAdapter` + a string key into an `ItemAdapter` —
+the standard bridge for master-detail navigation (e.g. `ModelForm.from_adapter()`).
 
 **Reactive updates**
 
@@ -283,12 +287,12 @@ from niceview.dataadapter import SqlModelAdapter
 adapter = SqlModelAdapter(Book, engine)                    # with optimistic locking (updated_at)
 adapter = SqlModelAdapter(Book, engine, lock_field=None)   # without locking
 
-# Form for a specific record (fields only)
-form = ModelForm.from_adapter(Book, adapter, book_id)
+# Form for a specific record (fields only) — key must be str
+form = ModelForm.from_adapter(Book, adapter, str(book_id))
 form.render()
 
 # Form with chrome (title + save/refresh buttons)
-EditFormWrapper.from_adapter(Book, adapter, book_id, title='Edit Book').render()
+EditFormWrapper.from_adapter(Book, adapter, str(book_id), title='Edit Book').render()
 
 # Grid over the full table
 ModelGrid(Book, adapter).render()
@@ -373,7 +377,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 304 tests
+uv run pytest          # 300 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 
