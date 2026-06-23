@@ -179,11 +179,23 @@ class FieldInfo():
         """Print non-none values"""
         non_default_values = {k: v for k, v in self.__dict__.items() if v is not None}
         formatted_values = ', '.join(
-            f"{k}={v!r}" 
+            f"{k}={v!r}"
             for k, v in non_default_values.items()
         )
         if formatted_values:
             return f"{self.__class__.__name__}({formatted_values})"
         return super().__repr__()
 
+
+_FIELD_INFO_KWARGS = set(_FieldInfoInputs.__annotations__.keys())
+
+
+def _merge_field_infos(base: FieldInfo, override: FieldInfo) -> FieldInfo:
+    """Return a new FieldInfo with base values overridden by explicitly set values from override."""
+    merged = FieldInfo()
+    merged.__dict__.update(base.__dict__)  # copy all instance attrs incl. field_type, literal_options, etc.
+    for k, v in vars(override).items():
+        if k in _FIELD_INFO_KWARGS:
+            setattr(merged, k, v)
+    return merged
 
