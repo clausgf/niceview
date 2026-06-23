@@ -179,7 +179,7 @@ class ModelGrid:
         """
         self._rows.clear() # modify the rows in place without creating a new list
         for i, item in enumerate(self._data):
-            row = {'__ui_row_key': self._data.key_from_item(item, i)}
+            row = {'__ui_row_key': self._data.key_from_item(item)}
             for field_name in self._fields:
                 field_info = self._fields[field_name]
                 if field_info.hidden or field_info.table_hidden:

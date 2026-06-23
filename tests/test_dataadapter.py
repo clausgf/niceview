@@ -215,12 +215,6 @@ class TestListAdapterKeys:
         key_b = self.adapter.key_from_item(self.items[1])
         assert key_a != key_b
 
-    def test_key_from_str_returns_string(self):
-        assert self.adapter.key_from_str('12345') == '12345'
-
-    def test_key_from_str_int_becomes_string(self):
-        assert self.adapter.key_from_str(42) == '42'
-
     def test_iter_yields_all_items(self):
         result = list(self.adapter)
         assert len(result) == 2
@@ -761,19 +755,6 @@ class TestSqlModelAdapterKeys:
         adapter = SqlModelAdapter(DbItem, engine)
         with pytest.raises(TypeError):
             adapter.key_from_item(Item(name='wrong'))  # type: ignore
-
-    def test_key_from_str_int_string(self, engine):
-        adapter = SqlModelAdapter(DbItem, engine)
-        assert adapter.key_from_str('42') == 42
-
-    def test_key_from_str_int(self, engine):
-        adapter = SqlModelAdapter(DbItem, engine)
-        assert adapter.key_from_str(42) == 42
-
-    def test_key_from_str_non_int_string(self, engine):
-        adapter = SqlModelAdapter(DbItem, engine)
-        assert adapter.key_from_str('abc') == 'abc'
-
 
 class TestSqlModelAdapterReactive:
     def test_on_change_fires_on_create(self, engine):

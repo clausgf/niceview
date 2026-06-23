@@ -19,7 +19,7 @@ class SingleItemAdapter(Generic[T], Protocol):
     Minimal adapter protocol for single-item backends (ModelForm).
     Only read() and update() are required.
     """
-    def read(self, key: str | int) -> T: ...
+    def read(self, key: str) -> T: ...
     def update(self, item: T, key: str) -> T: ...
 
 
@@ -65,8 +65,7 @@ class CollectionAdapter(SingleItemAdapter[T], Protocol):
     SingleItemAdapter (read + update) is sufficient for ModelForm.
     """
     def __iter__(self) -> Iterator[T]: ...
-    def key_from_item(self, item: T, index: int = -1) -> str: ...
-    def key_from_str(self, key: str | int) -> Any: ...
+    def key_from_item(self, item: T) -> str: ...
     def create(self, item: T) -> T: ...
     def delete(self, key: str) -> None: ...
     def query_all_strs(self) -> Iterator[tuple[str, str]]: ...
@@ -112,7 +111,7 @@ class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T]):
                 yield self.key_from_item(item), str(item)
 
 
-    def key_from_item(self, item: pydantic.BaseModel, index: int = -1) -> str:
+    def key_from_item(self, item: pydantic.BaseModel) -> str:
         if not isinstance(item, sqlmodel.SQLModel):
             raise TypeError(f"Expected item to be an instance of {self._item_type}, got {type(item)}")
         key = getattr(item, self._key_field)
@@ -120,15 +119,11 @@ class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T]):
             raise ValueError(f"Item {item} does not have a valid primary key value.")
         return str(key)
 
-
-    def key_from_str(self, key: str | int) -> Any:
-        if isinstance(key, int):
-            return key
+    def _key_to_native(self, key: str) -> Any:
         try:
             return int(key)
         except ValueError:
             return key
-
 
     def create(self, item: T) -> T:
         if not isinstance(item, sqlmodel.SQLModel):
@@ -146,17 +141,16 @@ class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T]):
         return item
 
 
-    def read(self, key: str | int) -> T:
-        key_dict = self.key_from_str(key)
+    def read(self, key: str) -> T:
         with sqlmodel.Session(self._engine) as session:
-            item = session.get(self._item_type, key_dict)
+            item = session.get(self._item_type, self._key_to_native(key))
             if not item:
                 raise ValueError(f"Item with key {key} not found in the database.")
             item = self._item_type.model_validate(item)
         return item
 
 
-    def update(self, item: T, key: str | int) -> T:
+    def update(self, item: T, key: str) -> T:
         if not isinstance(item, sqlmodel.SQLModel):
             raise TypeError(f"Expected item to be an instance of {self._item_type}, got {type(item)}")
 
@@ -164,7 +158,7 @@ class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T]):
             if self._lock_field:
                 stmt = (
                     sqlmodel.select(self._item_type)
-                    .where(getattr(self._item_type, self._key_field) == self.key_from_str(key))
+                    .where(getattr(self._item_type, self._key_field) == self._key_to_native(key))
                     .where(getattr(self._item_type, self._lock_field) == getattr(item, self._lock_field))
                     .with_for_update()
                 )
@@ -175,7 +169,7 @@ class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T]):
                         f"(expected lock={getattr(item, self._lock_field)})"
                     )
             else:
-                db_item = session.get(self._item_type, self.key_from_str(key))
+                db_item = session.get(self._item_type, self._key_to_native(key))
                 if not db_item:
                     raise ValueError(f"Item with key {key} not found in the database.")
 
@@ -198,9 +192,9 @@ class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T]):
         return result
 
 
-    def delete(self, key: str | int) -> None:
+    def delete(self, key: str) -> None:
         with sqlmodel.Session(self._engine) as session:
-            item = session.get(self._item_type, self.key_from_str(key))
+            item = session.get(self._item_type, self._key_to_native(key))
             if not item:
                 raise ValueError(f"Item with key {key} not found in the database.")
 
@@ -237,16 +231,12 @@ class ListAdapter(_ChangeNotifier, CollectionAdapter[T]):
     def __iter__(self) -> Iterator[T]:
         return iter(self._items)
 
-    def key_from_item(self, item: pydantic.BaseModel, index: int = -1) -> str:
+    def key_from_item(self, item: pydantic.BaseModel) -> str:
         return str(id(item))
 
-    def key_from_str(self, key: str | int) -> str:
-        return str(key)
-
-    def _find_index(self, key: str | int) -> int:
-        key_str = str(key)
+    def _find_index(self, key: str) -> int:
         for i, item in enumerate(self._items):
-            if str(id(item)) == key_str:
+            if str(id(item)) == key:
                 return i
         raise KeyError(f"Item with key {key!r} not found in list.")
 
@@ -265,7 +255,7 @@ class ListAdapter(_ChangeNotifier, CollectionAdapter[T]):
         self._notify()
         return item
 
-    def read(self, key: str | int) -> T:
+    def read(self, key: str) -> T:
         return self._items[self._find_index(key)]
 
     def update(self, item: T, key: str) -> T:
@@ -304,7 +294,7 @@ class JsonAdapter(SingleItemAdapter[T]):
             instance = self._item_type()
             self.update(instance, key=self.DEFAULT_KEY)
 
-    def read(self, key: str | int) -> T:
+    def read(self, key: str) -> T:
         json_data = self._path_name.read_text(encoding='utf-8')
         item = self._item_type.model_validate_json(json_data)
         return item

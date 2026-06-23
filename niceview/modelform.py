@@ -10,7 +10,7 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 from nicegui import ui
 from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, handle_event
 
-from niceview.dataadapter import JsonAdapter, CollectionAdapter, SingleItemAdapter, SqlModelAdapter
+from niceview.dataadapter import JsonAdapter, CollectionAdapter, SingleItemAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 
@@ -54,7 +54,7 @@ class ModelForm():
     """
     _item_type: type[BaseModel]
     _item_adapter: SingleItemAdapter | None
-    _item_key: str | int | None
+    _item_key: str | None
     _model_repositories: dict[str, CollectionAdapter]
     _change_handlers: list[Handler[FieldChangeEventArguments]]
 
@@ -157,7 +157,7 @@ class ModelForm():
         return ret
 
     @classmethod
-    def from_adapter(cls, item_type: type[BaseModel], adapter: SingleItemAdapter, key: str | int, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
+    def from_adapter(cls, item_type: type[BaseModel], adapter: SingleItemAdapter, key: str, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
         Create a ModelForm bound to any CollectionAdapter.
         Adapters are considered "offline" data sources, so the form will 
@@ -212,7 +212,7 @@ class ModelForm():
 
    # --- data adapter interaction -------------------------------------------
 
-    def load(self, adapter: SingleItemAdapter, key: str | int) -> Self:
+    def load(self, adapter: SingleItemAdapter, key: str) -> Self:
         """
         Load an item from a data adapter and make it the active item in the form.
         Use this for master-detail navigation (switching the displayed item at runtime).
@@ -641,7 +641,12 @@ class ModelForm():
             # detached related instance, violating UNIQUE constraints on the related table.
             fk_field = f'{field_name}_id'
             if fk_field in getattr(type(self._current_item), 'model_fields', {}):
-                fk_val = repository.key_from_str(repository.key_from_item(value)) if value is not None else None
+                if value is not None:
+                    key_str = repository.key_from_item(value)
+                    fk_type = type(self._current_item).model_fields[fk_field].annotation
+                    fk_val = TypeAdapter(fk_type).validate_python(key_str)
+                else:
+                    fk_val = None
                 setattr(self._current_item, fk_field, fk_val)
                 return  # FK synced; skip setting the relationship object
 
