@@ -10,7 +10,7 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 from nicegui import ui
 from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, handle_event
 
-from niceview.dataadapter import JsonAdapter, CollectionAdapter, SingleItemAdapter
+from niceview.dataadapter import BoundItem, JsonAdapter, CollectionAdapter, ItemAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 
@@ -53,8 +53,7 @@ class ModelForm():
     or as keyword arguments when creating the form.
     """
     _item_type: type[BaseModel]
-    _item_adapter: SingleItemAdapter | None
-    _item_key: str | None
+    _item_adapter: ItemAdapter | None
     _model_repositories: dict[str, CollectionAdapter]
     _change_handlers: list[Handler[FieldChangeEventArguments]]
 
@@ -99,7 +98,6 @@ class ModelForm():
 
         self._item_type = item_type
         self._item_adapter = None
-        self._item_key = None
         self._model_repositories = {}
         self._change_handlers: list[Handler[FieldChangeEventArguments]] = []
 
@@ -157,32 +155,25 @@ class ModelForm():
         return ret
 
     @classmethod
-    def from_adapter(cls, item_type: type[BaseModel], adapter: SingleItemAdapter, key: str, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
+    def from_adapter(cls, item_type: type[BaseModel], adapter: CollectionAdapter, key: str, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
-        Create a ModelForm bound to any CollectionAdapter.
-        Adapters are considered "offline" data sources, so the form will 
-        not automatically update when the data in the adapter changes and vice versa.
-        However, the form supports autosave (on change) as well as manual refresh and save buttons.
+        Create a ModelForm bound to one item in a CollectionAdapter.
         """
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
         instance = cls(item_type, **kwargs)
-        instance.load(adapter, key)
+        instance.load(BoundItem(adapter, key))
         return instance
 
     @classmethod
     def from_json(cls, item_type: type[BaseModel], json_path: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
         Create a ModelForm bound to a JSON file via JsonAdapter.
-        JsonAdapter is considered an "offline" data source, so the form will
-        not automatically update when the data in the adapter changes and vice versa.
-        However, the form supports autosave (on change) as well as manual refresh and save buttons.
         """
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
-        adapter = JsonAdapter(item_type, json_path, create_if_not_exist=create_if_not_exist)
         instance = cls(item_type, **kwargs)
-        instance.load(adapter, JsonAdapter.DEFAULT_KEY)
+        instance.load(JsonAdapter(item_type, json_path, create_if_not_exist=create_if_not_exist))
         return instance
 
     # --- item and form state management -------------------------------------
@@ -212,39 +203,32 @@ class ModelForm():
 
    # --- data adapter interaction -------------------------------------------
 
-    def load(self, adapter: SingleItemAdapter, key: str) -> Self:
+    def load(self, item_adapter: ItemAdapter) -> Self:
         """
-        Load an item from a data adapter and make it the active item in the form.
+        Bind the form to an ItemAdapter and load the item.
         Use this for master-detail navigation (switching the displayed item at runtime).
+        Pass BoundItem(collection_adapter, key) to bind to a specific row in a collection.
         """
-        self._item_adapter = adapter
-        self._item_key = key
-        item = self._item_adapter.read(key)
+        self._item_adapter = item_adapter
+        item = item_adapter.read()
         if not isinstance(item, BaseModel):
             raise TypeError(f"item must be a BaseModel instance, got {type(item)}")
         self.item = item
         return self
-    
+
     def is_adapter_bound(self) -> bool:
-        """
-        Return True if the form is bound to a data adapter, False otherwise.
-        """
-        return self._item_adapter is not None and self._item_key is not None
-    
+        """Return True if the form is bound to a data adapter, False otherwise."""
+        return self._item_adapter is not None
+
     def refresh(self) -> None:
-        """
-        Refresh the form by reloading the item from the adapter and pushing
-        the new values into all rendered widgets.
-        """
+        """Refresh the form by reloading the item from the adapter."""
         if not self.is_adapter_bound():
             raise ValueError("No adapter set. Use from_adapter(), from_json(), or load() first.")
-        self.load(self._item_adapter, self._item_key)
+        self.load(self._item_adapter)
         ui.notify('Form refreshed', color='positive')
 
     def save(self) -> None:
-        """
-        Save the current item to the data adapter.
-        """
+        """Save the current item to the data adapter."""
         if not self.is_adapter_bound():
             raise ValueError("No adapter set. Use from_adapter(), from_json(), or load() first.")
 
@@ -252,7 +236,7 @@ class ModelForm():
             ui.notify('Cannot save form: validation errors present', color='negative')
             return
 
-        updated = self._item_adapter.update(self.item, str(self._item_key))
+        updated = self._item_adapter.save(self.item)
         if updated is not None and updated is not self._validated_item:
             self._validated_item = updated
             self._current_item = updated.model_copy()

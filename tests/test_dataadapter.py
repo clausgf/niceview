@@ -257,23 +257,23 @@ class TestJsonAdapter:
         path = tmp_path / 'data.json'
         path.write_text(json.dumps({'name': 'hello', 'value': 42}))
         adapter = JsonAdapter(Item, path, create_if_not_exist=False)
-        item = adapter.read(0)
+        item = adapter.read()
         assert item.name == 'hello'
         assert item.value == 42
 
-    def test_update_writes_to_file(self, tmp_path):
+    def test_save_writes_to_file(self, tmp_path):
         path = tmp_path / 'data.json'
         adapter = JsonAdapter(Item, path, create_if_not_exist=True)
-        adapter.update(Item(name='updated', value=7), '0')
+        adapter.save(Item(name='updated', value=7))
         data = json.loads(path.read_text())
         assert data['name'] == 'updated'
         assert data['value'] == 7
 
-    def test_update_returns_same_object(self, tmp_path):
+    def test_save_returns_same_object(self, tmp_path):
         path = tmp_path / 'data.json'
         adapter = JsonAdapter(Item, path, create_if_not_exist=True)
         item = Item(name='x', value=3)
-        result = adapter.update(item, '0')
+        result = adapter.save(item)
         assert result is item  # same object — preserves references held by nested widgets
 
     def test_path_is_directory_raises(self, tmp_path):
@@ -289,19 +289,19 @@ class TestJsonAdapter:
         path = tmp_path / 'data.json'
         adapter = JsonAdapter(Item, path, create_if_not_exist=False)
         with pytest.raises(FileNotFoundError):
-            adapter.read('0')
+            adapter.read()
 
     def test_read_invalid_json_raises(self, tmp_path):
         path = tmp_path / 'data.json'
         path.write_text('not valid json', encoding='utf-8')
         adapter = JsonAdapter(Item, path, create_if_not_exist=False)
         with pytest.raises(Exception):
-            adapter.read('0')
+            adapter.read()
 
-    def test_update_is_atomic(self, tmp_path):
+    def test_save_is_atomic(self, tmp_path):
         path = tmp_path / 'data.json'
         adapter = JsonAdapter(Item, path, create_if_not_exist=True)
-        adapter.update(Item(name='v2', value=2), '0')
+        adapter.save(Item(name='v2', value=2))
         # temp file must not linger
         assert not path.with_suffix('.tmp').exists()
         assert path.exists()
@@ -310,8 +310,7 @@ class TestJsonAdapter:
         path = tmp_path / 'data.json'
         path.write_text('{"name": "existing", "value": 7}', encoding='utf-8')
         adapter = JsonAdapter(Item, path, create_if_not_exist=False)
-        item = adapter.read('0')
-
+        item = adapter.read()
         assert item.name == 'existing'
 
 

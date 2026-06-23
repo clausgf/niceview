@@ -14,13 +14,17 @@ log = logging.getLogger('niceview')
 T = TypeVar('T', bound=pydantic.BaseModel)
 
 
-class SingleItemAdapter(Generic[T], Protocol):
+@runtime_checkable
+class ItemAdapter(Generic[T], Protocol):
     """
-    Minimal adapter protocol for single-item backends (ModelForm).
-    Only read() and update() are required.
+    Adapter protocol for single-item backends (ModelForm).
+
+    read() loads the item; save() persists it. No key is needed — the adapter
+    encapsulates the identity of the item (e.g. a file path, or a key bound at
+    construction time via BoundItem).
     """
-    def read(self, key: str) -> T: ...
-    def update(self, item: T, key: str) -> T: ...
+    def read(self) -> T: ...
+    def save(self, item: T) -> T: ...
 
 
 @runtime_checkable
@@ -57,18 +61,38 @@ class _ChangeNotifier:
             h()
 
 
-class CollectionAdapter(SingleItemAdapter[T], Protocol):
+class CollectionAdapter(Generic[T], Protocol):
     """
-    Full adapter protocol for list-backed components (ModelGrid, EditGridWrapper).
+    Adapter protocol for list-backed components (ModelGrid, EditGridWrapper).
 
-    Extends SingleItemAdapter with iteration and full CRUD.
-    SingleItemAdapter (read + update) is sufficient for ModelForm.
+    Covers full CRUD plus key management. Use BoundItem to wrap a
+    CollectionAdapter + key into an ItemAdapter for ModelForm.
     """
     def __iter__(self) -> Iterator[T]: ...
     def key_from_item(self, item: T) -> str: ...
+    def read(self, key: str) -> T: ...
     def create(self, item: T) -> T: ...
+    def update(self, item: T, key: str) -> T: ...
     def delete(self, key: str) -> None: ...
     def query_all_strs(self) -> Iterator[tuple[str, str]]: ...
+
+
+class BoundItem(Generic[T]):
+    """
+    Wraps a CollectionAdapter + key into an ItemAdapter.
+
+    Use this for master-detail navigation: bind a selected row to a ModelForm
+    without exposing key management to the form layer.
+    """
+    def __init__(self, adapter: CollectionAdapter[T], key: str) -> None:
+        self._adapter = adapter
+        self._key = key
+
+    def read(self) -> T:
+        return self._adapter.read(self._key)
+
+    def save(self, item: T) -> T:
+        return self._adapter.update(item, self._key)
 
 
 class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T]):
@@ -276,12 +300,11 @@ class ListAdapter(_ChangeNotifier, CollectionAdapter[T]):
         self._notify()
 
 
-class JsonAdapter(SingleItemAdapter[T]):
+class JsonAdapter(Generic[T]):
     """
-    A data adapter for a JSON file containing a single Pydantic model instance.
-    Implements SingleItemAdapter (read + update only). Writes are atomic (.tmp → rename).
+    An ItemAdapter backed by a JSON file containing a single Pydantic model instance.
+    Writes are atomic (.tmp → rename).
     """
-    DEFAULT_KEY: str = "0"  # single-item adapters use a fixed key; the key itself is ignored by read/update
 
     def __init__(self, item_type: type[T], path_name: Path, create_if_not_exist: bool = True) -> None:
         if not isinstance(item_type, type) or not issubclass(item_type, pydantic.BaseModel):
@@ -291,18 +314,15 @@ class JsonAdapter(SingleItemAdapter[T]):
         if path_name.exists() and not path_name.is_file():
             raise ValueError(f"Path {path_name} exists but is not a file.")
         if create_if_not_exist and not path_name.exists():
-            instance = self._item_type()
-            self.update(instance, key=self.DEFAULT_KEY)
+            self.save(self._item_type())
 
-    def read(self, key: str) -> T:
+    def read(self) -> T:
         json_data = self._path_name.read_text(encoding='utf-8')
-        item = self._item_type.model_validate_json(json_data)
-        return item
+        return self._item_type.model_validate_json(json_data)
 
-    def update(self, item: T, key: str) -> T:
+    def save(self, item: T) -> T:
         temp_file = self._path_name.with_suffix('.tmp')
-        json_data = item.model_dump_json(indent=2)
-        temp_file.write_text(json_data, encoding='utf-8')
+        temp_file.write_text(item.model_dump_json(indent=2), encoding='utf-8')
         temp_file.rename(self._path_name)
         return item  # return same object to preserve in-memory references (e.g. nested grid adapters)
 

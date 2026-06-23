@@ -8,7 +8,7 @@ from pydantic import BaseModel, ValidationError
 from nicegui import ui
 from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, ClickEventArguments, handle_event
 
-from niceview.dataadapter import CollectionAdapter, ReloadableAdapter, SingleItemAdapter
+from niceview.dataadapter import BoundItem, CollectionAdapter, ReloadableAdapter
 from niceview.modelform import ModelForm, FieldChangeEventArguments, _ModelFormOptionInputs
 from niceview.modelgrid import ModelGridInlineEdit, ModelGrid, T, TableItemEventArguments, TableItemFieldEventArguments
 from niceview.util import submit_dialog
@@ -413,8 +413,8 @@ class EditFormWrapper():
         return cls(form, **wrapper_kwargs)
 
     @classmethod
-    def from_adapter(cls, item_type: type[BaseModel], adapter: SingleItemAdapter, key: 'str | int', **kwargs) -> Self:
-        """Create an EditFormWrapper backed by any SingleItemAdapter. Save and Refresh buttons shown by default."""
+    def from_adapter(cls, item_type: type[BaseModel], adapter: CollectionAdapter, key: str, **kwargs) -> Self:
+        """Create an EditFormWrapper backed by one item in a CollectionAdapter. Save and Refresh buttons shown by default."""
         wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _FORM_WRAPPER_INPUT_KEYS}
         form = ModelForm.from_adapter(item_type, adapter, key, **kwargs)
         return cls(form, **wrapper_kwargs)
@@ -431,9 +431,9 @@ class EditFormWrapper():
         self.form.on_change(callback)
         return self
 
-    def load(self, adapter: SingleItemAdapter, key: 'str | int') -> Self:
-        """Delegate to the inner ModelForm's load (master-detail navigation)."""
-        self.form.load(adapter, key)
+    def load(self, adapter: CollectionAdapter, key: str) -> Self:
+        """Load a specific item from a collection (master-detail navigation)."""
+        self.form.load(BoundItem(adapter, key))
         return self
 
     # --- render ------------------------------------------------------------

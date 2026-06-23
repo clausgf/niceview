@@ -7,7 +7,7 @@ import pydantic
 import pytest
 from nicegui import ui
 
-from niceview.dataadapter import ListAdapter
+from niceview.dataadapter import BoundItem, ListAdapter
 from niceview.modelform import ModelForm
 
 
@@ -158,7 +158,8 @@ class TestFromAdapter:
         adapter = ListAdapter(User, items)
         key = adapter.key_from_item(items[0])
         form = ModelForm.from_adapter(User, adapter, key)
-        assert form._item_adapter is adapter
+        assert isinstance(form._item_adapter, BoundItem)
+        assert form._item_adapter._adapter is adapter
 
     def test_from_adapter_non_model_type_raises(self):
         items = [User()]
@@ -278,7 +279,7 @@ class TestLoad:
         adapter = ListAdapter(User, items)
         key = adapter.key_from_item(items[0])
         form = ModelForm(User)
-        form.load(adapter, key)
+        form.load(BoundItem(adapter, key))
         assert form.item.name == 'Bob'
 
     def test_load_returns_self(self):
@@ -286,7 +287,7 @@ class TestLoad:
         adapter = ListAdapter(User, items)
         key = adapter.key_from_item(items[0])
         form = ModelForm(User)
-        result = form.load(adapter, key)
+        result = form.load(BoundItem(adapter, key))
         assert result is form
 
 
@@ -301,7 +302,7 @@ class TestRefresh:
         adapter = ListAdapter(User, items)
         key = adapter.key_from_item(items[0])
         form = ModelForm(User)
-        form.load(adapter, key)
+        form.load(BoundItem(adapter, key))
         # Modify the item in-place (simulates an external update visible through the adapter)
         items[0].name = 'Alice'
         items[0].age = 30
