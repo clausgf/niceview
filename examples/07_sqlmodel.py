@@ -98,7 +98,7 @@ def books_page():
     authors = SqlModelAdapter(Author, engine)
     ui.label('Books').classes('text-h5')
     wrapper = EditGridWrapper(ModelGrid(Book, books), title='Books')
-    wrapper.set_model_repositories({Author.__name__: authors})
+    wrapper.with_repositories({Author.__name__: authors})
     wrapper.render()
     ui.button('← Authors', on_click=lambda: ui.navigate.to('/')).props('flat')
 
@@ -109,7 +109,7 @@ def book_edit_page(book_id: int):
     authors = SqlModelAdapter(Author, engine)
     with ui.card().classes('w-full max-w-lg'):
         wrapper = EditFormWrapper.from_adapter(Book, books, str(book_id), title='Edit Book', classes='w-full')
-        wrapper.set_model_repositories({Author.__name__: authors})
+        wrapper.with_repositories({Author.__name__: authors})
         wrapper.render()
     ui.button('← Back', on_click=lambda: ui.navigate.to('/books')).props('flat')
 

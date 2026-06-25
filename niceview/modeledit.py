@@ -117,7 +117,7 @@ class EditGridWrapper():
 
     # --- configuration -----------------------------------------------------
 
-    def set_model_repositories(self, repositories: dict[str, CollectionAdapter]) -> Self:
+    def with_repositories(self, repositories: dict[str, CollectionAdapter]) -> Self:
         """Set model repositories used for modelselect widgets in create/edit dialogs."""
         self._model_repositories = repositories
         return self
@@ -305,9 +305,9 @@ class EditGridWrapper():
         """
         Default edit handler that shows a dialog to edit the item.
         """
-        form = ModelForm.from_item(item, classes='w-full')
+        form = ModelForm.from_item(item)
         if self._model_repositories:
-            form.set_model_repositories(self._model_repositories)
+            form.with_repositories(self._model_repositories)
 
         def confirm():
             if form.has_validation_errors():
@@ -383,7 +383,7 @@ class EditFormWrapper():
     form: ModelForm
 
     def __init__(self, form: ModelForm, **kwargs: Unpack[_EditFormWrapperInputs]) -> None:
-        has_adapter = form.is_adapter_bound()
+        has_adapter = form.adapter_bound
         autosave = form.autosave
 
         self._title = kwargs.pop('title', None)
@@ -430,9 +430,9 @@ class EditFormWrapper():
 
     # --- delegation --------------------------------------------------------
 
-    def set_model_repositories(self, repositories: dict) -> Self:
+    def with_repositories(self, repositories: dict) -> Self:
         """Delegate to the inner ModelForm."""
-        self.form.set_model_repositories(repositories)
+        self.form.with_repositories(repositories)
         return self
 
     def on_change(self, callback: Handler[FieldChangeEventArguments]) -> Self:

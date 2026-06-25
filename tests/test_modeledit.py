@@ -220,8 +220,8 @@ class TestEditFormWrapperFactoryMethods:
         assert w._title == 'My Form'
 
     def test_from_item_form_kwarg_passed_through(self):
-        w = EditFormWrapper.from_item(User(), classes='w-96')
-        assert w.form.classes == 'w-96'
+        w = EditFormWrapper.from_item(User(), autosave=True)
+        assert w.form.autosave is True
 
     def test_from_json_shows_buttons_by_default(self, tmp_path):
         path = tmp_path / 'u.json'
@@ -248,8 +248,8 @@ class TestEditFormWrapperFactoryMethods:
         w.on_change(cb)
         assert cb in w.form._change_handlers
 
-    def test_set_model_repositories_delegates(self):
+    def test_with_repositories_delegates(self):
         w = EditFormWrapper.from_item(User())
         repos = {'Foo': MagicMock()}
-        w.set_model_repositories(repos)
+        w.with_repositories(repos)
         assert w.form._model_repositories == repos

@@ -35,10 +35,6 @@ class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
     exclude: list[str] | str
     field_info: dict[str, FieldInfo]
 
-    classes: str
-    style: str
-    props: str
-
     autosave: bool
     """Whether to automatically save the form on field change. Defaults to False (OFF)."""
 
@@ -51,9 +47,16 @@ class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
 
 class ModelForm():
     """
-    A form class that can be used to create forms for Pydantic models.
-    Configuration options can be defined in the item's Meta class, 
-    or as keyword arguments when creating the form.
+    Renders a Pydantic model as an editable form (fields only — no chrome).
+    Use EditFormWrapper to add a title, description, and action buttons.
+
+    Create via factory methods:
+      ModelForm.from_item(instance)              — in-memory item
+      ModelForm.from_json(Type, path)            — JSON file, auto-saves
+      ModelForm.from_adapter(Type, adapter, key) — any CollectionAdapter
+
+    Configuration options are accepted as keyword arguments or via the model's
+    Meta class (kwargs take priority).
     """
     _item_type: type[BaseModel]
     _item_adapter: ItemAdapter | None
@@ -68,25 +71,14 @@ class ModelForm():
     _nonfield_error_element: Any
     widgets: dict[str, ui.element]
 
-    classes: str
-    style: str
-    props: str
-
     autosave: bool
     local_tz: str | None
 
     def __init__(self, item_type: type[BaseModel], **kwargs: Unpack[_ModelFormOptionInputs]) -> None:
         """
-        Initialize the form with a model and optional keyword arguments.
-        The model must be a subclass of BaseModel.
-        The keyword arguments can be used to set the fields, field_infos, and other options.
-
-        Binding:
-        - The form keeps a reference to the model and the current model.
-        - The reference to the model is updated when the form is successfully validated. 
-          Therefore it is called the validated model.
-        - The current model is the one that is currently being edited.
-        - The current model is validated after each change.
+        Create a ModelForm for the given Pydantic model type.
+        Prefer the factory methods (from_item, from_json, from_adapter) over
+        calling the constructor directly.
         """
 
         def _get_param(param: str, default: Any) -> Any:
@@ -115,10 +107,6 @@ class ModelForm():
         self._nonfield_error_element = None
         self.widgets = {}
 
-        self.classes = _get_param('classes', '')
-        self.style = _get_param('style', '')
-        self.props = _get_param('props', '')
-
         self.autosave = _get_param('autosave', False)
         self.local_tz = _get_param('local_tz', None)
 
@@ -133,14 +121,15 @@ class ModelForm():
     @classmethod
     def from_item(cls, item_type_or_item: 'type[BaseModel] | BaseModel', item: 'BaseModel | None' = None, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
-        Create a ModelForm from a model instance. 
-        The form directly edits the given item, so changes to the form are reflected 
-        in the item. 
-        Changes to the item, however, are currently not reflected in the form. This might change in the future.
+        Create a ModelForm editing an in-memory item (no persistence).
 
-        Two call forms for API symmetry with from_adapter() and from_json():
-          from_item(instance)         — convenience; item_type inferred from instance
-          from_item(Type, instance)   — explicit type
+        The form modifies the item in-place; form.item returns the same object.
+        External changes to the item's attributes are not reflected in the widgets
+        automatically — assign form.item = updated_item to push new values to the UI.
+
+        Two call forms:
+          from_item(instance)       — item_type inferred from instance
+          from_item(Type, instance) — explicit type (e.g. for subclasses)
         """
         if item is None:
             if not isinstance(item_type_or_item, BaseModel):
@@ -160,7 +149,8 @@ class ModelForm():
     @classmethod
     def from_adapter(cls, item_type: type[BaseModel], adapter: CollectionAdapter, key: str, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
-        Create a ModelForm bound to one item in a CollectionAdapter.
+        Create a ModelForm bound to one item in a CollectionAdapter (via BoundItem).
+        Calls save() to persist changes; calls refresh() to re-read from the backend.
         """
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
@@ -171,7 +161,9 @@ class ModelForm():
     @classmethod
     def from_json(cls, item_type: type[BaseModel], json_path: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
-        Create a ModelForm bound to a JSON file via JsonAdapter.
+        Create a ModelForm bound to a single-item JSON file.
+        The file is created with default values if it does not exist.
+        Calls save() to persist changes; calls refresh() to re-read from disk.
         """
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
@@ -206,12 +198,21 @@ class ModelForm():
 
    # --- data adapter interaction -------------------------------------------
 
-    def load(self, item_adapter: ItemAdapter) -> Self:
+    @typing.overload
+    def load(self, adapter: ItemAdapter) -> Self: ...
+    @typing.overload
+    def load(self, adapter: CollectionAdapter, key: str) -> Self: ...
+    def load(self, adapter: 'ItemAdapter | CollectionAdapter', key: str | None = None) -> Self:
         """
-        Bind the form to an ItemAdapter and load the item.
+        Bind the form to an adapter and load the item.
+
+        Two call forms:
+          load(item_adapter)       — any ItemAdapter (e.g. BoundItem, JsonAdapter)
+          load(collection, key)    — convenience: wraps in BoundItem internally
+
         Use this for master-detail navigation (switching the displayed item at runtime).
-        Pass BoundItem(collection_adapter, key) to bind to a specific row in a collection.
         """
+        item_adapter: ItemAdapter = BoundItem(adapter, key) if key is not None else adapter  # type: ignore[arg-type]
         self._item_adapter = item_adapter
         item = item_adapter.read()
         if not isinstance(item, BaseModel):
@@ -219,20 +220,21 @@ class ModelForm():
         self.item = item
         return self
 
-    def is_adapter_bound(self) -> bool:
-        """Return True if the form is bound to a data adapter, False otherwise."""
+    @property
+    def adapter_bound(self) -> bool:
+        """True if the form is bound to a data adapter (save/refresh are available)."""
         return self._item_adapter is not None
 
     def refresh(self) -> None:
-        """Refresh the form by reloading the item from the adapter."""
-        if not self.is_adapter_bound():
+        """Reload the item from the adapter, discarding any unsaved edits."""
+        if not self.adapter_bound:
             raise ValueError("No adapter set. Use from_adapter(), from_json(), or load() first.")
-        self.load(self._item_adapter)
+        self.load(self._item_adapter)  # type: ignore[arg-type]
         ui.notify('Form refreshed', color='positive')
 
     def save(self) -> None:
-        """Save the current item to the data adapter."""
-        if not self.is_adapter_bound():
+        """Persist the current item to the adapter. No-op if validation errors are present."""
+        if not self.adapter_bound:
             raise ValueError("No adapter set. Use from_adapter(), from_json(), or load() first.")
 
         if self.has_validation_errors():
@@ -247,13 +249,14 @@ class ModelForm():
 
     # --- widget management and event handling --------------------------------
 
-    def set_model_repositories(self, repositories: dict[str, CollectionAdapter]) -> Self:
+    def with_repositories(self, repositories: dict[str, CollectionAdapter]) -> Self:
         """
-        Set the model repositories for the modelselect widgets in the form.
-        This is a dictionary of model data adapters that can be used to read and write items.
+        Provide adapters for modelselect fields (SQLModel relationships rendered as dropdowns).
+        Keys are model class names; values are CollectionAdapters for those models.
+        Returns self for chaining.
         """
         if not isinstance(repositories, dict):
-            raise TypeError(f"model_repositories must be a dictionary, got {type(dict)}")
+            raise TypeError(f"repositories must be a dictionary, got {type(dict)}")
         self._model_repositories = repositories
         return self
 
@@ -340,7 +343,7 @@ class ModelForm():
             log.warning(
                 f"No repository for '{field_info.item_type.__name__}' — "
                 f"rendering '{field_name}' as a disabled placeholder. "
-                f"Call set_model_repositories() to enable this field."
+                f"Call with_repositories() to enable this field."
             )
             widget = ui.select(options={}, label=field_info.label or field_name)
             widget.disable()
@@ -416,14 +419,11 @@ class ModelForm():
         else:
             data = ListAdapter(field_info.item_type, getattr(self._validated_item, field_name))
 
-        widget = ModelGrid(
-            field_info.item_type, data,
-            classes=self.classes, style=self.style, props=self.props,
-        )
+        widget = ModelGrid(field_info.item_type, data)
         if field_info.editable:  # create an editable grid for the field
             edit_widget = EditGridWrapper(widget, title=field_info.label)
             if self._model_repositories:
-                edit_widget.set_model_repositories(self._model_repositories)
+                edit_widget.with_repositories(self._model_repositories)
             edit_widget.on_change(notify_change)
             edit_widget.render()
             return edit_widget  # type: ignore[return-value]
@@ -716,6 +716,16 @@ class ModelForm():
 
     def has_validation_errors(self) -> bool:
         return bool(self._validation_error_messages) or bool(self._nonfield_validation_errors)
+
+    @property
+    def validation_errors(self) -> dict[str, str]:
+        """Field-level validation errors as {field_name: error_message}. Empty dict when valid."""
+        return dict(self._validation_error_messages)
+
+    @property
+    def nonfield_validation_errors(self) -> list[str]:
+        """Model-level (cross-field) validation errors. Empty list when valid."""
+        return list(self._nonfield_validation_errors)
 
 
     def _handle_blur_event(self, field_name: str, event) -> None:

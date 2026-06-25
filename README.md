@@ -77,7 +77,6 @@ ModelForm.from_item(user,
     autosave=True,              # save after every validated change
     local_tz='Europe/Berlin',   # timezone for datetime display
     on_change=my_callback,      # called after every validated change
-    classes='w-full',
 )
 ```
 
@@ -140,7 +139,7 @@ EditFormWrapper.from_adapter(User, adapter, key, title='Edit User').render()
 # Wrap a pre-built ModelForm (when extra setup is needed first, e.g. model repositories)
 form = ModelForm.from_adapter(Book, books_adapter, book_id)
 wrapper = EditFormWrapper(form, title='Edit Book')
-wrapper.set_model_repositories({Author.__name__: authors_adapter})
+wrapper.with_repositories({Author.__name__: authors_adapter})
 wrapper.render()
 ```
 
@@ -196,7 +195,7 @@ EditGridWrapper(grid,
     delete_button='',     # same
     refresh_button=None,  # same
 )
-wrapper.set_model_repositories({Author.__name__: authors_adapter})  # for modelselect fields in dialogs
+wrapper.with_repositories({Author.__name__: authors_adapter})  # for modelselect fields in dialogs
 ```
 
 **`EditFormWrapper` options** (all `ModelForm` options also accepted):
@@ -416,7 +415,6 @@ Design decisions and Accepted Technical Debt
 
 Open Questions / TODO
 ---------------------
-- ModelForm: Do we still need classes, style and props? Are the styling options form example 2 sufficient?
 - In addition to the dialog-based flow for editing tables and form, we could implement a more drill-down like interface. Which look&feel? Iphone-like? Breadcrumbs? Support more than one "flow" (dialogs, drill-down), ...
 - NiceView widget support (_FieldInfoInputs/FieldInfo for relevant options, pydantic type, test cases, add to example 2): 
     - slider (alternative to number for int, float)

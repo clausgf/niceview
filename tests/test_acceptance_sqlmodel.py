@@ -268,7 +268,7 @@ class TestBookManyToOneRender:
             authors = SqlModelAdapter(Author, engine)
             book = books.read(1)
             form = ModelForm.from_item(book)
-            form.set_model_repositories({Author.__name__: authors})
+            form.with_repositories({Author.__name__: authors})
             form.render()
 
         await user.open('/')
@@ -284,7 +284,7 @@ class TestBookManyToOneRender:
             authors = SqlModelAdapter(Author, engine)
             book = books.read(1)
             form = ModelForm.from_item(book)
-            form.set_model_repositories({Author.__name__: authors})
+            form.with_repositories({Author.__name__: authors})
             form.render()
 
         await user.open('/')
@@ -300,7 +300,7 @@ class TestBookManyToOneRender:
             authors = SqlModelAdapter(Author, engine)
             book = books.read(1)
             form = ModelForm.from_item(book)
-            form.set_model_repositories({Author.__name__: authors})
+            form.with_repositories({Author.__name__: authors})
             form.render()
 
         await user.open('/')
@@ -309,7 +309,7 @@ class TestBookManyToOneRender:
     async def test_missing_model_repository_renders_disabled_select(self, user: User) -> None:
         """
         Rendering a Book form without an Author repository renders the author field
-        as a disabled placeholder (no exception). Call set_model_repositories() to
+        as a disabled placeholder (no exception). Call with_repositories() to
         enable the select.
         """
         engine = make_engine()
@@ -379,7 +379,7 @@ class TestBookManyToOneInteraction:
         @ui.page('/')
         def page():
             form = ModelForm.from_adapter(Book, books, book1_id)  # type: ignore[arg-type]
-            form.set_model_repositories({Author.__name__: authors})
+            form.with_repositories({Author.__name__: authors})
             form.render()
             captured.append(form)
 
@@ -480,7 +480,7 @@ class TestAuthorOneToManyRender:
             authors = SqlModelAdapter(Author, engine)
             author = authors.read(str(author1_id))
             form = ModelForm.from_item(author)
-            form.set_model_repositories({Book.__name__: books_adapter})
+            form.with_repositories({Book.__name__: books_adapter})
             form.render()
             captured.append(form)
 
@@ -702,7 +702,7 @@ class TestAuthorsGridPage:
         def page():
             authors = SqlModelAdapter(Author, engine)
             wrapper = EditGridWrapper(ModelGrid(Author, authors))
-            wrapper.set_model_repositories({Book.__name__: books_adapter})
+            wrapper.with_repositories({Book.__name__: books_adapter})
             wrapper.render()
 
         await user.open('/')
@@ -717,7 +717,7 @@ class TestAuthorsGridPage:
             authors = SqlModelAdapter(Author, engine)
             author = authors.read(str(author1_id))
             form = ModelForm.from_item(author)
-            form.set_model_repositories({Book.__name__: books_adapter})
+            form.with_repositories({Book.__name__: books_adapter})
             form.render()
 
         await user.open('/author')
@@ -755,7 +755,7 @@ class TestBooksGridPage:
             books = SqlModelAdapter(Book, engine)
             authors = SqlModelAdapter(Author, engine)
             wrapper = EditGridWrapper(ModelGrid(Book, books), title='Books')
-            wrapper.set_model_repositories({Author.__name__: authors})
+            wrapper.with_repositories({Author.__name__: authors})
             wrapper.render()
 
         await user.open('/')
@@ -769,7 +769,7 @@ class TestBooksGridPage:
             books = SqlModelAdapter(Book, engine)
             authors = SqlModelAdapter(Author, engine)
             wrapper = EditGridWrapper(ModelGrid(Book, books), title='Books')
-            wrapper.set_model_repositories({Author.__name__: authors})
+            wrapper.with_repositories({Author.__name__: authors})
             wrapper.render()
 
         await user.open('/')
@@ -783,7 +783,7 @@ class TestBooksGridPage:
             books = SqlModelAdapter(Book, engine)
             authors = SqlModelAdapter(Author, engine)
             wrapper = EditGridWrapper(ModelGrid(Book, books))
-            wrapper.set_model_repositories({Author.__name__: authors})
+            wrapper.with_repositories({Author.__name__: authors})
             wrapper.render()
 
         await user.open('/')
@@ -801,7 +801,7 @@ class TestBooksGridPage:
             books = SqlModelAdapter(Book, engine)
             authors = SqlModelAdapter(Author, engine)
             wrapper = EditGridWrapper(ModelGrid(Book, books))
-            wrapper.set_model_repositories({Author.__name__: authors})
+            wrapper.with_repositories({Author.__name__: authors})
             wrapper.render()
 
         await user.open('/')
@@ -825,7 +825,7 @@ class TestBooksGridPage:
             authors = SqlModelAdapter(Author, engine)
             new_book = Book()
             form = ModelForm.from_item(new_book)
-            form.set_model_repositories({Author.__name__: authors})
+            form.with_repositories({Author.__name__: authors})
             form.render()
             captured.append(form)
 
@@ -847,7 +847,7 @@ class TestBooksGridPage:
             books = SqlModelAdapter(Book, engine)
             authors = SqlModelAdapter(Author, engine)
             wrapper = EditGridWrapper(ModelGrid(Book, books))
-            wrapper.set_model_repositories({Author.__name__: authors})
+            wrapper.with_repositories({Author.__name__: authors})
             wrapper.render()
 
         await user.open('/')
@@ -871,7 +871,7 @@ class TestBooksGridPage:
             books = SqlModelAdapter(Book, engine)
             authors = SqlModelAdapter(Author, engine)
             wrapper = EditGridWrapper(ModelGrid(Book, books))
-            wrapper.set_model_repositories({Author.__name__: authors})
+            wrapper.with_repositories({Author.__name__: authors})
             wrapper.render()
 
         await user.open('/')
@@ -899,7 +899,7 @@ class TestBooksGridPage:
             books = SqlModelAdapter(Book, engine)
             authors = SqlModelAdapter(Author, engine)
             wrapper = EditGridWrapper(ModelGrid(Book, books))
-            wrapper.set_model_repositories({Author.__name__: authors})
+            wrapper.with_repositories({Author.__name__: authors})
             wrapper.render()
 
         await user.open('/')
@@ -986,7 +986,7 @@ class TestBookDetailPage:
             books = SqlModelAdapter(Book, engine)
             authors = SqlModelAdapter(Author, engine)
             wrapper = EditFormWrapper.from_adapter(Book, books, 1, title='Edit Book')
-            wrapper.set_model_repositories({Author.__name__: authors})
+            wrapper.with_repositories({Author.__name__: authors})
             wrapper.render()
 
         await user.open('/')
@@ -1002,7 +1002,7 @@ class TestBookDetailPage:
             books = SqlModelAdapter(Book, engine)
             authors = SqlModelAdapter(Author, engine)
             wrapper = EditFormWrapper.from_adapter(Book, books, 1, title='Edit Book')
-            wrapper.set_model_repositories({Author.__name__: authors})
+            wrapper.with_repositories({Author.__name__: authors})
             wrapper.render()
 
         await user.open('/')
@@ -1018,7 +1018,7 @@ class TestBookDetailPage:
             books = SqlModelAdapter(Book, engine)
             authors = SqlModelAdapter(Author, engine)
             wrapper = EditFormWrapper.from_adapter(Book, books, 1, title='Edit Book')
-            wrapper.set_model_repositories({Author.__name__: authors})
+            wrapper.with_repositories({Author.__name__: authors})
             wrapper.render()
 
         await user.open('/')

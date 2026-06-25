@@ -292,6 +292,40 @@ class TestLoad:
         result = form.load(BoundItem(adapter, key))
         assert result is form
 
+    def test_load_convenience_form_with_key(self):
+        items = [User(name='Carol', age=40)]
+        adapter = ListAdapter(User, items)
+        key = adapter.key_from_item(items[0])
+        form = ModelForm(User)
+        form.load(adapter, key)
+        assert form.item.name == 'Carol'
+
+    def test_load_convenience_binds_adapter(self):
+        items = [User(name='Dan', age=50)]
+        adapter = ListAdapter(User, items)
+        key = adapter.key_from_item(items[0])
+        form = ModelForm(User)
+        form.load(adapter, key)
+        assert form.adapter_bound
+
+
+class TestAdapterBound:
+    def test_adapter_bound_false_without_adapter(self):
+        form = ModelForm(User)
+        assert form.adapter_bound is False
+
+    def test_adapter_bound_true_after_load(self):
+        items = [User()]
+        adapter = ListAdapter(User, items)
+        key = adapter.key_from_item(items[0])
+        form = ModelForm(User)
+        form.load(BoundItem(adapter, key))
+        assert form.adapter_bound is True
+
+    def test_adapter_bound_false_from_item(self):
+        form = ModelForm.from_item(User(name='Alice', age=30))
+        assert form.adapter_bound is False
+
 
 class TestRefresh:
     def test_refresh_without_model_raises(self):
@@ -362,11 +396,11 @@ class TestValidation:
         form = ModelForm.from_item(CrossFieldModel(start=0, end=10))
         form._current_item = CrossFieldModel.model_construct(start=10, end=5)
         form._validate()
-        assert form._nonfield_validation_errors != []
+        assert form.nonfield_validation_errors != []
 
     def test_nonfield_errors_empty_when_valid(self):
         form = ModelForm.from_item(CrossFieldModel(start=0, end=10))
-        assert form._nonfield_validation_errors == []
+        assert form.nonfield_validation_errors == []
 
     def test_has_validation_errors_includes_nonfield_errors(self):
         form = ModelForm.from_item(CrossFieldModel(start=0, end=10))
@@ -377,6 +411,31 @@ class TestValidation:
     def test_nonfield_error_element_initially_none(self):
         form = ModelForm(User)
         assert form._nonfield_error_element is None
+
+    def test_validation_errors_empty_when_valid(self):
+        form = ModelForm.from_item(User(name='Alice', age=30))
+        assert form.validation_errors == {}
+
+    def test_validation_errors_contains_field_errors(self):
+        form = ModelForm.from_item(User(name='Alice', age=30))
+        form._current_item = User.model_construct(name='X' * 20, age=30)
+        form._validate()
+        assert 'name' in form.validation_errors
+        assert isinstance(form.validation_errors['name'], str)
+
+    def test_validation_errors_returns_copy(self):
+        form = ModelForm.from_item(User(name='Alice', age=30))
+        errors = form.validation_errors
+        errors['injected'] = 'should not affect form'
+        assert 'injected' not in form.validation_errors
+
+    def test_nonfield_validation_errors_returns_copy(self):
+        form = ModelForm.from_item(CrossFieldModel(start=0, end=10))
+        form._current_item = CrossFieldModel.model_construct(start=10, end=5)
+        form._validate()
+        errors = form.nonfield_validation_errors
+        errors.clear()
+        assert form.nonfield_validation_errors != []
 
 
 # ---------------------------------------------------------------------------
