@@ -430,6 +430,7 @@ Design decisions and Accepted Technical Debt
 - **NiceGUI element lifecycle**: When are elements instantiated, active, deleted? `render()` must be called inside a NiceGUI page context; elements created outside a client context silently fail. No lifecycle hooks for cleanup.
 - **Tests for async dialog flows**: `create_item` / `update_item` / `delete_item` open a NiceGUI dialog (`await dialog`) and cannot be tested without a browser. The CRUD data operations are covered via `_apply_create`, `_apply_update`, `_apply_delete` (unit tests) and the render/button presence via acceptance tests. Full dialog flow testing would require the `Screen` fixture (Playwright-based).
 - Design decision **date/time/datetime**: Use Python data types and HTML native widgets instead of NiceGUI/Quasar widgets with strings.
+- **`ModelForm[T]` generics**: Making `ModelForm` generic would allow `form.item` to return `T` instead of `BaseModel`, eliminating casts in callers. The machinery is non-trivial: `@classmethod` + `TypeVar` generics are awkward pre-3.12, and internal fields (`_current_item`, `_validated_item`) would need careful typing. Deferred — the benefit is modest since callers rarely access `form.item` directly and `model_copy()`/`model_validate()` stay untyped internally anyway.
 
 
 Open Questions / TODO
