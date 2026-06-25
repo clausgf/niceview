@@ -337,6 +337,51 @@ class ListAdapter(_ChangeNotifier, CollectionAdapter[T]):
         self._notify()
 
 
+class FilteredAdapter(_ChangeNotifier, Generic[T]):
+    """
+    Wraps a CollectionAdapter, filtering __iter__ results by a predicate and
+    injecting default field values on create().
+
+    Typical use: show a parent-filtered view of a child collection (e.g., books
+    for a specific author) while routing mutations through the underlying adapter
+    for DB persistence.  Change notifications from the inner adapter are forwarded
+    automatically.
+    """
+
+    def __init__(
+        self,
+        inner: CollectionAdapter[T],
+        predicate: Callable[[T], bool],
+        defaults: dict[str, Any] | None = None,
+    ) -> None:
+        self._inner = inner
+        self._predicate = predicate
+        self._defaults = defaults or {}
+        self._init_notifier()
+        if isinstance(inner, _ChangeNotifier):
+            inner.on_change(self._notify)
+
+    def __iter__(self) -> Iterator[T]:
+        return (item for item in self._inner if self._predicate(item))
+
+    def key_from_item(self, item: T) -> str:
+        return self._inner.key_from_item(item)
+
+    def read(self, key: str) -> T:
+        return self._inner.read(key)
+
+    def create(self, item: T) -> T:
+        for field, value in self._defaults.items():
+            setattr(item, field, value)
+        return self._inner.create(item)
+
+    def update(self, item: T) -> T:
+        return self._inner.update(item)
+
+    def delete(self, key: str) -> None:
+        self._inner.delete(key)
+
+
 class JsonAdapter(Generic[T]):
     """
     An ItemAdapter backed by a JSON file containing a single Pydantic model instance.

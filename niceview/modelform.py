@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import datetime
+import logging
 from typing import Any, List, Literal, Self, Unpack
 import typing
 from pathlib import Path
@@ -13,6 +14,8 @@ from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments,
 from niceview.dataadapter import BoundItem, JsonAdapter, CollectionAdapter, ItemAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
+
+log = logging.getLogger('niceview')
 
 
 @dataclass(kw_only=True, slots=True)
@@ -334,7 +337,14 @@ class ModelForm():
             raise ValueError(f"Field {field_name} is a model select but no item type is specified in FieldInfo or as a pydantic model type")
 
         if field_info.item_type.__name__ not in self._model_repositories:
-            raise ValueError(f"Model repository for {field_info.item_type} not found in form's model repositories")
+            log.warning(
+                f"No repository for '{field_info.item_type.__name__}' — "
+                f"rendering '{field_name}' as a disabled placeholder. "
+                f"Call set_model_repositories() to enable this field."
+            )
+            widget = ui.select(options={}, label=field_info.label or field_name)
+            widget.disable()
+            return widget  # type: ignore[return-value]
 
         repo = self._model_repositories[field_info.item_type.__name__]
         field_info.select_options = {repo.key_from_item(item): str(item) for item in repo}
@@ -342,10 +352,33 @@ class ModelForm():
         return widget
 
 
+    def _get_fk_info(self, field_name: str) -> tuple[str, Any] | None:
+        """
+        For SQLModel parents: inspect the SQLAlchemy relationship to find the FK field
+        on the child side and the current parent PK value.
+        Returns (fk_field_name, parent_pk_value), or None if not determinable or
+        if the parent item has no PK yet (new, unpersisted item).
+        """
+        try:
+            from sqlalchemy import inspect as sa_inspect
+            mapper = sa_inspect(type(self._validated_item))
+            if mapper is None or not hasattr(mapper, 'relationships'):
+                return None
+            rel = mapper.relationships.get(field_name)
+            if rel is None or not rel.synchronize_pairs:
+                return None
+            local_col, remote_col = rel.synchronize_pairs[0]
+            parent_value = getattr(self._validated_item, local_col.key, None)
+            if parent_value is None:
+                return None  # parent not yet persisted — no valid FK to inject
+            return remote_col.key, parent_value
+        except Exception:
+            return None
+
     def _render_editgrid_widget(self, field_name: str, field_info: FieldInfo) -> Any:
         from niceview.modeledit import EditGridWrapper
         from niceview.modelgrid import ModelGrid, TableItemEventArguments
-        from niceview.dataadapter import ListAdapter
+        from niceview.dataadapter import ListAdapter, FilteredAdapter
 
         def notify_change(e: TableItemEventArguments) -> None:
             if self.autosave:
@@ -364,14 +397,33 @@ class ModelForm():
         if not field_info.item_type:
             raise ValueError(f"Field {field_name} is a list but no item type is specified in FieldInfo or as a pydantic model type")
 
-        # work directly on the validated item instead of the current item because there is no need for validation
-        data = ListAdapter(field_info.item_type, getattr(self._validated_item, field_name))
+        # If model_repositories has an adapter for the child type and the parent has
+        # a valid PK, use a FilteredAdapter so mutations are persisted via the adapter.
+        # Otherwise fall back to an in-memory ListAdapter.
+        repo = self._model_repositories.get(field_info.item_type.__name__)
+        data: CollectionAdapter
+        if repo is not None:
+            fk_info = self._get_fk_info(field_name)
+            if fk_info is not None:
+                fk_field, parent_value = fk_info
+                data = FilteredAdapter(
+                    repo,
+                    predicate=lambda item, fk=fk_field, val=parent_value: getattr(item, fk, None) == val,
+                    defaults={fk_field: parent_value},
+                )
+            else:
+                data = ListAdapter(field_info.item_type, getattr(self._validated_item, field_name))
+        else:
+            data = ListAdapter(field_info.item_type, getattr(self._validated_item, field_name))
+
         widget = ModelGrid(
             field_info.item_type, data,
             classes=self.classes, style=self.style, props=self.props,
         )
         if field_info.editable:  # create an editable grid for the field
             edit_widget = EditGridWrapper(widget, title=field_info.label)
+            if self._model_repositories:
+                edit_widget.set_model_repositories(self._model_repositories)
             edit_widget.on_change(notify_change)
             edit_widget.render()
             return edit_widget  # type: ignore[return-value]
@@ -695,25 +747,33 @@ class ModelForm():
 
 
     def _handle_value_change(self, field_name: str, value_change_event: ValueChangeEventArguments) -> None:
-        # do not handle the change event if the validation failed because of this field
         if len(self._validation_error_messages.get(field_name, '')) > 0:
             return
 
-        # do not handle non-changes
-        old_value = getattr(self._validated_item, field_name)
-        new_value = getattr(self._current_item, field_name)
-        if old_value == new_value:
-            return
+        fi = self._fields[field_name]
+        # For modelselect: _from_widget_value_to_current_item sets the hidden FK field
+        # (e.g. author_id) but intentionally does NOT set the relationship object on
+        # _current_item (to avoid SQLAlchemy cascade-inserting the detached related
+        # instance on session.add()). Compare and propagate the FK field instead.
+        if fi.widget_type == 'modelselect':
+            fk_field = f'{field_name}_id'
+            if fk_field not in getattr(type(self._current_item), 'model_fields', {}):
+                return
+            old_value = getattr(self._validated_item, fk_field, None)
+            new_value = getattr(self._current_item, fk_field, None)
+            if old_value == new_value:
+                return
+            setattr(self._validated_item, fk_field, new_value)
+        else:
+            old_value = getattr(self._validated_item, field_name)
+            new_value = getattr(self._current_item, field_name)
+            if old_value == new_value:
+                return
+            setattr(self._validated_item, field_name, new_value)
 
-        setattr(self._validated_item, field_name, new_value)
-
-        # handle autosave (only if a model adapter is set; with from_item the item is already modified in-place)
         if self.autosave and self._item_adapter is not None:
             self.save()
 
-        # call the change handlers
-        #event.args.update({'field_name': field_name, 'old_value': old_value, 'new_value': new_value})
-        #value_change_event = ValueChangeEventArguments(sender=event.sender, client=event.client, value=event.value)
         fce = FieldChangeEventArguments(
             sender=value_change_event.sender,
             client=value_change_event.client,

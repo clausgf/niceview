@@ -232,7 +232,13 @@ class EditGridWrapper():
 
 
     async def create_item(self, event: ClickEventArguments) -> None:
+        from niceview.dataadapter import FilteredAdapter
         item = self.grid._fields._item_type()
+        # Pre-apply FK defaults so the dialog form starts with a valid item
+        # (e.g. author_id is set before Pydantic validates the new Book).
+        if isinstance(self.grid._data, FilteredAdapter):
+            for field, value in self.grid._data._defaults.items():
+                setattr(item, field, value)
         success = await self.default_edit_create_handler(item, True)
         if success:
             try:
