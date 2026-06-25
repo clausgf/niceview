@@ -60,8 +60,8 @@ class _ModelGridOptionInputs(typing_extensions.TypedDict, total=False):
     """
     Kwarg Options for the UiAgGrid class.
     """
-    fields: list[str] | str # FieldsMixin: list of field names or '__all__' (default) to include all fields
-    exclude: list[str] | str # FieldsMixin: list of field names to exclude from the grid
+    include: list[str] | str # list of field names to include, or '__all__' (default)
+    exclude: list[str] | str # list of field names to exclude from the grid
     field_infos: dict[str, FieldInfo] # FieldsMixin: dict of field names to FieldInfo objects to override the info from the model
 
     classes: str
@@ -95,20 +95,17 @@ class ModelGrid:
     cell_renderers: dict[str, Callable[[Any], Any]]
 
 
-    def __init__(self, item_type: type[T], data: CollectionAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> None:
+    def __init__(self, item_type: type[T], adapter: CollectionAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> None:
         """
-        Initialize the ModelGrid with a Pydantic model type and a list of items.
-        The items must be instances of the model type.
-
-        Note: item_type is needed to determine the type of the items in the grid in case of empty items.
+        Initialize the ModelGrid with a Pydantic model type and a CollectionAdapter.
+        Prefer factory methods (from_list, from_json, from_adapter) over the constructor.
         """
-        # check parameter types
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"cls must be a subclass of BaseModel, got {type(item_type)}")
 
-        self._fields = Fields(item_type, kwargs.pop('fields', '__all__'),
+        self._fields = Fields(item_type, kwargs.pop('include', '__all__'),
                             kwargs.pop('exclude', ''), kwargs.pop('field_infos', {}))
-        self._data = data
+        self._data = adapter
 
         # initialize instance with a new copy of more complex data structures
         self._selection_handlers = []
@@ -137,28 +134,28 @@ class ModelGrid:
 
         Return type is Self so subclasses (e.g. ModelGridInlineEdit) are returned as their own type.
         """
-        data = ListAdapter(item_type, items)
-        return cls(item_type, data, **kwargs)  # type: ignore[arg-type]
+        adapter = ListAdapter(item_type, items)
+        return cls(item_type, adapter, **kwargs)  # type: ignore[arg-type]
 
     @classmethod
-    def from_adapter(cls, item_type: type[T], data: CollectionAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> Self:
+    def from_adapter(cls, item_type: type[T], adapter: CollectionAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> Self:
         """
         Create an instance from any CollectionAdapter.
         Equivalent to the constructor — provided for API symmetry with ModelForm.from_adapter().
         Return type is Self so subclasses (e.g. ModelGridInlineEdit) are returned as their own type.
         """
-        return cls(item_type, data, **kwargs)  # type: ignore[arg-type]
+        return cls(item_type, adapter, **kwargs)  # type: ignore[arg-type]
 
     @classmethod
     def from_json(cls, item_type: type[T], path_name: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelGridOptionInputs]) -> Self:
         """
         Create an instance backed by a JSON file via JsonListAdapter.
         The file is created with an empty list if it does not exist.
-        Call grid._data.reload() + grid.update_rows() to refresh from disk.
+        Call grid.adapter.reload() + grid.update_rows() to refresh from disk.
         Return type is Self so subclasses (e.g. ModelGridInlineEdit) are returned as their own type.
         """
-        data = JsonListAdapter(item_type, path_name, create_if_not_exist=create_if_not_exist)
-        return cls(item_type, data, **kwargs)  # type: ignore[arg-type]
+        adapter = JsonListAdapter(item_type, path_name, create_if_not_exist=create_if_not_exist)
+        return cls(item_type, adapter, **kwargs)  # type: ignore[arg-type]
 
     @property
     def adapter(self) -> CollectionAdapter:
@@ -257,7 +254,7 @@ class ModelGrid:
 
 @dataclass(kw_only=True, slots=True)
 class TableItemEventArguments(ClickEventArguments):
-    model_table: ModelGrid
+    grid: ModelGrid
     row_key: str
     item: Any
 
@@ -282,10 +279,10 @@ class ModelGridInlineEdit(ModelGrid):
 
     cell_readers: dict[str, Callable[[str], Any]]
 
-    def __init__(self, item_type: type[T], data: CollectionAdapter, **kwargs: Unpack[_InlineEditableModelGridOptionInputs]) -> None:
+    def __init__(self, item_type: type[T], adapter: CollectionAdapter, **kwargs: Unpack[_InlineEditableModelGridOptionInputs]) -> None:
         self.cell_readers = kwargs.pop('cell_readers', {})
 
-        super().__init__(item_type, data, **kwargs)  # type: ignore[arg-type, misc]
+        super().__init__(item_type, adapter, **kwargs)  # type: ignore[arg-type, misc]
         self.defaultColDef.update({'editable': True})
 
         self._change_handlers = []
@@ -362,8 +359,8 @@ class ModelGridInlineEdit(ModelGrid):
 
         # call the change handlers
         tife = TableItemFieldEventArguments(
-            sender=event.sender, client=event.client, 
-            model_table=self,
+            sender=event.sender, client=event.client,
+            grid=self,
             row_key=row_key,
             item=item, field_name=field_name, new_value=new_value,
         )

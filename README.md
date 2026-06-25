@@ -70,13 +70,14 @@ form = ModelForm.from_adapter(User, adapter, str(key))
 form.render()
 ```
 
-**Options** (apply to all `ModelForm` factory methods):
+**Options** (apply to all `ModelForm` and `ModelGrid` factory methods):
 ```python
 ModelForm.from_item(user,
-    include=['name', 'age'],    # or exclude=['active']
-    autosave=True,              # save after every validated change
-    local_tz='Europe/Berlin',   # timezone for datetime display
-    on_change=my_callback,      # called after every validated change
+    include=['name', 'age'],          # or exclude=['active']
+    field_infos={'age': niceview.Field(label='Age')},  # per-field overrides
+    autosave=True,                    # save after every validated change
+    local_tz='Europe/Berlin',         # timezone for datetime display
+    on_change=my_callback,            # called after every validated change
 )
 ```
 
@@ -114,7 +115,7 @@ ModelGrid / ModelGridInlineEdit
 from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
 
 # In-memory list
-grid = ModelGrid.from_list(User, user_list, fields=['name', 'age'])
+grid = ModelGrid.from_list(User, user_list, include=['name', 'age'])
 grid = ModelGridInlineEdit.from_list(User, user_list)
 
 # JSON file: created with [] if missing; Refresh button reloads from disk
@@ -158,7 +159,7 @@ EditFormWrapper.from_adapter(User, adapter, key, title='Edit User').render()
 # Wrap a pre-built ModelForm (when extra setup is needed first, e.g. model repositories)
 form = ModelForm.from_adapter(Book, books_adapter, book_id)
 wrapper = EditFormWrapper(form, title='Edit Book')
-wrapper.with_repositories({Author.__name__: authors_adapter})
+wrapper.with_repositories({Author: authors_adapter})
 wrapper.render()
 ```
 
@@ -214,7 +215,7 @@ EditGridWrapper(grid,
     delete_button='',     # same
     refresh_button=None,  # same
 )
-wrapper.with_repositories({Author.__name__: authors_adapter})  # for modelselect fields in dialogs
+wrapper.with_repositories({Author: authors_adapter})  # type → adapter; for modelselect fields in dialogs
 ```
 
 **`EditFormWrapper` options** (all `ModelForm` options also accepted):
@@ -255,9 +256,11 @@ from disk (JSON) or fires a grid-refresh notification (SQL, where every `read()`
 | Protocol | Methods | Used by |
 |---|---|---|
 | `ItemAdapter[T]` | `read() -> T`, `save(item) -> T` | `ModelForm` |
-| `CollectionAdapter[T]` | `__iter__`, `key_from_item(item)`, `read(key)`, `create(item)`, `update(item)`, `delete(key)` | `ModelGrid`, `EditGridWrapper` |
-| `ReloadableAdapter` | `reload()` | `EditGridWrapper` (Refresh button) |
+| `CollectionAdapter[T]` | `__iter__`, `key_from_item(item) -> str`, `read(key) -> T`, `create(item) -> T`, `update(item) -> T`, `delete(key)` | `ModelGrid`, `EditGridWrapper` |
+| `ReloadableAdapter` | `reload()` | `EditGridWrapper` (Refresh button), `FilteredAdapter` (forwarded) |
 | `ReactiveAdapter` | `on_change(handler)` | `ModelGrid` (auto-update) |
+
+`update()` returns the stored item, which may differ from the input (e.g. `SqlModelAdapter` refreshes `updated_at`). `key_from_item()` raises `KeyError` if the item is not in the adapter; `read()` raises `KeyError`/`ValueError` if the key is not found.
 
 `BoundItem(adapter, key)` wraps a `CollectionAdapter` + a string key into an `ItemAdapter` —
 the standard bridge for master-detail navigation (e.g. `ModelForm.from_adapter()`).
@@ -372,7 +375,7 @@ class User(pydantic.BaseModel):
     secret: str = ''
 
     class Meta:
-        field_info = {
+        field_infos = {
             'secret': niceview.Field(hidden=True),
         }
         field_order = ['name', 'secret']   # explicit display order
@@ -395,7 +398,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 376 tests
+uv run pytest          # 384 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 
@@ -430,6 +433,7 @@ Design decisions and Accepted Technical Debt
 - **NiceGUI element lifecycle**: When are elements instantiated, active, deleted? `render()` must be called inside a NiceGUI page context; elements created outside a client context silently fail. No lifecycle hooks for cleanup.
 - **Tests for async dialog flows**: `create_item` / `update_item` / `delete_item` open a NiceGUI dialog (`await dialog`) and cannot be tested without a browser. The CRUD data operations are covered via `_apply_create`, `_apply_update`, `_apply_delete` (unit tests) and the render/button presence via acceptance tests. Full dialog flow testing would require the `Screen` fixture (Playwright-based).
 - Design decision **date/time/datetime**: Use Python data types and HTML native widgets instead of NiceGUI/Quasar widgets with strings.
+- **`ui.notify()` in `save()`/`refresh()`**: Both methods call `ui.notify()` unconditionally. Callers who want custom feedback or suppress the popup have no opt-out today. Options: `notify=True` parameter, or an overridable `_on_save_success()`/`_on_save_error()` hook method. Deferred — the default behaviour is what most apps need, and adding a parameter to every call site adds noise.
 - **`ModelForm[T]` generics**: Making `ModelForm` generic would allow `form.item` to return `T` instead of `BaseModel`, eliminating casts in callers. The machinery is non-trivial: `@classmethod` + `TypeVar` generics are awkward pre-3.12, and internal fields (`_current_item`, `_validated_item`) would need careful typing. Deferred — the benefit is modest since callers rarely access `form.item` directly and `model_copy()`/`model_validate()` stay untyped internally anyway.
 
 

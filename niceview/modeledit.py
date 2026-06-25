@@ -62,7 +62,7 @@ class EditGridWrapper():
     refresh_button: ui.button | None
 
     _change_handlers: list[Handler[TableItemEventArguments]]
-    _model_repositories: dict[str, CollectionAdapter]
+    _model_repositories: dict[type[BaseModel], CollectionAdapter]
 
     def __init__(self, grid: ModelGrid, **kwargs: Unpack[_EditGridWrapperInputs]) -> None:
         self.grid = grid
@@ -108,16 +108,16 @@ class EditGridWrapper():
         return cls(grid, **wrapper_kwargs)  # type: ignore[arg-type]
 
     @classmethod
-    def from_adapter(cls, item_type: type[T], data: CollectionAdapter, *, inline_edit: bool = False, **kwargs) -> Self:
+    def from_adapter(cls, item_type: type[T], adapter: CollectionAdapter, *, inline_edit: bool = False, **kwargs) -> Self:
         """Create an EditGridWrapper backed by any CollectionAdapter."""
         wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _GRID_WRAPPER_INPUT_KEYS}
         grid_cls = ModelGridInlineEdit if inline_edit else ModelGrid
-        grid = grid_cls.from_adapter(item_type, data, **kwargs)
+        grid = grid_cls.from_adapter(item_type, adapter, **kwargs)
         return cls(grid, **wrapper_kwargs)  # type: ignore[arg-type]
 
     # --- configuration -----------------------------------------------------
 
-    def with_repositories(self, repositories: dict[str, CollectionAdapter]) -> Self:
+    def with_repositories(self, repositories: 'dict[type[BaseModel], CollectionAdapter]') -> Self:
         """Set model repositories used for modelselect widgets in create/edit dialogs."""
         self._model_repositories = repositories
         return self
@@ -133,15 +133,19 @@ class EditGridWrapper():
         return self
     
 
-    def _invoke_change_handlers(self, event: ClickEventArguments, row_key: str, item: BaseModel | None) -> None:
-        """
-        Invoke the change handlers with the given event, row key and item.
-        """
+    def _notify_change_handlers(self, row_key: str, item: BaseModel | None) -> None:
+        """Fire change handlers. Requires the grid to be rendered (widget must not be None)."""
+        if not self._change_handlers:
+            return
+        widget = self.grid.widget
+        if widget is None:
+            return
         tce = TableItemEventArguments(
-            sender=event.sender, client=event.client, 
-            model_table=self.grid,
-            row_key=row_key, 
-            item=item
+            sender=widget,  # type: ignore[arg-type]
+            client=widget.client,  # type: ignore[attr-defined]
+            grid=self.grid,
+            row_key=row_key,
+            item=item,
         )
         for handler in self._change_handlers:
             handle_event(handler, tce)
@@ -190,15 +194,15 @@ class EditGridWrapper():
                             with self.refresh_button:
                                 ui.tooltip('Refresh').style('width: fit-content')
                         if self._delete_button is not None:
-                            self.delete_button = ui.button(self._delete_button, icon='delete').props('color=negative dense flat').on_click(self.delete_item)
+                            self.delete_button = ui.button(self._delete_button, icon='delete').props('color=negative dense flat').on_click(self._on_delete_clicked)
                             with self.delete_button:
                                 ui.tooltip('Delete selected item').style('width: fit-content')
                         if self._add_button is not None:
-                            self.add_button = ui.button(self._add_button, icon='add').props('dense flat').on_click(self.create_item)
+                            self.add_button = ui.button(self._add_button, icon='add').props('dense flat').on_click(self._on_create_clicked)
                             with self.add_button:
                                 ui.tooltip('Add a new item').style('width: fit-content')
                         if self._edit_button is not None:
-                            self.edit_button = ui.button(self._edit_button, icon='edit').props('dense flat').on_click(self.update_item)
+                            self.edit_button = ui.button(self._edit_button, icon='edit').props('dense flat').on_click(self._on_update_clicked)
                             with self.edit_button:
                                 ui.tooltip('Edit item').style('width: fit-content')
 
@@ -211,8 +215,8 @@ class EditGridWrapper():
 
     def refresh(self) -> None:
         """Reload from the adapter and re-render the grid."""
-        if isinstance(self.grid._data, ReloadableAdapter):
-            self.grid._data.reload()
+        if isinstance(self.grid.adapter, ReloadableAdapter):
+            self.grid.adapter.reload()
         self.grid.update_rows()
 
     def _on_refresh_clicked(self, event: ClickEventArguments) -> None:
@@ -221,27 +225,28 @@ class EditGridWrapper():
 
     def _apply_create(self, item: BaseModel) -> BaseModel:
         """Persist a new item via the adapter. Raises on type mismatch or adapter error."""
-        return self.grid._data.create(item)
+        return self.grid.adapter.create(item)
 
     def _apply_update(self, new_item: BaseModel, row_key: str) -> BaseModel:
         """Persist an updated item via the adapter. Raises on not-found or optimistic-lock conflict."""
-        original = self.grid._data.read(row_key)
+        original = self.grid.adapter.read(row_key)
         for field, value in new_item.model_dump().items():
             setattr(original, field, value)
-        return self.grid._data.update(original)
+        return self.grid.adapter.update(original)
 
     def _apply_delete(self, row_key: str) -> None:
         """Delete an item via the adapter. Raises if the key does not exist."""
-        self.grid._data.delete(row_key)
+        self.grid.adapter.delete(row_key)
 
 
-    async def create_item(self, event: ClickEventArguments) -> None:
+    async def create_item(self) -> None:
+        """Open the create dialog and, on confirmation, persist the new item."""
         from niceview.dataadapter import FilteredAdapter
         item = self.grid._fields._item_type()
         # Pre-apply FK defaults so the dialog form starts with a valid item
         # (e.g. author_id is set before Pydantic validates the new Book).
-        if isinstance(self.grid._data, FilteredAdapter):
-            for field, value in self.grid._data._defaults.items():
+        if isinstance(self.grid.adapter, FilteredAdapter):
+            for field, value in self.grid.adapter._defaults.items():
                 setattr(item, field, value)
         success = await self.default_edit_create_handler(item, True)
         if success:
@@ -249,21 +254,24 @@ class EditGridWrapper():
                 item = self._apply_create(item)
                 ui.notify('Item created', color='positive')
                 self.grid.update_rows()
-                self._invoke_change_handlers(event, self.grid._data.key_from_item(item), item)
+                self._notify_change_handlers(self.grid.adapter.key_from_item(item), item)
             except Exception as e:
                 log.error(f'Error creating item: {e}')
                 ui.notify(f'Error creating item: {self._error_msg_from_exception(e)}', color='negative')
         else:
             ui.notify('Item creation cancelled', color='negative')
 
+    async def _on_create_clicked(self, event: ClickEventArguments) -> None:
+        await self.create_item()
 
-    async def update_item(self, event: ClickEventArguments) -> None:
+    async def update_item(self) -> None:
+        """Open the edit dialog for the selected row and, on confirmation, persist changes."""
         row_key = await self._get_selected_row_key()
         if not row_key:
             ui.notify('Please select a row first!', color='negative')
             return
 
-        item = self.grid._data.read(row_key)
+        item = self.grid.adapter.read(row_key)
         if not item:
             ui.notify(f'Item with key {row_key} not found', color='negative')
             return
@@ -281,10 +289,13 @@ class EditGridWrapper():
             return
 
         self.grid.update_rows()
-        self._invoke_change_handlers(event, self.grid._data.key_from_item(item), item)
+        self._notify_change_handlers(self.grid.adapter.key_from_item(item), item)
 
+    async def _on_update_clicked(self, event: ClickEventArguments) -> None:
+        await self.update_item()
 
-    async def delete_item(self, event: ClickEventArguments) -> None:
+    async def delete_item(self) -> None:
+        """Ask for confirmation and delete the selected row."""
         row_key = await self._get_selected_row_key()
         if not row_key:
             ui.notify('Please select a row for deletion!', color='negative')
@@ -302,7 +313,10 @@ class EditGridWrapper():
             ui.notify(f'Error deleting item {row_key}: {self._error_msg_from_exception(e)}', color='negative')
 
         self.grid.update_rows()
-        self._invoke_change_handlers(event, row_key, None)
+        self._notify_change_handlers(row_key, None)
+
+    async def _on_delete_clicked(self, event: ClickEventArguments) -> None:
+        await self.delete_item()
 
 
     async def default_edit_create_handler(self, item: BaseModel, do_create: bool) -> bool:
@@ -369,9 +383,9 @@ class EditFormWrapper():
     Autosave suppresses the save button regardless.
 
     After render(), the NiceGUI elements are exposed for further styling:
-        wrapper.title   → ui.label | None
-        wrapper.save_btn    → ui.button | None
-        wrapper.refresh_btn → ui.button | None
+        wrapper.title          → ui.label | None
+        wrapper.save_button    → ui.button | None
+        wrapper.refresh_button → ui.button | None
     """
     _title: str | None
     _description: str | None
@@ -434,7 +448,7 @@ class EditFormWrapper():
 
     # --- delegation --------------------------------------------------------
 
-    def with_repositories(self, repositories: dict) -> Self:
+    def with_repositories(self, repositories: 'dict[type[BaseModel], CollectionAdapter]') -> Self:
         """Delegate to the inner ModelForm."""
         self.form.with_repositories(repositories)
         return self

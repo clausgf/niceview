@@ -33,7 +33,7 @@ class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
     """
     include: list[str] | str
     exclude: list[str] | str
-    field_info: dict[str, FieldInfo]
+    field_infos: dict[str, FieldInfo]
 
     autosave: bool
     """Whether to automatically save the form on field change. Defaults to False (OFF)."""
@@ -93,13 +93,13 @@ class ModelForm():
 
         self._item_type = item_type
         self._item_adapter = None
-        self._model_repositories = {}
+        self._model_repositories: dict[type[BaseModel], CollectionAdapter] = {}
         self._change_handlers: list[Handler[FieldChangeEventArguments]] = []
 
         include = _get_param('include', '__all__')
         exclude = _get_param('exclude', '')
-        field_info = _get_param('field_info', {})
-        self._fields = Fields(item_type, include, exclude, field_info)
+        field_infos = _get_param('field_infos', {})
+        self._fields = Fields(item_type, include, exclude, field_infos)
         self._current_item = None
         self._validated_item = None
         self._validation_error_messages = {}
@@ -185,7 +185,7 @@ class ModelForm():
         Get the current (validated) item of the form.
         This is the item that is currently being edited.
         """
-        if not self._validated_item:
+        if self._validated_item is None:
             raise ValueError("No item set. Use from_item(), from_json(), from_adapter(), or load() first.")
         return self._validated_item
 
@@ -263,10 +263,10 @@ class ModelForm():
 
     # --- widget management and event handling --------------------------------
 
-    def with_repositories(self, repositories: dict[str, CollectionAdapter]) -> Self:
+    def with_repositories(self, repositories: 'dict[type[BaseModel], CollectionAdapter]') -> Self:
         """
         Provide adapters for modelselect fields (SQLModel relationships rendered as dropdowns).
-        Keys are model class names; values are CollectionAdapters for those models.
+        Keys are model classes (e.g. Author); values are CollectionAdapters for those models.
         Returns self for chaining.
         """
         if not isinstance(repositories, dict):
@@ -353,7 +353,7 @@ class ModelForm():
         if not field_info.item_type:
             raise ValueError(f"Field {field_name} is a model select but no item type is specified in FieldInfo or as a pydantic model type")
 
-        if field_info.item_type.__name__ not in self._model_repositories:
+        if field_info.item_type not in self._model_repositories:
             log.warning(
                 f"No repository for '{field_info.item_type.__name__}' — "
                 f"rendering '{field_name}' as a disabled placeholder. "
@@ -363,7 +363,7 @@ class ModelForm():
             widget.disable()
             return widget  # type: ignore[return-value]
 
-        repo = self._model_repositories[field_info.item_type.__name__]
+        repo = self._model_repositories[field_info.item_type]
         field_info.select_options = {repo.key_from_item(item): str(item) for item in repo}
         widget = self._render_select_widget(field_name, field_info, kwargs, value_widget_type='modelselect')
         return widget
@@ -417,7 +417,7 @@ class ModelForm():
         # If model_repositories has an adapter for the child type and the parent has
         # a valid PK, use a FilteredAdapter so mutations are persisted via the adapter.
         # Otherwise fall back to an in-memory ListAdapter.
-        repo = self._model_repositories.get(field_info.item_type.__name__)
+        repo = self._model_repositories.get(field_info.item_type)
         data: CollectionAdapter
         if repo is not None:
             fk_info = self._get_fk_info(field_name)
@@ -618,7 +618,7 @@ class ModelForm():
         if widget_type == 'modelselect':
             item_type = self._fields[field_name].item_type
             assert item_type is not None, f"item_type for field '{field_name}' must not be None"
-            repository = self._model_repositories[item_type.__name__]
+            repository = self._model_repositories[item_type]
             if not repository:
                 raise ValueError(f"Model repository for {item_type.__name__} not found in form's model repositories")
             value = repository.key_from_item(value) if value is not None else None
@@ -683,7 +683,7 @@ class ModelForm():
         elif widget_type == 'modelselect':
             item_type = self._fields[field_name].item_type
             assert item_type is not None, f"item_type for field '{field_name}' must not be None"
-            repository = self._model_repositories[item_type.__name__]
+            repository = self._model_repositories[item_type]
             if not repository:
                 raise ValueError(f"Model repository for {item_type.__name__} not found in form's model repositories")
             value = repository.read(value) if value is not None else None

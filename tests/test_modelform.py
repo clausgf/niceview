@@ -123,6 +123,15 @@ class TestFromItem:
         with pytest.raises(ValueError):
             _ = form.item
 
+    def test_item_property_does_not_raise_for_falsy_model(self):
+        class AllFalsy(pydantic.BaseModel):
+            active: bool = False
+            count: int = 0
+        form = ModelForm(AllFalsy)
+        falsy_item = AllFalsy()
+        form._set_item(falsy_item)
+        assert form.item is falsy_item  # must not raise even though bool(item) could be False
+
     def test_item_setter_wrong_type_raises(self):
         form = ModelForm(User)
         with pytest.raises(TypeError):

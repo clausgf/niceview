@@ -69,11 +69,26 @@ class CollectionAdapter(Generic[T], Protocol):
     CollectionAdapter + key into an ItemAdapter for ModelForm.
     """
     def __iter__(self) -> Iterator[T]: ...
-    def key_from_item(self, item: T) -> str: ...
-    def read(self, key: str) -> T: ...
-    def create(self, item: T) -> T: ...
-    def update(self, item: T) -> T: ...
-    def delete(self, key: str) -> None: ...
+
+    def key_from_item(self, item: T) -> str:
+        """Return the stable string key for item. Raises KeyError if item not in adapter."""
+        ...
+
+    def read(self, key: str) -> T:
+        """Return the item for the given key. Raises KeyError/ValueError if not found."""
+        ...
+
+    def create(self, item: T) -> T:
+        """Persist a new item. Returns the stored item (may include server-assigned fields)."""
+        ...
+
+    def update(self, item: T) -> T:
+        """Persist changes to an existing item. Returns the stored item (may include server-updated fields such as updated_at)."""
+        ...
+
+    def delete(self, key: str) -> None:
+        """Delete the item with the given key. Raises KeyError/ValueError if not found."""
+        ...
 
 
 class BoundItem(Generic[T]):
@@ -126,7 +141,7 @@ class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T], ReloadableAdapter):
                 yield self._item_type.model_validate(item)
 
 
-    def query_all_strs(self) -> Iterator[tuple[str, str]]:
+    def _query_all_strs(self) -> Iterator[tuple[str, str]]:
         with sqlmodel.Session(self._engine) as session:
             statement = sqlmodel.select(self._item_type)
             result = session.exec(statement)
@@ -283,7 +298,7 @@ class ListAdapter(_ChangeNotifier, CollectionAdapter[T]):
             raise KeyError(f"Item not found in adapter.")
         return key
 
-    def query_all_strs(self) -> Iterator[tuple[str, str]]:
+    def _query_all_strs(self) -> Iterator[tuple[str, str]]:
         for item in self._items:
             yield self.key_from_item(item), str(item)
 
@@ -380,6 +395,11 @@ class FilteredAdapter(_ChangeNotifier, Generic[T]):
 
     def delete(self, key: str) -> None:
         self._inner.delete(key)
+
+    def reload(self) -> None:
+        """Forward reload to the inner adapter if it supports it."""
+        if isinstance(self._inner, ReloadableAdapter):
+            self._inner.reload()
 
 
 class JsonAdapter(Generic[T]):

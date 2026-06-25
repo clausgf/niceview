@@ -78,6 +78,7 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
     table_filterable: bool  # whether to show a filter row in the table; if applicable, filter type is inferred from the field type
     table_floating_filter: bool  # whether to show a floating filter row in the table
     aggrid_type: str  # aggrid column type, e.g. 'numericColumn', 'rightAligned'
+    aggrid: dict  # additional aggrid column properties passed through verbatim (overrides computed ones)
 
 
 class FieldInfo():

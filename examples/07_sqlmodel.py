@@ -65,7 +65,7 @@ class Book(sqlmodel.SQLModel, table=True):
     updated_at: Annotated[datetime.datetime, sqlmodel.Field(default_factory=_now), niceview.Field(hidden=True)]
 
     class Meta:
-        field_info = {
+        field_infos = {
             'author': niceview.Field(label='Author', tooltip='Select the author of this book'),
         }
         field_order = ['title', 'author']  # partial field order, with remaining field at the end
@@ -88,7 +88,7 @@ def authors_page():
 def author_edit_page(author_id: int):
     authors = SqlModelAdapter(Author, engine)
     with ui.card().classes('w-full max-w-lg'):
-        EditFormWrapper.from_adapter(Author, authors, str(author_id), title='Edit Author', classes='w-full').render()
+        EditFormWrapper.from_adapter(Author, authors, str(author_id), title='Edit Author').render()
     ui.button('← Back', on_click=lambda: ui.navigate.to('/')).props('flat')
 
 
@@ -98,7 +98,7 @@ def books_page():
     authors = SqlModelAdapter(Author, engine)
     ui.label('Books').classes('text-h5')
     wrapper = EditGridWrapper(ModelGrid(Book, books), title='Books')
-    wrapper.with_repositories({Author.__name__: authors})
+    wrapper.with_repositories({Author: authors})
     wrapper.render()
     ui.button('← Authors', on_click=lambda: ui.navigate.to('/')).props('flat')
 
@@ -109,7 +109,7 @@ def book_edit_page(book_id: int):
     authors = SqlModelAdapter(Author, engine)
     with ui.card().classes('w-full max-w-lg'):
         wrapper = EditFormWrapper.from_adapter(Book, books, str(book_id), title='Edit Book', classes='w-full')
-        wrapper.with_repositories({Author.__name__: authors})
+        wrapper.with_repositories({Author: authors})
         wrapper.render()
     ui.button('← Back', on_click=lambda: ui.navigate.to('/books')).props('flat')
 

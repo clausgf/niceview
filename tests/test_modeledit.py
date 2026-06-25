@@ -47,7 +47,7 @@ class TestApplyCreate:
     def test_adds_item_to_adapter(self, wrapper):
         new_item = User(name='Alice', age=30)
         wrapper._apply_create(new_item)
-        assert len(list(wrapper.grid._data)) == 1
+        assert len(list(wrapper.grid.adapter)) == 1
 
     def test_returns_created_item(self, wrapper):
         new_item = User(name='Alice', age=30)
@@ -58,7 +58,7 @@ class TestApplyCreate:
     def test_create_multiple_items(self, wrapper):
         wrapper._apply_create(User(name='Alice', age=30))
         wrapper._apply_create(User(name='Bob', age=25))
-        assert len(list(wrapper.grid._data)) == 2
+        assert len(list(wrapper.grid.adapter)) == 2
 
     def test_raises_on_wrong_type(self, wrapper):
         with pytest.raises(TypeError):
@@ -73,16 +73,16 @@ class TestApplyUpdate:
     def test_updates_item_in_adapter(self, populated_wrapper):
         wrapper, items = populated_wrapper
         original = items[0]
-        key = wrapper.grid._data.key_from_item(original)
+        key = wrapper.grid.adapter.key_from_item(original)
         copy = original.model_copy(deep=True)
         copy.name = 'Updated'
         wrapper._apply_update(copy, key)
-        assert list(wrapper.grid._data)[0].name == 'Updated'
+        assert list(wrapper.grid.adapter)[0].name == 'Updated'
 
     def test_returns_updated_item(self, populated_wrapper):
         wrapper, items = populated_wrapper
         original = items[0]
-        key = wrapper.grid._data.key_from_item(original)
+        key = wrapper.grid.adapter.key_from_item(original)
         copy = original.model_copy(deep=True)
         copy.name = 'Updated'
         result = wrapper._apply_update(copy, key)
@@ -100,15 +100,15 @@ class TestApplyUpdate:
 class TestApplyDelete:
     def test_removes_item_from_adapter(self, populated_wrapper):
         wrapper, items = populated_wrapper
-        key = wrapper.grid._data.key_from_item(items[0])
+        key = wrapper.grid.adapter.key_from_item(items[0])
         wrapper._apply_delete(key)
-        assert len(list(wrapper.grid._data)) == 1
+        assert len(list(wrapper.grid.adapter)) == 1
 
     def test_removes_correct_item(self, populated_wrapper):
         wrapper, items = populated_wrapper
-        key = wrapper.grid._data.key_from_item(items[0])
+        key = wrapper.grid.adapter.key_from_item(items[0])
         wrapper._apply_delete(key)
-        assert list(wrapper.grid._data)[0].name == 'Bob'
+        assert list(wrapper.grid.adapter)[0].name == 'Bob'
 
     def test_raises_when_key_not_found(self, wrapper):
         with pytest.raises(KeyError):
@@ -250,7 +250,7 @@ class TestEditFormWrapperFactoryMethods:
 
     def test_with_repositories_delegates(self):
         w = EditFormWrapper.from_item(User())
-        repos = {'Foo': MagicMock()}
+        repos = {User: MagicMock()}
         w.with_repositories(repos)
         assert w.form._model_repositories == repos
 
@@ -292,3 +292,39 @@ class TestEditGridWrapperRefresh:
         grid.update_rows = MagicMock()
         w.refresh()
         grid.update_rows.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# EditGridWrapper — create/update/delete take no event parameter (B3)
+# ---------------------------------------------------------------------------
+
+class TestEditGridWrapperDialogSignatures:
+    def test_create_item_takes_no_arguments(self):
+        import inspect
+        sig = inspect.signature(EditGridWrapper.create_item)
+        params = [p for p in sig.parameters if p != 'self']
+        assert params == [], f"create_item() should take no params, got {params}"
+
+    def test_update_item_takes_no_arguments(self):
+        import inspect
+        sig = inspect.signature(EditGridWrapper.update_item)
+        params = [p for p in sig.parameters if p != 'self']
+        assert params == [], f"update_item() should take no params, got {params}"
+
+    def test_delete_item_takes_no_arguments(self):
+        import inspect
+        sig = inspect.signature(EditGridWrapper.delete_item)
+        params = [p for p in sig.parameters if p != 'self']
+        assert params == [], f"delete_item() should take no params, got {params}"
+
+    def test_private_on_create_clicked_has_event_param(self):
+        import inspect
+        sig = inspect.signature(EditGridWrapper._on_create_clicked)
+        params = [p for p in sig.parameters if p != 'self']
+        assert 'event' in params
+
+    def test_private_on_delete_clicked_has_event_param(self):
+        import inspect
+        sig = inspect.signature(EditGridWrapper._on_delete_clicked)
+        params = [p for p in sig.parameters if p != 'self']
+        assert 'event' in params

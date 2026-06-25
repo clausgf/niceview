@@ -223,13 +223,13 @@ class TestListAdapterKeys:
         assert result[0].name == 'a'
 
     def test_query_all_strs_returns_valid_keys(self):
-        pairs = list(self.adapter.query_all_strs())
+        pairs = list(self.adapter._query_all_strs())
         assert len(pairs) == 2
         for key, _ in pairs:
             assert self.adapter.read(key) is not None
 
     def test_query_all_strs_str_is_item_str(self):
-        pairs = list(self.adapter.query_all_strs())
+        pairs = list(self.adapter._query_all_strs())
         names = [s for _, s in pairs]
         assert names == ['a', 'b']
 
@@ -730,7 +730,7 @@ class TestSqlModelAdapterIter:
 
     def test_query_all_strs(self, populated_engine):
         adapter = SqlModelAdapter(DbItem, populated_engine)
-        pairs = list(adapter.query_all_strs())
+        pairs = list(adapter._query_all_strs())
         assert len(pairs) == 2
         for key, s in pairs:
             assert isinstance(key, str)
@@ -783,3 +783,26 @@ class TestSqlModelAdapterReactive:
         from niceview.dataadapter import ReactiveAdapter
         adapter = SqlModelAdapter(DbItem, engine)
         assert isinstance(adapter, ReactiveAdapter)
+
+
+# ---------------------------------------------------------------------------
+# FilteredAdapter
+# ---------------------------------------------------------------------------
+
+class TestFilteredAdapterReload:
+    def test_reload_forwards_to_inner_reloadable(self, tmp_path):
+        from niceview.dataadapter import FilteredAdapter, JsonListAdapter, ReloadableAdapter
+        path = tmp_path / 'items.json'
+        inner = JsonListAdapter(Item, path)
+        fa = FilteredAdapter(inner, predicate=lambda i: True)
+        assert isinstance(fa, ReloadableAdapter)
+        called: list[bool] = []
+        inner.on_change(lambda: called.append(True))
+        fa.reload()
+        assert called == [True]
+
+    def test_reload_noop_when_inner_not_reloadable(self):
+        from niceview.dataadapter import FilteredAdapter
+        inner = ListAdapter(Item, [Item(name='a')])
+        fa = FilteredAdapter(inner, predicate=lambda i: True)
+        fa.reload()  # should not raise
