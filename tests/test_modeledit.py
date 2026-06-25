@@ -253,3 +253,42 @@ class TestEditFormWrapperFactoryMethods:
         repos = {'Foo': MagicMock()}
         w.with_repositories(repos)
         assert w.form._model_repositories == repos
+
+
+# ---------------------------------------------------------------------------
+# ModelGrid.adapter property
+# ---------------------------------------------------------------------------
+
+class TestModelGridAdapter:
+    def test_adapter_returns_backing_adapter(self):
+        items = [User(name='Alice', age=30)]
+        adapter = ListAdapter(User, items)
+        grid = ModelGrid(User, adapter)
+        assert grid.adapter is adapter
+
+    def test_adapter_same_as_internal_data(self):
+        items = [User()]
+        adapter = ListAdapter(User, items)
+        grid = ModelGrid(User, adapter)
+        assert grid.adapter is grid._data
+
+
+# ---------------------------------------------------------------------------
+# EditGridWrapper.refresh() — no event parameter
+# ---------------------------------------------------------------------------
+
+class TestEditGridWrapperRefresh:
+    def test_refresh_takes_no_arguments(self):
+        import inspect
+        sig = inspect.signature(EditGridWrapper.refresh)
+        params = [p for p in sig.parameters if p != 'self']
+        assert params == [], f"refresh() should take no params, got {params}"
+
+    def test_refresh_calls_update_rows(self):
+        items = [User(name='Alice', age=30)]
+        adapter = ListAdapter(User, items)
+        grid = ModelGrid(User, adapter)
+        w = EditGridWrapper(grid)
+        grid.update_rows = MagicMock()
+        w.refresh()
+        grid.update_rows.assert_called_once()

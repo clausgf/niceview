@@ -128,6 +128,19 @@ class TestFromItem:
         with pytest.raises(TypeError):
             form.item = 'not a model'  # type: ignore
 
+    def test_item_setter_raises_when_adapter_bound(self):
+        items = [User(name='Alice', age=30)]
+        adapter = ListAdapter(User, items)
+        key = adapter.key_from_item(items[0])
+        form = ModelForm.from_adapter(User, adapter, key)
+        with pytest.raises(ValueError, match='adapter-bound'):
+            form.item = User(name='Bob', age=25)
+
+    def test_item_setter_allowed_when_not_adapter_bound(self):
+        form = ModelForm.from_item(User(name='Alice', age=30))
+        form.item = User(name='Bob', age=25)
+        assert form.item.name == 'Bob'
+
     def test_from_item_explicit_type(self):
         user = User(name='Alice', age=30)
         form = ModelForm.from_item(User, user)
@@ -372,13 +385,13 @@ class TestAutosaveWithoutAdapter:
 class TestValidation:
     def test_valid_item_no_errors(self):
         form = ModelForm.from_item(User(name='Alice', age=30))
-        assert form.has_validation_errors() is False
+        assert form.has_validation_errors is False
 
     def test_invalid_current_item_sets_errors(self):
         form = ModelForm.from_item(User(name='Alice', age=30))
         form._current_item = User.model_construct(name='X' * 20, age=30)
         form._validate()
-        assert form.has_validation_errors() is True
+        assert form.has_validation_errors is True
 
     def test_invalid_age_sets_error(self):
         form = ModelForm.from_item(User(name='Alice', age=30))
@@ -406,7 +419,7 @@ class TestValidation:
         form = ModelForm.from_item(CrossFieldModel(start=0, end=10))
         form._current_item = CrossFieldModel.model_construct(start=10, end=5)
         form._validate()
-        assert form.has_validation_errors() is True
+        assert form.has_validation_errors is True
 
     def test_nonfield_error_element_initially_none(self):
         form = ModelForm(User)

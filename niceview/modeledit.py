@@ -8,7 +8,7 @@ from pydantic import BaseModel, ValidationError
 from nicegui import ui
 from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, ClickEventArguments, handle_event
 
-from niceview.dataadapter import BoundItem, CollectionAdapter, ReloadableAdapter
+from niceview.dataadapter import BoundItem, CollectionAdapter, ItemAdapter, ReloadableAdapter
 from niceview.modelform import ModelForm, FieldChangeEventArguments, _ModelFormOptionInputs
 from niceview.modelgrid import ModelGridInlineEdit, ModelGrid, T, TableItemEventArguments, TableItemFieldEventArguments
 from niceview.util import submit_dialog
@@ -186,7 +186,7 @@ class EditGridWrapper():
                         ui.space()
                     with ui.button_group().style('width: fit-content; flex: none'):
                         if self._refresh_button is not None:
-                            self.refresh_button = ui.button(self._refresh_button, icon='refresh').props('dense flat').on_click(self.refresh)
+                            self.refresh_button = ui.button(self._refresh_button, icon='refresh').props('dense flat').on_click(self._on_refresh_clicked)
                             with self.refresh_button:
                                 ui.tooltip('Refresh').style('width: fit-content')
                         if self._delete_button is not None:
@@ -209,10 +209,14 @@ class EditGridWrapper():
         return self
 
 
-    def refresh(self, event: ClickEventArguments) -> None:
+    def refresh(self) -> None:
+        """Reload from the adapter and re-render the grid."""
         if isinstance(self.grid._data, ReloadableAdapter):
             self.grid._data.reload()
         self.grid.update_rows()
+
+    def _on_refresh_clicked(self, event: ClickEventArguments) -> None:
+        self.refresh()
 
 
     def _apply_create(self, item: BaseModel) -> BaseModel:
@@ -310,7 +314,7 @@ class EditGridWrapper():
             form.with_repositories(self._model_repositories)
 
         def confirm():
-            if form.has_validation_errors():
+            if form.has_validation_errors:
                 ui.notify('Cannot save form: validation errors present', color='negative')
                 return
 
@@ -440,9 +444,15 @@ class EditFormWrapper():
         self.form.on_change(callback)
         return self
 
-    def load(self, adapter: CollectionAdapter, key: str) -> Self:
-        """Load a specific item from a collection (master-detail navigation)."""
-        self.form.load(BoundItem(adapter, key))
+    def load(self, adapter: 'ItemAdapter | CollectionAdapter', key: str | None = None) -> Self:
+        """
+        Load a specific item (master-detail navigation). Delegates to ModelForm.load().
+
+        Two call forms:
+          load(item_adapter)    — any ItemAdapter (BoundItem, JsonAdapter, …)
+          load(collection, key) — convenience: wraps in BoundItem internally
+        """
+        self.form.load(adapter, key) if key is not None else self.form.load(adapter)  # type: ignore[arg-type]
         return self
 
     # --- render ------------------------------------------------------------

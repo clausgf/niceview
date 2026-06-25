@@ -1,6 +1,9 @@
 import logging
 from typing import Unpack
 from niceview.fieldinfo import _FieldInfoInputs, FieldInfo
+from niceview.dataadapter import BoundItem
+
+__all__ = ['Field', 'FieldInfo', 'BoundItem']
 
 log = logging.getLogger('niceview')
 log.addHandler(logging.NullHandler())

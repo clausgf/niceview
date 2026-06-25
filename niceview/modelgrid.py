@@ -160,6 +160,11 @@ class ModelGrid:
         data = JsonListAdapter(item_type, path_name, create_if_not_exist=create_if_not_exist)
         return cls(item_type, data, **kwargs)  # type: ignore[arg-type]
 
+    @property
+    def adapter(self) -> CollectionAdapter:
+        """The backing data adapter."""
+        return self._data
+
     def on_select(self, callback: Handler[ValueChangeEventArguments]) -> Self:
         """
         Add a callback to be invoked when the selection changes.

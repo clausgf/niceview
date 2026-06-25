@@ -118,6 +118,12 @@ class ModelForm():
 
     # --- factory methods for form creation --------------------------------
 
+    @typing.overload
+    @classmethod
+    def from_item(cls, item: BaseModel, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self: ...
+    @typing.overload
+    @classmethod
+    def from_item(cls, item_type: type[BaseModel], item: BaseModel, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self: ...
     @classmethod
     def from_item(cls, item_type_or_item: 'type[BaseModel] | BaseModel', item: 'BaseModel | None' = None, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
@@ -143,7 +149,7 @@ class ModelForm():
             if not isinstance(item, BaseModel):
                 raise TypeError(f"item must be a BaseModel instance, got {type(item)}")
         ret = cls(item_type, **kwargs)
-        ret.item = item
+        ret._set_item(item)
         return ret
 
     @classmethod
@@ -186,13 +192,21 @@ class ModelForm():
     @item.setter
     def item(self, value: BaseModel) -> None:
         """
-        Set the form's (validated) item for editing.
-        Editing the form will modify this item directly.
+        Replace the displayed item. Only valid for unbound forms (from_item).
+        For adapter-bound forms use load() to navigate.
         """
+        if self.adapter_bound:
+            raise ValueError(
+                "Cannot set item directly on an adapter-bound form. Use load() to navigate."
+            )
         if not isinstance(value, BaseModel):
             raise TypeError(f"item must be a BaseModel instance, got {type(value)}")
-        self._validated_item = value  # the validated item is modified in-place, so it is not a copy
-        self._current_item = self._validated_item.model_copy()
+        self._set_item(value)
+
+    def _set_item(self, value: BaseModel) -> None:
+        """Internal item assignment — bypasses the adapter-bound guard."""
+        self._validated_item = value
+        self._current_item = value.model_copy()
         self._validate()
         self._push_item_to_widgets()
 
@@ -217,7 +231,7 @@ class ModelForm():
         item = item_adapter.read()
         if not isinstance(item, BaseModel):
             raise TypeError(f"item must be a BaseModel instance, got {type(item)}")
-        self.item = item
+        self._set_item(item)
         return self
 
     @property
@@ -237,7 +251,7 @@ class ModelForm():
         if not self.adapter_bound:
             raise ValueError("No adapter set. Use from_adapter(), from_json(), or load() first.")
 
-        if self.has_validation_errors():
+        if self.has_validation_errors:
             ui.notify('Cannot save form: validation errors present', color='negative')
             return
 
@@ -714,7 +728,9 @@ class ModelForm():
                 widget.validate()
 
 
+    @property
     def has_validation_errors(self) -> bool:
+        """True if any field-level or model-level validation errors are present."""
         return bool(self._validation_error_messages) or bool(self._nonfield_validation_errors)
 
     @property

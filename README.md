@@ -64,8 +64,8 @@ form = ModelForm.from_item(User, user)
 # JSON file — persists on save, supports refresh
 form = ModelForm.from_json(User, Path('user.json'))
 
-# Any SingleItemAdapter — full control over storage
-form = ModelForm.from_adapter(User, adapter, key)
+# Any CollectionAdapter — full control over storage
+form = ModelForm.from_adapter(User, adapter, str(key))
 
 form.render()
 ```
@@ -78,6 +78,24 @@ ModelForm.from_item(user,
     local_tz='Europe/Berlin',   # timezone for datetime display
     on_change=my_callback,      # called after every validated change
 )
+```
+
+**Runtime item switching** (master-detail navigation):
+```python
+# load() switches the displayed item and binds a new adapter
+form.load(adapter, str(row_key))     # convenience: wraps in BoundItem
+form.load(BoundItem(adapter, key))   # explicit BoundItem
+
+# item setter — only for unbound forms (from_item); raises on adapter-bound forms
+form.item = updated_user
+```
+
+**Adapter state and validation**:
+```python
+form.adapter_bound          # True if save()/refresh() are available
+form.has_validation_errors  # True if any field or model errors present
+form.validation_errors      # dict[str, str] — field-level errors
+form.nonfield_validation_errors  # list[str] — model-level errors
 ```
 
 **Change events** carry field name and old/new value:
@@ -109,6 +127,7 @@ grid = ModelGrid.from_adapter(User, adapter)      # for API symmetry with ModelF
 
 grid.render()
 grid.on_change(lambda e: print(e.row_key, e.field_name, e.new_value))
+grid.adapter      # read-only property — returns the backing CollectionAdapter
 ```
 
 
@@ -210,7 +229,6 @@ EditFormWrapper.from_item(user,
     autosave=True,
     local_tz='Europe/Berlin',
     on_change=my_callback,
-    classes='w-full',
 )
 ```
 
@@ -243,6 +261,7 @@ from disk (JSON) or fires a grid-refresh notification (SQL, where every `read()`
 
 `BoundItem(adapter, key)` wraps a `CollectionAdapter` + a string key into an `ItemAdapter` —
 the standard bridge for master-detail navigation (e.g. `ModelForm.from_adapter()`).
+`BoundItem` can be imported directly from `niceview` (`from niceview import BoundItem`).
 
 **Reactive updates**
 
@@ -376,7 +395,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 300 tests
+uv run pytest          # 376 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 
