@@ -1,10 +1,12 @@
+import asyncio
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pydantic
 import pytest
 from fastapi import HTTPException
+from nicegui import ui
 
 from niceview.dataadapter import ListAdapter
 from niceview.modelform import ModelForm
@@ -328,3 +330,121 @@ class TestEditGridWrapperDialogSignatures:
         sig = inspect.signature(EditGridWrapper._on_delete_clicked)
         params = [p for p in sig.parameters if p != 'self']
         assert 'event' in params
+
+
+# ---------------------------------------------------------------------------
+# EditGridWrapper.__init__ — rowSelection validation (f-string bug fix)
+# ---------------------------------------------------------------------------
+
+class TestEditGridWrapperRowSelectionValidation:
+    def test_multiple_row_selection_raises(self):
+        grid = ModelGrid.from_list(User, [], rowSelection='multiple')
+        with pytest.raises(ValueError):
+            EditGridWrapper(grid)
+
+    def test_multiple_row_selection_error_includes_value(self):
+        grid = ModelGrid.from_list(User, [], rowSelection='multiple')
+        with pytest.raises(ValueError, match='multiple'):
+            EditGridWrapper(grid)
+
+    def test_single_row_selection_does_not_raise(self):
+        grid = ModelGrid.from_list(User, [], rowSelection='single')
+        wrapper = EditGridWrapper(grid)
+        assert wrapper.grid.rowSelection == 'single'
+
+    def test_none_row_selection_does_not_raise(self):
+        grid = ModelGrid.from_list(User, [])
+        wrapper = EditGridWrapper(grid)
+        assert wrapper.grid.rowSelection == 'single'
+
+
+# ---------------------------------------------------------------------------
+# EditGridWrapper.update_item — change handlers not fired on adapter failure
+# ---------------------------------------------------------------------------
+
+class TestEditGridWrapperUpdateItemOnFailure:
+    def setup_method(self):
+        items = [User(name='Alice', age=30)]
+        grid = ModelGrid.from_list(User, items)
+        self.wrapper = EditGridWrapper(grid)
+        self.wrapper._get_selected_row_key = AsyncMock(return_value='key-0')
+        self.wrapper.grid.adapter.read = MagicMock(return_value=User(name='Alice', age=30))
+        self.wrapper.default_edit_create_handler = AsyncMock(return_value=True)
+        self.wrapper.grid.update_rows = MagicMock()
+
+    def test_change_handlers_not_called_when_apply_raises(self):
+        handler = MagicMock()
+        self.wrapper.on_change(handler)
+        self.wrapper._apply_update = MagicMock(side_effect=RuntimeError('DB error'))
+
+        with patch.object(ui, 'notify'):
+            asyncio.run(self.wrapper.update_item())
+
+        handler.assert_not_called()
+
+    def test_update_rows_still_called_when_apply_raises(self):
+        self.wrapper._apply_update = MagicMock(side_effect=RuntimeError('DB error'))
+
+        with patch.object(ui, 'notify'):
+            asyncio.run(self.wrapper.update_item())
+
+        self.wrapper.grid.update_rows.assert_called()
+
+    def test_change_handlers_called_on_success(self):
+        handler = MagicMock()
+        self.wrapper.on_change(handler)
+        self.wrapper._apply_update = MagicMock(return_value=User(name='Alice', age=30))
+        self.wrapper.grid.adapter.key_from_item = MagicMock(return_value='key-0')
+        self.wrapper.grid.widget = MagicMock()
+        self.wrapper.grid.widget.client = MagicMock()
+
+        with patch.object(ui, 'notify'):
+            asyncio.run(self.wrapper.update_item())
+
+        handler.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# EditGridWrapper.delete_item — change handlers not fired on adapter failure
+# ---------------------------------------------------------------------------
+
+class TestEditGridWrapperDeleteItemOnFailure:
+    def setup_method(self):
+        items = [User(name='Alice', age=30)]
+        grid = ModelGrid.from_list(User, items)
+        self.wrapper = EditGridWrapper(grid)
+        self.wrapper._get_selected_row_key = AsyncMock(return_value='key-0')
+        self.wrapper.grid.update_rows = MagicMock()
+
+    def test_change_handlers_not_called_when_apply_raises(self):
+        handler = MagicMock()
+        self.wrapper.on_change(handler)
+        self.wrapper._apply_delete = MagicMock(side_effect=RuntimeError('DB error'))
+
+        with patch('niceview.modeledit.submit_dialog', new=AsyncMock(return_value=True)), \
+             patch.object(ui, 'notify'):
+            asyncio.run(self.wrapper.delete_item())
+
+        handler.assert_not_called()
+
+    def test_update_rows_still_called_when_apply_raises(self):
+        self.wrapper._apply_delete = MagicMock(side_effect=RuntimeError('DB error'))
+
+        with patch('niceview.modeledit.submit_dialog', new=AsyncMock(return_value=True)), \
+             patch.object(ui, 'notify'):
+            asyncio.run(self.wrapper.delete_item())
+
+        self.wrapper.grid.update_rows.assert_called()
+
+    def test_change_handlers_called_on_success(self):
+        handler = MagicMock()
+        self.wrapper.on_change(handler)
+        self.wrapper.grid.widget = MagicMock()
+        self.wrapper.grid.widget.client = MagicMock()
+        self.wrapper._apply_delete = MagicMock()
+
+        with patch('niceview.modeledit.submit_dialog', new=AsyncMock(return_value=True)), \
+             patch.object(ui, 'notify'):
+            asyncio.run(self.wrapper.delete_item())
+
+        handler.assert_called_once()

@@ -1,16 +1,15 @@
-from dataclasses import dataclass
 import logging
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Iterable, Self, Unpack
+from typing import Self, Unpack
 from fastapi import HTTPException
 import typing_extensions
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 from nicegui import ui
-from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, ClickEventArguments, handle_event
+from nicegui.events import Handler, ClickEventArguments, handle_event
 
-from niceview.dataadapter import BoundItem, CollectionAdapter, ItemAdapter, ReloadableAdapter
-from niceview.modelform import ModelForm, FieldChangeEventArguments, _ModelFormOptionInputs
-from niceview.modelgrid import ModelGridInlineEdit, ModelGrid, T, TableItemEventArguments, TableItemFieldEventArguments
+from niceview.dataadapter import CollectionAdapter, ItemAdapter, ReloadableAdapter
+from niceview.modelform import ModelForm, FieldChangeEventArguments
+from niceview.modelgrid import ModelGridInlineEdit, ModelGrid, T, TableItemEventArguments
 from niceview.util import submit_dialog
 
 log = logging.getLogger('niceview')
@@ -34,12 +33,12 @@ class EditGridWrapper():
     (add, edit, delete, refresh) above the grid.
 
     After render(), the NiceGUI elements are exposed for further styling:
-        wrapper.title         → ui.label | None
-        wrapper.description   → ui.markdown | None
-        wrapper.title_row     → ui.row | None
-        wrapper.add_button    → ui.button | None
-        wrapper.edit_button   → ui.button | None
-        wrapper.delete_button → ui.button | None
+        wrapper.title          → ui.label | None
+        wrapper.description    → ui.markdown | None
+        wrapper.title_row      → ui.row | None
+        wrapper.add_button     → ui.button | None
+        wrapper.edit_button    → ui.button | None
+        wrapper.delete_button  → ui.button | None
         wrapper.refresh_button → ui.button | None
     """
     grid: ModelGrid
@@ -66,8 +65,8 @@ class EditGridWrapper():
 
     def __init__(self, grid: ModelGrid, **kwargs: Unpack[_EditGridWrapperInputs]) -> None:
         self.grid = grid
-        if self.grid.rowSelection and grid.rowSelection != 'single':
-            raise ValueError("EditableModelGrid only supports single row selection, but got {grid.rowSelection}")
+        if self.grid.rowSelection and self.grid.rowSelection != 'single':
+            raise ValueError(f"EditGridWrapper only supports single row selection, got '{self.grid.rowSelection}'")
         self.grid.rowSelection = 'single'
 
         default_edit = None if isinstance(self.grid, ModelGridInlineEdit) else ''
@@ -122,16 +121,12 @@ class EditGridWrapper():
         self._model_repositories = repositories
         return self
 
-
     def on_change(self, callback: Handler[TableItemEventArguments]) -> Self:
-        """
-        Add a callback to be invoked when the form values change after successful validation. 
-        """
+        """Add a callback invoked after each successful create, update, or delete."""
         if not callable(callback):
             raise TypeError(f"callback must be callable, got {type(callback)}")
         self._change_handlers.append(callback)
         return self
-    
 
     def _notify_change_handlers(self, row_key: str, item: BaseModel | None) -> None:
         """Fire change handlers. Requires the grid to be rendered (widget must not be None)."""
@@ -149,28 +144,24 @@ class EditGridWrapper():
         )
         for handler in self._change_handlers:
             handle_event(handler, tce)
-    
 
     async def _get_selected_row_key(self) -> str | None:
-        """
-        Get the key of the currently selected row, if any.
-        """
+        """Return the row key of the currently selected row, or None if no row is selected."""
         if not self.grid.widget:
             return None
         selected_row = await self.grid.widget.get_selected_row()
         return selected_row['__ui_row_key'] if selected_row else None
 
-
     def _error_msg_from_exception(self, e: Exception) -> str:
-        """
-        Extract a meaningful error message from an exception.
-        """
+        """Return a user-facing error message extracted from an exception."""
         if isinstance(e, HTTPException) and hasattr(e, 'detail'):
             return e.detail
         return str(e)
 
+    # --- render ------------------------------------------------------------
 
     def render(self) -> Self:
+        """Render title, description, CRUD buttons, and the grid into the current NiceGUI context."""
         self.title = None
         self.description = None
         self.title_row = None
@@ -212,6 +203,7 @@ class EditGridWrapper():
         self.grid.render()
         return self
 
+    # --- CRUD actions ------------------------------------------------------
 
     def refresh(self) -> None:
         """Reload from the adapter and re-render the grid."""
@@ -221,7 +213,6 @@ class EditGridWrapper():
 
     def _on_refresh_clicked(self, event: ClickEventArguments) -> None:
         self.refresh()
-
 
     def _apply_create(self, item: BaseModel) -> BaseModel:
         """Persist a new item via the adapter. Raises on type mismatch or adapter error."""
@@ -237,7 +228,6 @@ class EditGridWrapper():
     def _apply_delete(self, row_key: str) -> None:
         """Delete an item via the adapter. Raises if the key does not exist."""
         self.grid.adapter.delete(row_key)
-
 
     async def create_item(self) -> None:
         """Open the create dialog and, on confirmation, persist the new item."""
@@ -278,18 +268,19 @@ class EditGridWrapper():
 
         item = item.model_copy(deep=True)
         success = await self.default_edit_create_handler(item, False)
-        if success:
-            try:
-                item = self._apply_update(item, row_key)
-                ui.notify('Item updated', color='positive')
-            except Exception as e:
-                ui.notify(f'Error updating item: {self._error_msg_from_exception(e)}', color='negative')
-        else:
+        if not success:
             ui.notify('Item update cancelled', color='negative')
             return
 
-        self.grid.update_rows()
-        self._notify_change_handlers(self.grid.adapter.key_from_item(item), item)
+        try:
+            item = self._apply_update(item, row_key)
+            ui.notify('Item updated', color='positive')
+            self.grid.update_rows()
+            self._notify_change_handlers(self.grid.adapter.key_from_item(item), item)
+        except Exception as e:
+            log.error(f'Error updating item: {e}')
+            ui.notify(f'Error updating item: {self._error_msg_from_exception(e)}', color='negative')
+            self.grid.update_rows()  # refresh to revert the UI to the current adapter state
 
     async def _on_update_clicked(self, event: ClickEventArguments) -> None:
         await self.update_item()
@@ -309,19 +300,24 @@ class EditGridWrapper():
         try:
             self._apply_delete(row_key)
             ui.notify('Item deleted', color='positive')
+            self.grid.update_rows()
+            self._notify_change_handlers(row_key, None)
         except Exception as e:
+            log.error(f'Error deleting item {row_key}: {e}')
             ui.notify(f'Error deleting item {row_key}: {self._error_msg_from_exception(e)}', color='negative')
-
-        self.grid.update_rows()
-        self._notify_change_handlers(row_key, None)
+            self.grid.update_rows()  # refresh to revert the UI to the current adapter state
 
     async def _on_delete_clicked(self, event: ClickEventArguments) -> None:
         await self.delete_item()
 
-
     async def default_edit_create_handler(self, item: BaseModel, do_create: bool) -> bool:
         """
-        Default edit handler that shows a dialog to edit the item.
+        Show a modal dialog to create or edit an item. Returns True if the user confirmed.
+
+        The dialog renders a ModelForm for the item and presents Cancel / Create-or-Ok buttons.
+        On confirm, pending widget values are flushed into the validated item before the dialog
+        closes — this guards against the edge case where a blur event arrives after the click
+        over WebSocket (browsers fire blur before click, but message ordering is not guaranteed).
         """
         form = ModelForm.from_item(item)
         if self._model_repositories:
@@ -332,9 +328,7 @@ class EditGridWrapper():
                 ui.notify('Cannot save form: validation errors present', color='negative')
                 return
 
-            # Commit values the user typed but hasn't blurred away from yet
-            # (blur fires before click in browsers, but the order of WebSocket
-            # messages is not strictly guaranteed in all scenarios)
+            # Flush any pending widget values into the validated item.
             if form._current_item is not None and form._validated_item is not None:
                 for field_name in form._fields:
                     fi = form._fields[field_name]
@@ -466,12 +460,16 @@ class EditFormWrapper():
           load(item_adapter)    — any ItemAdapter (BoundItem, JsonAdapter, …)
           load(collection, key) — convenience: wraps in BoundItem internally
         """
-        self.form.load(adapter, key) if key is not None else self.form.load(adapter)  # type: ignore[arg-type]
+        if key is not None:
+            self.form.load(adapter, key)  # type: ignore[arg-type]
+        else:
+            self.form.load(adapter)  # type: ignore[arg-type]
         return self
 
     # --- render ------------------------------------------------------------
 
     def render(self) -> Self:
+        """Render title, description, action buttons, and the form into the current NiceGUI context."""
         self.title = None
         self.save_button = None
         self.refresh_button = None
@@ -503,4 +501,3 @@ class EditFormWrapper():
 
         self.form.render()
         return self
-
