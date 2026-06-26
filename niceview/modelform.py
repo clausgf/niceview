@@ -1,12 +1,12 @@
 from dataclasses import dataclass
 import datetime
 import logging
-from typing import Any, List, Literal, Self, Unpack
+from typing import Any, Self, Unpack
 import typing
 from pathlib import Path
 from zoneinfo import ZoneInfo
 import typing_extensions
-from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic import BaseModel, TypeAdapter
 
 from nicegui import ui
 from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, handle_event
@@ -16,6 +16,11 @@ from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 
 log = logging.getLogger('niceview')
+
+
+def _pick_attrs(obj: Any, attrs: list[str]) -> dict[str, Any]:
+    """Return a dict of non-None attribute values from obj for the given attribute names."""
+    return {k: v for k in attrs if (v := getattr(obj, k)) is not None}
 
 
 @dataclass(kw_only=True, slots=True)
@@ -60,7 +65,7 @@ class ModelForm():
     """
     _item_type: type[BaseModel]
     _item_adapter: ItemAdapter | None
-    _model_repositories: dict[str, CollectionAdapter]
+    _model_repositories: dict[type[BaseModel], CollectionAdapter]
     _change_handlers: list[Handler[FieldChangeEventArguments]]
 
     _fields: Fields
@@ -68,8 +73,8 @@ class ModelForm():
     _validated_item: BaseModel | None
     _validation_error_messages: dict[str, str]
     _nonfield_validation_errors: list[str]
-    _nonfield_error_element: Any
-    widgets: dict[str, ui.element]
+    _nonfield_error_element: ui.label | None
+    widgets: dict[str, Any]
 
     autosave: bool
     local_tz: str | None
@@ -116,7 +121,7 @@ class ModelForm():
         if len(kwargs) > 0:
             raise TypeError(f"Unexpected keyword arguments: {', '.join(kwargs.keys())}")
 
-    # --- factory methods for form creation --------------------------------
+    # --- factory methods ---------------------------------------------------
 
     @typing.overload
     @classmethod
@@ -177,7 +182,7 @@ class ModelForm():
         instance.load(JsonAdapter(item_type, json_path, create_if_not_exist=create_if_not_exist))
         return instance
 
-    # --- item and form state management -------------------------------------
+    # --- item and form state management ------------------------------------
 
     @property
     def item(self) -> BaseModel:
@@ -210,7 +215,7 @@ class ModelForm():
         self._validate()
         self._push_item_to_widgets()
 
-   # --- data adapter interaction -------------------------------------------
+    # --- data adapter interaction ------------------------------------------
 
     @typing.overload
     def load(self, adapter: ItemAdapter) -> Self: ...
@@ -261,7 +266,7 @@ class ModelForm():
             self._current_item = updated.model_copy()
         ui.notify('Form saved', color='positive')
 
-    # --- widget management and event handling --------------------------------
+    # --- widget management -------------------------------------------------
 
     def with_repositories(self, repositories: 'dict[type[BaseModel], CollectionAdapter]') -> Self:
         """
@@ -283,7 +288,7 @@ class ModelForm():
 
     def on_change(self, callback: Handler[FieldChangeEventArguments]) -> Self:
         """
-        Add a callback to be invoked when the form values change and 
+        Add a callback to be invoked when the form values change and
         the new values are successfully validated.
         """
         if not callable(callback):
@@ -291,65 +296,68 @@ class ModelForm():
         self._change_handlers.append(callback)
         return self
 
-    # --- widget rendering methods --------------------------------
+    # --- widget rendering helpers ------------------------------------------
 
-    def _render_select_widget(self, field_name: str, field_info: FieldInfo, kwargs, value_widget_type: str = 'ui.select') -> ui.select:
-        """
-        Render a select widget for the given field name and field info.
-        The select options are determined by the field info.
-        """
-        raw = field_info.select_options or field_info.literal_options
+    @staticmethod
+    def _resolve_options(field_name: str, field_info: FieldInfo, primary_attr: str, fallback_attr: str) -> Any:
+        """Resolve options for select/radio/toggle widgets from field_info, calling if callable."""
+        raw = getattr(field_info, primary_attr) or getattr(field_info, fallback_attr)
         if not raw:
-            raise ValueError(f"Field {field_name} has no select_options defined in FieldInfo")
-        kwargs['options'] = raw() if callable(raw) else raw
+            raise ValueError(f"Field '{field_name}' has no {primary_attr} (or {fallback_attr}) defined in FieldInfo")
+        return raw() if callable(raw) else raw
 
+    def _wire_text_input(self, widget: Any, field_name: str) -> None:
+        """Wire a text-input widget: validate on change, commit on blur."""
+        widget.on_value_change(lambda vce, fn=field_name: self._handle_validate(fn, vce))
+        widget.on('blur', lambda e, fn=field_name: self._handle_blur_event(fn, e))
+        widget.validation = lambda value, fn=field_name: self._get_field_error(fn, value)
+
+    def _wire_immediate(self, widget: Any, field_name: str) -> None:
+        """Wire an immediate widget: validate and commit on value change."""
+        widget.on_value_change(lambda vce, fn=field_name: self._handle_validate_and_change(fn, vce))
+
+    def _apply_widget_field_info(self, widget: Any, field_info: FieldInfo) -> None:
+        """Apply disable, tooltip, classes, style, props from field_info to a native NiceGUI widget."""
+        if not field_info.editable and hasattr(widget, 'disable') and callable(widget.disable):
+            widget.disable()
+        if field_info.tooltip and hasattr(widget, 'tooltip') and callable(widget.tooltip):
+            widget.tooltip(field_info.tooltip)
+        if field_info.classes and hasattr(widget, 'classes') and callable(widget.classes):
+            widget.classes(field_info.classes)
+        if field_info.style and hasattr(widget, 'style') and callable(widget.style):
+            widget.style(field_info.style)
+        if field_info.props and hasattr(widget, 'props') and callable(widget.props):
+            widget.props(field_info.props)
+
+    # --- widget rendering methods ------------------------------------------
+
+    def _render_select_widget(self, field_name: str, field_info: FieldInfo, kwargs: dict[str, Any], value_widget_type: str = 'ui.select') -> ui.select:
+        """Render a select widget. Options come from select_options or literal_options on field_info."""
+        kwargs['options'] = self._resolve_options(field_name, field_info, 'select_options', 'literal_options')
         widget = ui.select(**kwargs)
-
         self._from_current_item_to_widget_value(field_name, value_widget_type, widget)
-        widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate_and_change(field_name, vce))
-        widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
+        self._wire_immediate(widget, field_name)
+        widget.validation = lambda value, fn=field_name: self._get_field_error(fn, value)
         return widget
-
 
     def _render_radio_widget(self, field_name: str, field_info: FieldInfo) -> ui.radio:
-        """
-        Render a radio widget for the given field name and field info.
-        The options are taken from radio_options if set, falling back to literal_options.
-        """
-        raw = field_info.radio_options or field_info.literal_options
-        if not raw:
-            raise ValueError(f"Field {field_name} has no radio_options (or literal_options) defined in FieldInfo")
-        options = raw() if callable(raw) else raw
-
+        """Render a radio widget. Options come from radio_options or literal_options on field_info."""
+        options = self._resolve_options(field_name, field_info, 'radio_options', 'literal_options')
         widget = ui.radio(options)
-
         self._from_current_item_to_widget_value(field_name, 'ui.radio', widget)
-        widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate_and_change(field_name, vce))
+        self._wire_immediate(widget, field_name)
         return widget
-
 
     def _render_toggle_widget(self, field_name: str, field_info: FieldInfo) -> ui.toggle:
-        """
-        Render a toggle widget for the given field name and field info.
-        The options are taken from toggle_options if set, falling back to literal_options.
-        """
-        raw = field_info.toggle_options or field_info.literal_options
-        if not raw:
-            raise ValueError(f"Field {field_name} has no toggle_options (or literal_options) defined in FieldInfo")
-        options = raw() if callable(raw) else raw
-
+        """Render a toggle widget. Options come from toggle_options or literal_options on field_info."""
+        options = self._resolve_options(field_name, field_info, 'toggle_options', 'literal_options')
         widget = ui.toggle(options)
-
         self._from_current_item_to_widget_value(field_name, 'ui.toggle', widget)
-        widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate_and_change(field_name, vce))
+        self._wire_immediate(widget, field_name)
         return widget
 
-
-    def _render_modelselect_widget(self, field_name: str, field_info: FieldInfo, kwargs) -> ui.select:
-        """
-        Render a model select widget for the given field name and field info.
-        The select options are determined by the field info.
-        """
+    def _render_modelselect_widget(self, field_name: str, field_info: FieldInfo, kwargs: dict[str, Any]) -> ui.select:
+        """Render a model-backed select widget using a CollectionAdapter from with_repositories()."""
         if not field_info.item_type:
             raise ValueError(f"Field {field_name} is a model select but no item type is specified in FieldInfo or as a pydantic model type")
 
@@ -365,9 +373,7 @@ class ModelForm():
 
         repo = self._model_repositories[field_info.item_type]
         field_info.select_options = {repo.key_from_item(item): str(item) for item in repo}
-        widget = self._render_select_widget(field_name, field_info, kwargs, value_widget_type='modelselect')
-        return widget
-
+        return self._render_select_widget(field_name, field_info, kwargs, value_widget_type='modelselect')
 
     def _get_fk_info(self, field_name: str) -> tuple[str, Any] | None:
         """
@@ -393,6 +399,7 @@ class ModelForm():
             return None
 
     def _render_editgrid_widget(self, field_name: str, field_info: FieldInfo) -> Any:
+        # Local imports to avoid circular dependencies (modelgrid/modeledit import modelform).
         from niceview.modeledit import EditGridWrapper
         from niceview.modelgrid import ModelGrid, TableItemEventArguments
         from niceview.dataadapter import ListAdapter, FilteredAdapter
@@ -434,157 +441,114 @@ class ModelForm():
             data = ListAdapter(field_info.item_type, getattr(self._validated_item, field_name))
 
         widget = ModelGrid(field_info.item_type, data)
-        if field_info.editable:  # create an editable grid for the field
+        if field_info.editable:
             edit_widget = EditGridWrapper(widget, title=field_info.label)
             if self._model_repositories:
                 edit_widget.with_repositories(self._model_repositories)
             edit_widget.on_change(notify_change)
             edit_widget.render()
             return edit_widget  # type: ignore[return-value]
-        else:  # create a read-only grid for the field
+        else:
             ui.label(field_info.label).classes('text-h6')
             widget.render()
             return widget  # type: ignore[return-value]
 
-
-    def _render_widget(self, field_name: str, field_info: FieldInfo) -> ui.element:
-        """
-        Create a widget for the given field name and field info.
-        The widget type is determined by the field info.
-        """
-
-        def get_kwargs_from_field_info(filter_list: list[str]) -> dict:
-            """
-            Get the keyword arguments from the field info for the given fields.
-            """
-            return {k: v for k in filter_list if (v := getattr(field_info, k)) is not None}
-
+    def _render_widget(self, field_name: str, field_info: FieldInfo) -> Any:
+        """Create and wire a widget for the given field, based on its widget_type."""
         if not field_info:
             raise ValueError(f"Field info for {field_name} not found")
         widget_type = field_info.widget_type
         if not widget_type:
             raise ValueError(f"Widget type for field {field_name} not found in field info")
-        # For nativ NiceGUI wigets, we set the standard properties disable, tooltip, 
-        # classes, style, props after widget creation. Disable the option for custom widgets.
-        # Widget creation still has to handle constructor-only parameters like label, placeholder, ...
+
+        # For native NiceGUI widgets, disable/tooltip/classes/style/props are applied after
+        # creation. Non-native widgets (editgrid) manage their own styling.
         is_native_widget = True
         widget: Any = None
 
         if widget_type == 'ui.input':
-            widget = ui.input(**get_kwargs_from_field_info(['label', 'placeholder', 'password', 'password_toggle_button', 'autocomplete']))
+            widget = ui.input(**_pick_attrs(field_info, ['label', 'placeholder', 'password', 'password_toggle_button', 'autocomplete']))
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate(field_name, vce))
-            widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
-            widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
+            self._wire_text_input(widget, field_name)
 
         elif widget_type == 'ui.number':
-            widget = ui.number(**get_kwargs_from_field_info(['label', 'placeholder', 'min', 'max', 'precision', 'step', 'prefix', 'suffix', 'format']))
+            widget = ui.number(**_pick_attrs(field_info, ['label', 'placeholder', 'min', 'max', 'precision', 'step', 'prefix', 'suffix', 'format']))
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate(field_name, vce))
-            widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
-            widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
+            self._wire_text_input(widget, field_name)
 
         elif widget_type == 'ui.textarea':
-            widget = ui.textarea(**get_kwargs_from_field_info(['label', 'placeholder']))
+            widget = ui.textarea(**_pick_attrs(field_info, ['label', 'placeholder']))
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate(field_name, vce))
-            widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
-            widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
+            self._wire_text_input(widget, field_name)
 
         elif widget_type == 'ui.checkbox':
             widget = ui.checkbox(text=field_info.label)
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate_and_change(field_name, vce))
-            # for checkboxes, we consider the validation errors irrelevant
+            self._wire_immediate(widget, field_name)
+            # validation display is irrelevant for checkboxes
 
         elif widget_type == 'ui.switch':
             widget = ui.switch(text=field_info.label)
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate_and_change(field_name, vce))
-            # for switches, we consider the validation errors irrelevant
+            self._wire_immediate(widget, field_name)
+            # validation display is irrelevant for switches
 
         elif widget_type == 'ui.select':
-            widget = self._render_select_widget(field_name, field_info, get_kwargs_from_field_info(['label', 'with_input', 'multiple', 'clearable']))
-            # the render method handels validation
+            widget = self._render_select_widget(field_name, field_info, _pick_attrs(field_info, ['label', 'with_input', 'multiple', 'clearable']))
 
         elif widget_type == 'ui.radio':
             widget = self._render_radio_widget(field_name, field_info)
-            # for radio, we consider the validation errors irrelevant
 
         elif widget_type == 'ui.toggle':
             widget = self._render_toggle_widget(field_name, field_info)
-            # for toggle, we consider the validation errors irrelevant
 
         elif widget_type == 'ui.color_input':
-            widget = ui.color_input(**get_kwargs_from_field_info(['label', 'placeholder']), preview=field_info.color_preview)
+            widget = ui.color_input(**_pick_attrs(field_info, ['label', 'placeholder']), preview=field_info.color_preview)
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate_and_change(field_name, vce))
+            self._wire_immediate(widget, field_name)
 
         elif widget_type == 'ui.input_chips':
-            widget = ui.input_chips(**get_kwargs_from_field_info(['label', 'new_value_mode']))
+            widget = ui.input_chips(**_pick_attrs(field_info, ['label', 'new_value_mode']))
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate(field_name, vce))
-            widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
-            widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
+            self._wire_text_input(widget, field_name)
 
         elif widget_type == 'datetime':
-            widget = ui.input(**get_kwargs_from_field_info(['label', 'placeholder'])).props('type=datetime-local').props('step=1')
+            widget = ui.input(**_pick_attrs(field_info, ['label', 'placeholder'])).props('type=datetime-local').props('step=1')
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate(field_name, vce))
-            widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
-            widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
+            self._wire_text_input(widget, field_name)
 
         elif widget_type == 'date':
-            # Prefer the native html date input over NiceGUI/Quasar's date_input because it is more 
-            # lightweight and has better browser support. Unfortunately, it also has a different 
-            # value format (YYYY-MM-DD) which requires custom handling in the form.
-            widget = ui.input(**get_kwargs_from_field_info(['label', 'placeholder'])).props('type=date')
-            # widget = ui.date_input(**get_kwargs_from_field_info(['label', 'placeholder']))
+            # Prefer the native HTML date input over NiceGUI/Quasar's date_input because it is
+            # more lightweight and has better browser support. Value format is YYYY-MM-DD.
+            widget = ui.input(**_pick_attrs(field_info, ['label', 'placeholder'])).props('type=date')
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate(field_name, vce))
-            widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
-            widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
+            self._wire_text_input(widget, field_name)
 
         elif widget_type == 'time':
-            # Discussion see above. Prefer the native html time input over NiceGUI/Quasar.
-            widget = ui.input(**get_kwargs_from_field_info(['label', 'placeholder'])).props('type=time').props('step=1')
-            # widget = ui.time_input(**get_kwargs_from_field_info(['label', 'placeholder']))
+            # Same rationale as 'date': prefer the native HTML time input over NiceGUI/Quasar.
+            widget = ui.input(**_pick_attrs(field_info, ['label', 'placeholder'])).props('type=time').props('step=1')
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate(field_name, vce))
-            widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
-            widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
-        
+            self._wire_text_input(widget, field_name)
+
         elif widget_type == 'timedelta':
-            widget = ui.input(**get_kwargs_from_field_info(['label', 'placeholder']))
+            widget = ui.input(**_pick_attrs(field_info, ['label', 'placeholder']))
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            widget.on_value_change(lambda vce, field_name=field_name: self._handle_validate(field_name, vce))
-            widget.on('blur', lambda e, field_name=field_name: self._handle_blur_event(field_name, e))
-            widget.validation = lambda value, field_name=field_name: self._validation_errors(field_name, value)
+            self._wire_text_input(widget, field_name)
 
         elif widget_type == 'editgrid':
             widget = self._render_editgrid_widget(field_name, field_info)
             is_native_widget = False
 
         elif widget_type == 'modelselect':
-            widget = self._render_modelselect_widget(field_name, field_info, get_kwargs_from_field_info(['label', 'with_input', 'multiple', 'clearable']))
+            widget = self._render_modelselect_widget(field_name, field_info, _pick_attrs(field_info, ['label', 'with_input', 'multiple', 'clearable']))
 
-        if not widget:
+        if widget is None:
             raise ValueError(f"Invalid widget class: {widget_type}")
 
         if is_native_widget:
-            if not field_info.editable and hasattr(widget, 'disable') and callable(widget.disable):
-                widget.disable()
-            if field_info.tooltip and hasattr(widget, 'tooltip') and callable(widget.tooltip):
-                widget.tooltip(field_info.tooltip)
-            if field_info.classes and hasattr(widget, 'classes') and callable(widget.classes):
-                widget.classes(field_info.classes)
-            if field_info.style and hasattr(widget, 'style') and callable(widget.style):
-                widget.style(field_info.style)
-            if field_info.props and hasattr(widget, 'props') and callable(widget.props):
-                widget.props(field_info.props)
+            self._apply_widget_field_info(widget, field_info)
 
         return widget
-
 
     def render(self) -> Self:
         """
@@ -594,11 +558,9 @@ class ModelForm():
         for field_name in self._fields:
             field_info = self._fields[field_name]
             if not field_info:
-                raise ValueError(f"Field {field_name} not found in ni_field_infos")
+                raise ValueError(f"Field {field_name} not found in field_infos")
             if field_info.hidden:
-                # Skip hidden fields
                 continue
-            # Render an editable field based on its widget class
             self.widgets[field_name] = self._render_widget(field_name, field_info)
 
         self._nonfield_error_element = ui.label('').classes('text-negative w-full')
@@ -606,13 +568,10 @@ class ModelForm():
 
         return self
 
-    # --- value conversion -----------------------------------------------
+    # --- value conversion --------------------------------------------------
 
-    def _from_current_item_to_widget_value(self, field_name: str, widget_type: str, widget) -> Self:
-        """
-        Set the value of the widget for the given field name to the given (model) value.
-        This will also update the current model and validate it.
-        """
+    def _from_current_item_to_widget_value(self, field_name: str, widget_type: str, widget: Any) -> None:
+        """Push the current item's field value into the widget."""
         value = getattr(self._current_item, field_name)
 
         if widget_type == 'modelselect':
@@ -633,15 +592,11 @@ class ModelForm():
 
         widget.value = value  # type: ignore[attr-defined]
 
-        return self
-
-
     def _from_widget_value_to_current_item(self, field_name: str) -> None:
         """
-        Convert the value from the widget to the model value.
+        Read the widget value, convert it to the model type, and write it into _current_item.
         Exceptions should be handled by the caller.
         """
-        # determine the widget
         if field_name not in self.widgets:
             raise ValueError(f"Widget for field {field_name} not found")
         widget = self.widgets[field_name]
@@ -656,21 +611,22 @@ class ModelForm():
                 value = [item_type(item) for item in value]
             else:
                 raise ValueError(f"Field '{field_name}' is a list but no allowed item type is specified")
-        
+
         elif widget_type == 'ui.number':
             if field_type == int:
                 value = int(value)
             else:
-                value = float(value)  # convert to float for number fields
+                value = float(value)
 
         elif widget_type == 'ui.input_chips':
-            # split comma separated values
+            expanded = []
             for v in value:
                 if isinstance(v, str) and ',' in v:
-                    value.remove(v)
-                    value.extend([item.strip() for item in v.split(',')])
+                    expanded.extend(item.strip() for item in v.split(','))
+                else:
+                    expanded.append(v)
+            value = expanded
 
-        # convert the value depending on the widget type
         elif widget_type == 'datetime':
             dt = datetime.datetime.fromisoformat(value)
             tz = ZoneInfo(self.local_tz) if self.local_tz else None
@@ -703,13 +659,13 @@ class ModelForm():
 
         setattr(self._current_item, field_name, value)
 
-    # --- validation and event handling -------------------------------------
+    # --- validation and event handling ------------------------------------
 
-    def _validation_errors(self, field_name: str, value) -> str | None:
+    def _get_field_error(self, field_name: str, value: Any) -> str | None:
+        """NiceGUI validation callback: return the current error message for field_name, or None."""
         return self._validation_error_messages.get(field_name, None)
 
-
-    def _validate(self, field_name: str | None = None) -> None:
+    def _validate(self) -> None:
         if self._current_item is None:
             return
         field_errors, nonfield_errors = self._fields.validation_errors(self._current_item.model_dump())
@@ -727,7 +683,6 @@ class ModelForm():
             if hasattr(widget, 'validate') and callable(widget.validate):
                 widget.validate()
 
-
     @property
     def has_validation_errors(self) -> bool:
         """True if any field-level or model-level validation errors are present."""
@@ -743,8 +698,7 @@ class ModelForm():
         """Model-level (cross-field) validation errors. Empty list when valid."""
         return list(self._nonfield_validation_errors)
 
-
-    def _handle_blur_event(self, field_name: str, event) -> None:
+    def _handle_blur_event(self, field_name: str, event: Any) -> None:
         old = getattr(self._current_item, field_name, None) if self._current_item else None
         vce = ValueChangeEventArguments(
             sender=event.sender, client=event.client,
@@ -752,7 +706,6 @@ class ModelForm():
             previous_value=old,
         )
         self._handle_value_change(field_name, vce)
-
 
     def _handle_validate(self, field_name: str, value_change_event: ValueChangeEventArguments) -> None:
         old_value = getattr(self._current_item, field_name)
@@ -762,15 +715,14 @@ class ModelForm():
             error_msg = None
             try:
                 self._from_widget_value_to_current_item(field_name)
-            except Exception as e:
-                error_msg = f"Error interpreting widget value"
+            except Exception:
+                error_msg = "Error interpreting widget value"
 
             self._validate()
 
-            # reflect previous conversion errors in the validation error message
+            # reflect conversion errors in the validation error messages
             if error_msg is not None:
                 self._validation_error_messages[field_name] = error_msg
-
 
     def _handle_value_change(self, field_name: str, value_change_event: ValueChangeEventArguments) -> None:
         if len(self._validation_error_messages.get(field_name, '')) > 0:
@@ -810,7 +762,6 @@ class ModelForm():
         )
         for handler in self._change_handlers:
             handle_event(handler, fce)
-
 
     def _handle_validate_and_change(self, field_name: str, value_change_event: ValueChangeEventArguments) -> None:
         self._handle_validate(field_name, value_change_event)
