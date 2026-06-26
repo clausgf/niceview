@@ -30,6 +30,23 @@ ui.run()
 ```
 
 
+Contents
+--------
+
+- [API Design](#api-design)
+- [ModelForm](#modelform)
+- [ModelGrid / ModelGridInlineEdit](#modelgrid--modelgridinlineedit)
+- [EditGridWrapper / EditFormWrapper](#editgridwrapper--editformwrapper)
+- [ModelList / DrillDownWrapper](#modellist--drilldownwrapper)
+- [Data Adapters](#data-adapters)
+- [Supported Field Types](#supported-field-types)
+- [Field Customization](#field-customization)
+- [Validation](#validation)
+- [Development](#development)
+- [Design Decisions and Accepted Technical Debt](#design-decisions-and-accepted-technical-debt)
+- [Open Questions / TODO](#open-questions--todo)
+
+
 API Design
 ----------
 
@@ -236,6 +253,60 @@ EditFormWrapper.from_item(user,
 ```
 
 
+ModelList / DrillDownWrapper
+----------------------------
+
+`ModelList` renders a collection as a Quasar list — tappable rows with a title and subtitle,
+suited for mobile-first single-column navigation. `DrillDownWrapper` registers two NiceGUI pages
+(list + per-item detail) and wires up navigation between them.
+
+```python
+from niceview.modellist import ModelList, DrillDownWrapper
+
+# Standalone list — fire on_select callback when an item is tapped
+list_view = ModelList.from_list(User, users,
+    title_field='name',               # first visible field by default
+    subtitle_fields=['email'],        # next two visible fields by default
+)
+list_view.on_select(lambda e: print(e.row_key, e.item))
+list_view.render()
+
+# Drill-down: register list + detail pages, then ui.run()
+DrillDownWrapper.from_list(User, users,
+    title='Users',
+    title_field='name',
+    subtitle_fields=['email', 'active'],
+).register('/users')
+
+# Works with any adapter
+DrillDownWrapper.from_json(User, Path('users.json'), title='Users').register('/users')
+DrillDownWrapper.from_adapter(User, adapter, title='Users').register('/users')
+```
+
+**Page structure** after `register(base_path)`:
+
+| Page | URL | Chrome |
+|---|---|---|
+| List | `base_path` | Header with title + Add button |
+| Detail | `base_path/{key}` | Header with Back + item title + Delete button; form with Save/Refresh |
+
+`register()` must be called before `ui.run()`. Multiple wrappers can be registered at different base paths.
+
+**`DrillDownWrapper` options:**
+```python
+DrillDownWrapper.from_list(User, users,
+    title='Users',           # list page header title
+    title_field='name',      # field shown as item title (auto-detected if omitted)
+    subtitle_fields=['email'],  # fields shown as subtitle (next two visible fields if omitted)
+    add_button='',           # '' = icon only; None = hidden
+    delete_button='',        # same
+    # ModelList options forwarded:
+    include=['name', 'email'],
+    exclude=['secret'],
+)
+```
+
+
 Data Adapters
 -------------
 
@@ -400,7 +471,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 384 tests
+uv run pytest          # 421 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 
@@ -431,6 +502,7 @@ not inspectable via the `User` fixture; row data is covered by unit tests instea
 
 Design decisions and Accepted Technical Debt
 --------------------------------------------
+- **Mobile navigation: `ModelList` + `DrillDownWrapper` as separate components**: A new `ModelList` (Quasar list) and `DrillDownWrapper` (two registered NiceGUI pages) are added alongside `ModelGrid` / `EditGridWrapper` rather than making the existing desktop components responsive. Motivation: the UX patterns are fundamentally different — card list with drill-down vs data table with dialogs — and a single component handling both would need too many conditional paths. The state-sharing problem between pages is solved by the `DrillDownWrapper` instance holding the adapter (shared per Python process, which is the normal NiceGUI single-user model).
 - **Form navigation / dirty state**: No detection when the user leaves an unsaved form. Options: (a) track dirty state via `on_change` and expose `is_dirty` property; (b) use a JS `beforeunload` guard (requires NiceGUI `ui.run_javascript`). Neither covers in-app navigation — NiceGUI has no built-in route guard.
 - **NiceGUI element lifecycle**: When are elements instantiated, active, deleted? `render()` must be called inside a NiceGUI page context; elements created outside a client context silently fail. No lifecycle hooks for cleanup.
 - **Tests for async dialog flows**: `create_item` / `update_item` / `delete_item` open a NiceGUI dialog (`await dialog`) and cannot be tested without a browser. The CRUD data operations are covered via `_apply_create`, `_apply_update`, `_apply_delete` (unit tests) and the render/button presence via acceptance tests. Full dialog flow testing would require the `Screen` fixture (Playwright-based).
@@ -441,7 +513,7 @@ Design decisions and Accepted Technical Debt
 
 Open Questions / TODO
 ---------------------
-- In addition to the dialog-based flow for editing tables and form, we could implement a more drill-down like interface. Which look&feel? Iphone-like? Breadcrumbs? Support more than one "flow" (dialogs, drill-down), ...
+- **Split-panel layout for desktop**: `DrillDownWrapper` renders the same two pages on desktop and mobile. A responsive split-panel variant (list left, form right on wide screens) is not yet implemented. Quasar breakpoint classes (`lt-md`, `gt-sm`) could hide/show panels without changing the page structure.
 - NiceView widget support (_FieldInfoInputs/FieldInfo for relevant options, pydantic type, test cases, add to example 2): 
     - slider (alternative to number for int, float)
     - rating
