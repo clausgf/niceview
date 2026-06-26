@@ -1,6 +1,9 @@
 NiceView
 ========
 
+[![CI](https://github.com/clausgf/niceview/actions/workflows/ci.yml/badge.svg)](https://github.com/clausgf/niceview/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/clausgf/niceview/graph/badge.svg)](https://codecov.io/gh/clausgf/niceview)
+
 NiceView simplifies [NiceGUI](https://nicegui.io) programming by deriving forms and tables from Pydantic models. Inspired by [MagicGUI](https://magicgui.readthedocs.io/), [NiceCRUD](https://github.com/zauberzeug/nicegui/tree/main/examples/nicecrud) and [Django](https://docs.djangoproject.com/)'s admin integration.
 
 
