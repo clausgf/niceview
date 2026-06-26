@@ -1,9 +1,8 @@
-from copy import copy
 from dataclasses import dataclass
 import datetime
 import logging
 from pathlib import Path
-from typing import Any, Callable, Iterable, List, Literal, Self, TypeVar, Unpack
+from typing import Any, Callable, Literal, Self, TypeVar, Unpack
 import typing_extensions
 from pydantic import BaseModel
 from nicegui import ui
@@ -21,9 +20,8 @@ def _collect_aggrid_cols(fields: Fields) -> list[dict[str, Any]]:
     for name in fields:
         info = fields[name]
         if info.hidden or info.table_hidden:
-            continue  # Skip hidden fields
-        # Create a column for the field
-        col = {
+            continue
+        col: dict[str, Any] = {
             'headerName': info.table_label or info.label,
             'field': name,
             'sortable': info.table_sortable,
@@ -46,23 +44,18 @@ def _collect_aggrid_cols(fields: Fields) -> list[dict[str, Any]]:
                 col['filter'] = 'agTextColumnFilter'
             if info.table_floating_filter:
                 col['floatingFilter'] = True
-
-        # add column properties (from https://www.ag-grid.com/vue-data-grid/column-properties/)
+        # Additional column properties: https://www.ag-grid.com/vue-data-grid/column-properties/
         if info.aggrid:
             col.update(info.aggrid)
-        # add the column
         cols.append(col)
-    
     return cols
 
 
 class _ModelGridOptionInputs(typing_extensions.TypedDict, total=False):
-    """
-    Kwarg Options for the UiAgGrid class.
-    """
-    include: list[str] | str # list of field names to include, or '__all__' (default)
-    exclude: list[str] | str # list of field names to exclude from the grid
-    field_infos: dict[str, FieldInfo] # FieldsMixin: dict of field names to FieldInfo objects to override the info from the model
+    """Keyword options for ModelGrid and its factory methods."""
+    include: list[str] | str
+    exclude: list[str] | str
+    field_infos: dict[str, FieldInfo]
 
     classes: str
     style: str
@@ -75,50 +68,60 @@ class _ModelGridOptionInputs(typing_extensions.TypedDict, total=False):
 
 
 T = TypeVar('T', bound=BaseModel)
+
+
 class ModelGrid:
     """
-    A AgGrid class that can be used to create tables for Pydantic models.
+    Renders a Pydantic model collection as an ag-Grid table.
+
+    Create via factory methods:
+      ModelGrid.from_list(Type, items)         — in-memory list
+      ModelGrid.from_json(Type, path)          — JSON file
+      ModelGrid.from_adapter(Type, adapter)    — any CollectionAdapter
+
+    After render(), the NiceGUI ag-Grid element is available as grid.widget.
+    Call update_rows() to refresh the displayed data from the adapter.
     """
     _fields: Fields
     _data: CollectionAdapter
-    _selection_handlers: List[Handler[ValueChangeEventArguments]]
-    _cols: list[dict[str, str]]
+    _selection_handlers: list[Handler[ValueChangeEventArguments]]
+    _auto_update_registered: bool
+    _cols: list[dict[str, Any]]
     _rows: list[dict[str, Any]]
-    widget: ui.aggrid | None = None
+    widget: ui.aggrid | None
     classes: str
     style: str
     props: str
     theme: str
     auto_size_columns: bool | None
     defaultColDef: dict
-    rowSelection: Literal[None, 'single', 'multiple'] = None
+    rowSelection: Literal[None, 'single', 'multiple']
     cell_renderers: dict[str, Callable[[Any], Any]]
-
 
     def __init__(self, item_type: type[T], adapter: CollectionAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> None:
         """
-        Initialize the ModelGrid with a Pydantic model type and a CollectionAdapter.
-        Prefer factory methods (from_list, from_json, from_adapter) over the constructor.
+        Create a ModelGrid for the given Pydantic model type and adapter.
+        Prefer the factory methods (from_list, from_json, from_adapter) over the constructor.
         """
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
-            raise TypeError(f"cls must be a subclass of BaseModel, got {type(item_type)}")
+            raise TypeError(f"item_type must be a subclass of BaseModel, got {type(item_type)}")
 
         self._fields = Fields(item_type, kwargs.pop('include', '__all__'),
-                            kwargs.pop('exclude', ''), kwargs.pop('field_infos', {}))
+                              kwargs.pop('exclude', ''), kwargs.pop('field_infos', {}))
         self._data = adapter
-
-        # initialize instance with a new copy of more complex data structures
         self._selection_handlers = []
+        self._auto_update_registered = False
         self.widget = None
         self.classes = kwargs.pop('classes', '')
         self.style = kwargs.pop('style', '')
         self.props = kwargs.pop('props', '')
         self.theme = kwargs.pop('theme', '')
         self.auto_size_columns = kwargs.pop('auto_size_columns', None)
-        self.defaultColDef = copy(kwargs.pop('defaultColDef', {}))
+        self.defaultColDef = kwargs.pop('defaultColDef', {}).copy()
         self.rowSelection = kwargs.pop('rowSelection', None)
-        self.cell_renderers = copy(kwargs.pop('cell_renderers', {}))
-        self._auto_update_registered = False
+        self.cell_renderers = kwargs.pop('cell_renderers', {}).copy()
+
+    # --- factory methods ---------------------------------------------------
 
     @classmethod
     def from_list(cls, item_type: type[T], items: list[T], **kwargs: Unpack[_ModelGridOptionInputs]) -> Self:
@@ -134,8 +137,7 @@ class ModelGrid:
 
         Return type is Self so subclasses (e.g. ModelGridInlineEdit) are returned as their own type.
         """
-        adapter = ListAdapter(item_type, items)
-        return cls(item_type, adapter, **kwargs)  # type: ignore[arg-type]
+        return cls(item_type, ListAdapter(item_type, items), **kwargs)  # type: ignore[arg-type]
 
     @classmethod
     def from_adapter(cls, item_type: type[T], adapter: CollectionAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> Self:
@@ -162,94 +164,85 @@ class ModelGrid:
         """The backing data adapter."""
         return self._data
 
+    # --- event handler configuration --------------------------------------
+
     def on_select(self, callback: Handler[ValueChangeEventArguments]) -> Self:
         """
-        Add a callback to be invoked when the selection changes.
-        The callback will receive a ValueChangeEventArguments with the new selection.
+        Add a callback invoked when the row selection changes.
+        Only meaningful when rowSelection='single'.
         """
         if not callable(callback):
             raise TypeError(f"callback must be callable, got {type(callback)}")
-        if not self.rowSelection == 'single':
+        if self.rowSelection != 'single':
             log.warning(f"on_select is only supported for single row selection, but rowSelection is '{self.rowSelection}'")
         self._selection_handlers.append(callback)
         return self
 
+    # --- data and rendering -----------------------------------------------
 
     def update_rows(self) -> Self:
-        """
-        Re-Render the rows of the table.
-        """
-        self._rows.clear() # modify the rows in place without creating a new list
-        for i, item in enumerate(self._data):
-            row = {'__ui_row_key': self._data.key_from_item(item)}
+        """Refresh the displayed rows from the adapter."""
+        # _rows is mutated in-place (clear + re-append) so that widget.options['rowData'],
+        # which holds the same list reference, stays in sync via NiceGUI's data binding —
+        # the browser update happens automatically without an explicit widget.update() call.
+        # self.widget.update()
+        self._rows.clear()
+        for item in self._data:
+            row: dict[str, Any] = {'__ui_row_key': self._data.key_from_item(item)}
             for field_name in self._fields:
                 field_info = self._fields[field_name]
                 if field_info.hidden or field_info.table_hidden:
-                    # Skip hidden fields
                     continue
                 value = getattr(item, field_name)
                 if field_name in self.cell_renderers:
                     row[field_name] = self.cell_renderers[field_name](value)
                 elif isinstance(value, list):
-                    # If the value is a list, we can render it as a comma-separated string
                     row[field_name] = ', '.join(str(v) for v in value)
                 elif isinstance(value, BaseModel):
-                    # If the value is a BaseModel, we can use its string representation
                     row[field_name] = str(value)
                 else:
                     row[field_name] = value
             self._rows.append(row)
         if self.widget:
-            # self.widget.update()
             self.widget.options['rowData'] = self._rows
         return self
 
-
     def render(self) -> Self:
-        """
-        Render the table. If the model is given, it will be bound to the grid.
-        """
+        """Render the ag-Grid widget into the current NiceGUI context."""
         self._cols = _collect_aggrid_cols(self._fields)
         self._rows = []
         self.update_rows()
 
-        kwargs = { k: v for k in ['theme', 'auto_size_columns']
-                   if ( v := getattr(self, k)) }
-        config_dict = {
+        aggrid_kwargs = {k: v for k in ['theme', 'auto_size_columns'] if (v := getattr(self, k))}
+        config: dict[str, Any] = {
             'columnDefs': self._cols,
             'rowData': self._rows,
             'stopEditingWhenCellsLoseFocus': True,
         }
         if self.defaultColDef:
-            config_dict['defaultColDef'] = self.defaultColDef
+            config['defaultColDef'] = self.defaultColDef
         if self.rowSelection:
-            config_dict['rowSelection'] = self.rowSelection
+            config['rowSelection'] = self.rowSelection
 
-        self.widget = ui.aggrid(config_dict, **kwargs)
+        self.widget = ui.aggrid(config, **aggrid_kwargs)
         self.widget.classes(self.classes)
         self.widget.style(self.style)
         self.widget.props(self.props)
         self.widget.on('selectionChanged', self._handle_selection_changed)
 
         if not self._auto_update_registered and isinstance(self._data, ReactiveAdapter):
-            def _on_data_change() -> None:
-                self.update_rows()
-            self._data.on_change(_on_data_change)
+            self._data.on_change(lambda: self.update_rows())
             self._auto_update_registered = True
 
         return self
 
-
     async def _handle_selection_changed(self, event) -> None:
-        """
-        Handle the row selected event to call the selection handlers.
-        """
         if not self.widget:
             return
         row = await self.widget.get_selected_row()
-        e = ValueChangeEventArguments(sender=event.sender, client=event.client, value=row, previous_value=None)
+        vce = ValueChangeEventArguments(sender=event.sender, client=event.client, value=row, previous_value=None)
         for handler in self._selection_handlers:
-            handle_event(handler, e)
+            handle_event(handler, vce)
 
 
 @dataclass(kw_only=True, slots=True)
@@ -271,59 +264,34 @@ class _InlineEditableModelGridOptionInputs(_ModelGridOptionInputs, total=False):
 
 class ModelGridInlineEdit(ModelGrid):
     """
-    A grid class that can be used to create inline-editable aggrids for Pydantic models.
+    Extends ModelGrid with inline cell editing.
+    Each cell edit is validated against the Pydantic model and persisted via the adapter.
+    Register on_change() callbacks to react to successful or failed cell edits.
     """
-    _change_handlers: List[Handler[TableItemFieldEventArguments]]
-    _delete_handler: Callable[[Iterable, int], bool] | None
-    _edit_create_handler: Callable[[Iterable, int], bool] | None
-
+    _change_handlers: list[Handler[TableItemFieldEventArguments]]
     cell_readers: dict[str, Callable[[str], Any]]
 
     def __init__(self, item_type: type[T], adapter: CollectionAdapter, **kwargs: Unpack[_InlineEditableModelGridOptionInputs]) -> None:
         self.cell_readers = kwargs.pop('cell_readers', {})
-
         super().__init__(item_type, adapter, **kwargs)  # type: ignore[arg-type, misc]
         self.defaultColDef.update({'editable': True})
-
         self._change_handlers = []
-        self._delete_handler = None
-        self._edit_create_handler = None
-
 
     def on_change(self, callback: Handler[TableItemFieldEventArguments]) -> Self:
-        """
-        Add a callback to be invoked when the form values change after successful validation. 
-        """
+        """Add a callback invoked on each inline cell edit (success or validation failure)."""
         if not callable(callback):
             raise TypeError(f"callback must be callable, got {type(callback)}")
         self._change_handlers.append(callback)
         return self
 
-
     def render(self) -> Self:
-        """
-        Render the grid with inline editing capabilities.
-        """
+        """Render the grid with inline editing enabled."""
         super().render()
-
-        # add the cell value changed handler
         if self.widget:
             self.widget.on('cellValueChanged', self._handle_cell_value_changed)
-
         return self
 
-
     def _handle_cell_value_changed(self, event) -> None:
-        """
-        Handle the cell value changed event to update the model with the new value
-        when using inline editing (aggrid_editable).
-        """
-        # GenericEventArguments(sender=<nicegui.elements.aggrid.AgGrid object at ...>, client=<nicegui.client.Client object at ...>,
-        #  args={'value': 'John Doexfdsdf', 'oldValue': 'John Doe', 'newValue': 'John Doexfdsdf', 'rowIndex': 0, 
-        #   'data': {'__ui_row_key': 0, 'name': 'John Doexfdsdf', 'age': 30}, 
-        #   'source': 'edit', 'colId': 'name', 'selected': True, 'rowHeight': 28, 'rowId': '0'})
-        row_index = event.args['rowIndex']
-        # row_id = event.args['rowId']
         row_key = event.args['data']['__ui_row_key']
         field_name = event.args['colId']
         old_value = event.args['oldValue']
@@ -333,36 +301,37 @@ class ModelGridInlineEdit(ModelGrid):
             old_value = self.cell_readers[field_name](old_value)
             new_value = self.cell_readers[field_name](new_value)
 
-        #  validate the model with the new value
-        errors = []
-        item = None
         try:
             item = self._data.read(row_key)
-            dumped_item = item.model_dump()
-            dumped_item[field_name] = new_value
-            errors = self._fields.validation_error_list(dumped_item)
-        except Exception as e:
-            errors.append(f"Internal error: Row {row_index}/{row_key} not found - try again")
-        if not isinstance(item, self._fields._item_type):
-            raise TypeError(f"model must be an instance of {self._fields._item_type}, got {type(item)}")
-        if not hasattr(item, field_name):
-            raise ValueError(f"Field {field_name} not found in model {item}")
+        except Exception:
+            ui.notify(f"Row {row_key} not found — try again", color='negative')
+            return
 
-        # update the model with the new value
-        if len(errors) == 0:
+        if not isinstance(item, self._fields._item_type):
+            log.error(f"Expected {self._fields._item_type.__name__}, got {type(item).__name__} for row {row_key}")
+            return
+        if not hasattr(item, field_name):
+            log.error(f"Field '{field_name}' not found in {type(item).__name__}")
+            return
+
+        dumped = item.model_dump()
+        dumped[field_name] = new_value
+        errors = self._fields.validation_error_list(dumped)
+
+        if not errors:
             setattr(item, field_name, new_value)
             self._data.update(item)
         else:
-            # if there are validation errors, revert the value to the old value
-            ui.notify(f"Invalid input {new_value}: {errors}", color='negative')
+            ui.notify(f"Invalid value {new_value!r}: {errors}", color='negative')
             self.update_rows()
 
-        # call the change handlers
         tife = TableItemFieldEventArguments(
             sender=event.sender, client=event.client,
             grid=self,
             row_key=row_key,
-            item=item, field_name=field_name, new_value=new_value,
+            item=item,
+            field_name=field_name,
+            new_value=new_value,
         )
         for handler in self._change_handlers:
             handle_event(handler, tife)

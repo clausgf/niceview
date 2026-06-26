@@ -536,6 +536,83 @@ class TestModelGridFromJson:
 
 
 # ---------------------------------------------------------------------------
+# ModelGrid.__init__ validation
+# ---------------------------------------------------------------------------
+
+class TestModelGridInit:
+    def test_non_type_raises_type_error(self):
+        with pytest.raises(TypeError):
+            ModelGrid('not_a_type', ListAdapter(Item, []))  # type: ignore[arg-type]
+
+    def test_non_model_subclass_raises_type_error(self):
+        with pytest.raises(TypeError, match='item_type'):
+            ModelGrid(str, ListAdapter(Item, []))  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# ModelGrid.update_rows
+# ---------------------------------------------------------------------------
+
+class TestModelGridUpdateRows:
+    def test_rows_reflect_adapter_items(self):
+        items = [Item(name='alice', value=1), Item(name='bob', value=2)]
+        grid = ModelGrid.from_list(Item, items)
+        grid._rows = []
+        grid.widget = None
+        grid.update_rows()
+        assert [r['name'] for r in grid._rows] == ['alice', 'bob']
+
+    def test_clears_stale_rows(self):
+        items = [Item(name='x', value=0)]
+        grid = ModelGrid.from_list(Item, items)
+        grid._rows = [{'__ui_row_key': 'old', 'name': 'stale'}]
+        grid.widget = None
+        grid.update_rows()
+        assert len(grid._rows) == 1
+        assert grid._rows[0]['name'] == 'x'
+
+    def test_empty_adapter_produces_no_rows(self):
+        grid = ModelGrid.from_list(Item, [])
+        grid._rows = []
+        grid.widget = None
+        grid.update_rows()
+        assert grid._rows == []
+
+    def test_row_key_is_present(self):
+        items = [Item(name='a')]
+        grid = ModelGrid.from_list(Item, items)
+        grid._rows = []
+        grid.widget = None
+        grid.update_rows()
+        assert '__ui_row_key' in grid._rows[0]
+
+
+# ---------------------------------------------------------------------------
+# ModelGridInlineEdit initialization
+# ---------------------------------------------------------------------------
+
+class TestModelGridInlineEditInit:
+    def test_cells_are_editable_by_default(self):
+        grid = ModelGridInlineEdit.from_list(Item, [])
+        assert grid.defaultColDef.get('editable') is True
+
+    def test_change_handlers_start_empty(self):
+        grid = ModelGridInlineEdit.from_list(Item, [])
+        assert grid._change_handlers == []
+
+    def test_on_change_registers_callback(self):
+        grid = ModelGridInlineEdit.from_list(Item, [])
+        cb = lambda e: None
+        grid.on_change(cb)
+        assert cb in grid._change_handlers
+
+    def test_on_change_non_callable_raises(self):
+        grid = ModelGridInlineEdit.from_list(Item, [])
+        with pytest.raises(TypeError):
+            grid.on_change('not callable')  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
 # SqlModelAdapter
 # ---------------------------------------------------------------------------
 
