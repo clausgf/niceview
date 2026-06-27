@@ -456,6 +456,34 @@ class User(pydantic.BaseModel):
 
 `Meta.field_order` is a list of field names that sets the display order. Fields not listed are appended at the end in their natural order. This is especially useful for SQLModel table classes, which do not guarantee declaration order.
 
+**Context-specific layouts (profiles):** Define named field sets in `Meta.profiles` and select them via `profile=` when creating a form or grid. This lets you render the same model differently in different contexts — e.g. a compact summary list vs a full detail form — without repeating `include=` at every call site:
+
+```python
+class User(pydantic.BaseModel):
+    name: str = ''
+    email: str = ''
+    notes: str = ''
+    secret: str = ''
+
+    class Meta:
+        profiles = {
+            'summary': ['name', 'email'],     # compact: name + email only
+            'detail': '__all__',              # full: all fields
+        }
+        field_infos = {
+            'secret': niceview.Field(hidden=True),
+        }
+
+# Compact list: only name + email columns
+ModelGrid.from_list(User, users, profile='summary').render()
+
+# Full detail form: all non-hidden fields
+ModelForm.from_item(user, profile='detail').render()
+
+# Works the same on ModelList and DrillDownWrapper
+ModelList.from_list(User, users, profile='summary').render()
+```
+
 Key `FieldInfo` options: `label`, `placeholder`, `tooltip`, `hidden`, `editable`, `widget_type`, `min`, `max`, `classes`, `select_options`.
 
 
@@ -519,7 +547,6 @@ Open Questions / TODO
   - save button also provided
 - provide examples and tests for nested data structures
 - display collections in a responsive card grid in addition got grid/table
-- **Context-specific layouts**: How to render the same Pydantic model differently in different forms or grids (different fields, labels, widgets, order)? `include`/`exclude` covers simple filtering; `field_infos={}` allows per-call overrides but requires repetition. Options to decide between: (A) named profiles in `Meta` (`profile='summary'`), (B) Pydantic model subclasses with their own `Meta`, (C) explicit layout classes à la Django's `ModelForm`. Need to decide which fits NiceView's design best.
 - provide optional search and filtering mechanims to the tables
 - Collections: allow querying specific subsets
 - Collections: analyze efficiency, caching, paging

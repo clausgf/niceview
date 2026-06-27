@@ -327,6 +327,58 @@ class TestModelFormToggleWidget:
 
 
 # ---------------------------------------------------------------------------
+# Profiles (Meta.profiles)
+# ---------------------------------------------------------------------------
+
+class ProfiledPerson(pydantic.BaseModel):
+    name: str = pydantic.Field(default='', title='Name')
+    age: int = pydantic.Field(default=0, title='Age')
+    active: bool = pydantic.Field(default=True, title='Active')
+
+    class Meta:
+        profiles = {
+            'summary': ['name'],
+            'detail': '__all__',
+        }
+
+
+class TestModelFormProfiles:
+    async def test_summary_profile_shows_only_name(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(ProfiledPerson(), profile='summary').render()
+
+        await user.open('/')
+        await user.should_see('Name')
+        await user.should_not_see(ui.number)
+
+    async def test_detail_profile_shows_all_fields(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(ProfiledPerson(), profile='detail').render()
+
+        await user.open('/')
+        await user.should_see('Name')
+        await user.should_see(ui.number)
+        await user.should_see(ui.switch)
+
+    async def test_unknown_profile_raises(self) -> None:
+        import pytest
+        with pytest.raises(ValueError, match="unknown_profile"):
+            ModelForm(ProfiledPerson, profile='unknown_profile')
+
+    async def test_grid_with_profile(self, user: User) -> None:
+        items = [ProfiledPerson(name='Alice')]
+
+        @ui.page('/')
+        def page():
+            ModelGrid.from_list(ProfiledPerson, items, profile='summary').render()
+
+        await user.open('/')
+        await user.should_see(ui.aggrid)
+
+
+# ---------------------------------------------------------------------------
 # ModelGrid — render
 # ---------------------------------------------------------------------------
 

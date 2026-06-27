@@ -56,6 +56,8 @@ class _ModelGridOptionInputs(typing_extensions.TypedDict, total=False):
     include: list[str] | str
     exclude: list[str] | str
     field_infos: dict[str, FieldInfo]
+    profile: str | None
+    """Named field layout profile from Meta.profiles (e.g. 'summary', 'detail')."""
 
     classes: str
     style: str
@@ -107,7 +109,8 @@ class ModelGrid:
             raise TypeError(f"item_type must be a subclass of BaseModel, got {type(item_type)}")
 
         self._fields = Fields(item_type, kwargs.pop('include', '__all__'),
-                              kwargs.pop('exclude', ''), kwargs.pop('field_infos', {}))
+                              kwargs.pop('exclude', ''), kwargs.pop('field_infos', {}),
+                              profile=kwargs.pop('profile', None))
         self._data = adapter
         self._selection_handlers = []
         self._auto_update_registered = False

@@ -192,13 +192,21 @@ class Fields(typing.Mapping[str, FieldInfo]):
     _field_names: list[str]
     _field_infos: dict[str, FieldInfo]
 
-    def __init__(self, item_type: type[pydantic.BaseModel], include: str | typing.Iterable[str] = '__all__', exclude: str | typing.Iterable[str] = '', field_infos: dict[str, FieldInfo] = {}):
+    def __init__(self, item_type: type[pydantic.BaseModel], include: str | typing.Iterable[str] = '__all__', exclude: str | typing.Iterable[str] = '', field_infos: dict[str, FieldInfo] = {}, profile: str | None = None):
         self._item_type = item_type
+        meta = getattr(item_type, 'Meta', None)
+
+        if profile is not None:
+            profiles: dict = getattr(meta, 'profiles', {}) if meta else {}
+            if profile not in profiles:
+                available = list(profiles.keys())
+                raise ValueError(f"Profile '{profile}' not found in {item_type.__name__}.Meta.profiles. Available: {available}")
+            include = profiles[profile]
+
         all_fields = set(item_type.model_fields.keys())
         self._include = self._parse_field_names(include, all_fields, allow_all=True, model_name=item_type.__name__)
         self._exclude = self._parse_field_names(exclude, all_fields, allow_all=False, model_name=item_type.__name__)
 
-        meta = getattr(item_type, 'Meta', None)
         resolver = _FieldInfoResolver(item_type)
         self._field_names, self._field_infos = self._build_field_infos(resolver, meta, field_infos)
         self._apply_field_order(meta)

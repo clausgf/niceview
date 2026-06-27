@@ -41,6 +41,8 @@ class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
     include: list[str] | str
     exclude: list[str] | str
     field_infos: dict[str, FieldInfo]
+    profile: str | None
+    """Named field layout profile from Meta.profiles (e.g. 'summary', 'detail')."""
 
     autosave: bool
     """Whether to automatically save the form on field change. Defaults to False (OFF)."""
@@ -106,7 +108,8 @@ class ModelForm():
         include = _get_param('include', '__all__')
         exclude = _get_param('exclude', '')
         field_infos = _get_param('field_infos', {})
-        self._fields = Fields(item_type, include, exclude, field_infos)
+        profile = kwargs.pop('profile', None)  # type: ignore[misc]
+        self._fields = Fields(item_type, include, exclude, field_infos, profile=profile)
         self._current_item = None
         self._validated_item = None
         self._validation_error_messages = {}

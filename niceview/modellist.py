@@ -39,6 +39,8 @@ class _ModelListOptionInputs(typing_extensions.TypedDict, total=False):
     include: list[str] | str
     exclude: list[str] | str
     field_infos: dict[str, FieldInfo]
+    profile: str | None
+    """Named field layout profile from Meta.profiles (e.g. 'summary', 'detail')."""
     title_field: str | None
     subtitle_fields: list[str] | None
     classes: str
@@ -74,7 +76,8 @@ class ModelList:
             raise TypeError(f"item_type must be a subclass of BaseModel, got {type(item_type)}")
 
         self._fields = Fields(item_type, kwargs.pop('include', '__all__'),
-                              kwargs.pop('exclude', ''), kwargs.pop('field_infos', {}))
+                              kwargs.pop('exclude', ''), kwargs.pop('field_infos', {}),
+                              profile=kwargs.pop('profile', None))
         self._data = adapter
         self._select_handlers = []
         self._auto_update_registered = False
@@ -221,6 +224,7 @@ class DrillDownWrapper:
                 self._list_kwargs.get('include', '__all__'),
                 self._list_kwargs.get('exclude', ''),
                 self._list_kwargs.get('field_infos', {}),
+                profile=self._list_kwargs.get('profile', None),
             )
             for name in fields:
                 if not fields[name].hidden:
