@@ -418,6 +418,8 @@ Additional widgets can be selected explicitly via `niceview.Field(widget_type='.
 | `'ui.radio'` | `ui.radio` | `Literal` / enum with radio buttons |
 | `'ui.toggle'` | `ui.toggle` | `Literal` / enum with toggle buttons |
 | `'ui.color_input'` | `ui.color_input` | Hex color picker |
+| `'slider'` | `ui.slider` | `int`/`float` with a visual range slider; `min`/`max` from `ge`/`le` constraints |
+| `'rating'` | `ui.rating` | `int` 1–N star rating; `max` from `le` constraint (default 5) |
 
 
 Field Customization
@@ -508,9 +510,6 @@ Design decisions and Accepted Technical Debt
 Open Questions / TODO
 ---------------------
 - **Split-panel layout for desktop**: `DrillDownWrapper` renders the same two pages on desktop and mobile. A responsive split-panel variant (list left, form right on wide screens) is not yet implemented. Quasar breakpoint classes (`lt-md`, `gt-sm`) could hide/show panels without changing the page structure.
-- NiceView widget support (_FieldInfoInputs/FieldInfo for relevant options, pydantic type, test cases, add to example 2): 
-    - slider (alternative to number for int, float)
-    - rating
 - EditGridWrapper is not a complete dialog, but the interface needed to edit a collection. The refresh button is the only button to affect the table as a whole (refresh the UI from the model). For collections, we never have a *save* semantics. That to conclude for EditFormWrapper?
   - refresh button possible and makes sense, but already provided by ModelForm
   - save button also provided

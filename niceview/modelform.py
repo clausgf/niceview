@@ -562,6 +562,28 @@ class ModelForm():
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
             self._wire_text_input(widget, field_name)
 
+        elif widget_type == 'slider':
+            slider_min = field_info.min if field_info.min is not None else 0.0
+            slider_max = field_info.max if field_info.max is not None else 100.0
+            slider_kwargs: dict[str, Any] = {'min': slider_min, 'max': slider_max}
+            if field_info.step is not None:
+                slider_kwargs['step'] = field_info.step
+            with ui.column().classes('w-full gap-1'):
+                if field_info.label:
+                    ui.label(field_info.label).classes('text-caption')
+                widget = ui.slider(**slider_kwargs).props('label-always')
+            self._from_current_item_to_widget_value(field_name, widget_type, widget)
+            self._wire_immediate(widget, field_name)
+
+        elif widget_type == 'rating':
+            rating_max = int(field_info.max) if field_info.max is not None else 5
+            with ui.column().classes('gap-1'):
+                if field_info.label:
+                    ui.label(field_info.label).classes('text-caption')
+                widget = ui.rating(max=rating_max)
+            self._from_current_item_to_widget_value(field_name, widget_type, widget)
+            self._wire_immediate(widget, field_name)
+
         elif widget_type == 'editgrid':
             widget = self._render_editgrid_widget(field_name, field_info)
             is_native_widget = False
@@ -644,6 +666,12 @@ class ModelForm():
                 value = int(value)
             else:
                 value = float(value)
+
+        elif widget_type in ('slider', 'rating'):
+            if field_type == int:
+                value = int(value) if value is not None else 0
+            else:
+                value = float(value) if value is not None else 0.0
 
         elif widget_type == 'ui.input_chips':
             expanded = []

@@ -144,6 +144,101 @@ class TestModelFormInteraction:
 
 
 # ---------------------------------------------------------------------------
+# ModelForm — slider widget
+# ---------------------------------------------------------------------------
+
+class SliderItem(pydantic.BaseModel):
+    volume: Annotated[int, pydantic.Field(default=50, ge=0, le=100, title='Volume'), niceview.Field(widget_type='slider')]
+    priority: Annotated[int, pydantic.Field(default=3, ge=1, le=5, title='Priority'), niceview.Field(widget_type='rating')]
+
+
+class TestModelFormSliderWidget:
+    async def test_slider_widget_present(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(SliderItem()).render()
+
+        await user.open('/')
+        await user.should_see(ui.slider)
+
+    async def test_slider_label_visible(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(SliderItem()).render()
+
+        await user.open('/')
+        await user.should_see('Volume')
+
+    async def test_slider_initial_value_in_model(self, user: User) -> None:
+        item = SliderItem(volume=75)
+
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(item).render()
+
+        await user.open('/')
+        assert item.volume == 75
+
+    async def test_slider_change_updates_model(self, user: User) -> None:
+        item = SliderItem(volume=50)
+
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(item).render()
+
+        await user.open('/')
+        slider = user.find(ui.slider).elements.pop()
+        slider.value = 80
+        slider.update()
+        assert item.volume == 80
+
+
+# ---------------------------------------------------------------------------
+# ModelForm — rating widget
+# ---------------------------------------------------------------------------
+
+class TestModelFormRatingWidget:
+    async def test_rating_widget_present(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(SliderItem()).render()
+
+        await user.open('/')
+        await user.should_see(ui.rating)
+
+    async def test_rating_label_visible(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(SliderItem()).render()
+
+        await user.open('/')
+        await user.should_see('Priority')
+
+    async def test_rating_initial_value_in_model(self, user: User) -> None:
+        item = SliderItem(priority=4)
+
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(item).render()
+
+        await user.open('/')
+        assert item.priority == 4
+
+    async def test_rating_change_updates_model(self, user: User) -> None:
+        item = SliderItem(priority=3)
+
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(item).render()
+
+        await user.open('/')
+        rating = user.find(ui.rating).elements.pop()
+        rating.value = 5
+        rating.update()
+        assert item.priority == 5
+
+
+# ---------------------------------------------------------------------------
 # ModelForm — ui.radio widget
 # ---------------------------------------------------------------------------
 

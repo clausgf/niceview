@@ -16,6 +16,8 @@ One form showing all field types supported by NiceView:
 | `str` (color) | `ui.color_input` (via `widget_type` override) |
 | `list[str]` | `ui.input_chips` |
 | `list[int]`, `list[float]`, `list[bool]` | `ui.input` |
+| `int` with `ge`/`le` + `widget_type='slider'` | `ui.slider` |
+| `int` with `le` + `widget_type='rating'` | `ui.rating` |
 | `list[BaseModel]` | Inline `EditGridWrapper` |
 
 This example also demonstrates how to customize the widgets, layout and style via `niceview.Field` metadata, ui.grid() and `ElementFilter`.
@@ -62,6 +64,8 @@ class AllTypes(pydantic.BaseModel):
     choice_radio: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.radio', props='inline')] = 'green'
     choice_toggle: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.toggle')] = 'green'
     color: Annotated[str, niceview.Field(widget_type='ui.color_input', label='Color', color_preview=True)] = '#4a90e2'
+    volume: Annotated[int, pydantic.Field(default=50, ge=0, le=100, title='Volume'), niceview.Field(widget_type='slider', step=1)]
+    priority: Annotated[int, pydantic.Field(default=3, ge=1, le=5, title='Priority'), niceview.Field(widget_type='rating')]
     chips: list[str] = pydantic.Field(default_factory=lambda: ['foo', 'bar'], title='Chips (list[str])')
     tags: list[Tag] = pydantic.Field(
         default_factory=lambda: [Tag(label='important')],

@@ -23,6 +23,7 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
     widget_type: Literal[
         'ui.input', 'ui.number', 'ui.textarea', 'ui.checkbox', 'ui.switch', 'ui.select', 'ui.radio', 'ui.toggle', 'ui.color_input', 'ui.input_chips',
         'datetime', 'date', 'time', 'timedelta',
+        'slider', 'rating',
         'editgrid', 'modelselect',
     ]
 
@@ -103,6 +104,7 @@ class FieldInfo():
     widget_type: Literal[
         'ui.input', 'ui.number', 'ui.textarea', 'ui.checkbox', 'ui.switch', 'ui.select', 'ui.radio', 'ui.toggle', 'ui.color_input', 'ui.input_chips',
         'datetime', 'date', 'time', 'timedelta',
+        'slider', 'rating',
         'editgrid', 'modelselect',
     ] | None = None
 
