@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import datetime
 import logging
-from typing import Any, Self, Unpack
+from typing import Any, Self, TypeVar, Unpack
 import typing
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -16,6 +16,8 @@ from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 
 log = logging.getLogger('niceview')
+
+W = TypeVar('W', bound=ui.element)
 
 
 def _pick_attrs(obj: Any, attrs: list[str]) -> dict[str, Any]:
@@ -267,6 +269,31 @@ class ModelForm():
         ui.notify('Form saved', color='positive')
 
     # --- widget management -------------------------------------------------
+
+    @typing.overload
+    def w(self, field_name: str) -> ui.element: ...
+    @typing.overload
+    def w(self, field_name: str, widget_type: type[W]) -> W: ...
+    def w(self, field_name: str, widget_type: 'type[W] | None' = None) -> 'ui.element | W':
+        """
+        Return the rendered widget for a field, with optional type narrowing.
+
+          form.w('name')               # → ui.element
+          form.w('name', ui.input)     # → ui.input  (typed; raises TypeError if mismatch)
+
+        Raises KeyError if the field has no widget (e.g. not yet rendered or excluded).
+        Raises TypeError if the widget exists but is not an instance of widget_type.
+        """
+        try:
+            widget = self.widgets[field_name]
+        except KeyError:
+            raise KeyError(f"No widget for field '{field_name}'. "
+                           "Check that the form is rendered and the field is not excluded.")
+        if widget_type is not None and not isinstance(widget, widget_type):
+            raise TypeError(
+                f"Widget for '{field_name}' is {type(widget).__name__}, not {widget_type.__name__}"
+            )
+        return widget  # type: ignore[return-value]
 
     def with_repositories(self, repositories: 'dict[type[BaseModel], CollectionAdapter]') -> Self:
         """
