@@ -22,8 +22,6 @@ import pydantic
 from typing import Literal
 from nicegui import ElementFilter, ui
 from niceview.dataadapter import ListAdapter
-from niceview.modelform import ModelForm
-from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
 from niceview.modeledit import EditGridWrapper, EditFormWrapper
 
 
@@ -67,28 +65,27 @@ def page():
         data_form = ui.code(f"Task {tasks[0]}").classes('w-full')
 
     with ui.card().classes('w-full'):
-        wrapper = EditGridWrapper(
-            ModelGrid.from_list(Task, tasks),
+        EditGridWrapper.from_list(
+            Task, tasks,
             title='Tasks (EditGridWrapper with default buttons and dialogs)',
         )
-        wrapper.render()
 
     with ui.card().classes('w-full'):
-        wrapper = EditGridWrapper(
-            ModelGridInlineEdit.from_list(Task, tasks),
+        EditGridWrapper.from_list(
+            Task, tasks,
+            inline_edit=True,
             title='Tasks (EditGridWrapper with inline editing)',
         )
-        wrapper.render()
     
     with ui.grid().classes('w-full gap-4 grid-cols-1 lg:grid-cols-2').mark('my-form'):
         with ui.card().classes('w-full'):
-            efw = EditFormWrapper.from_item(Task, tasks[0], title='EditFromWrapper via item').render()
+            efw = EditFormWrapper.from_item(Task, tasks[0], title='EditFromWrapper via item')
             efw.on_change(lambda e: data_form.set_content(f"Task {efw.form.item}"))
 
         with ui.card().classes('w-full'):
             adapter = ListAdapter(Task, tasks)
             key = adapter.key_from_item(tasks[0])
-            efw = EditFormWrapper.from_adapter(Task, adapter, key, title='EditFromWrapper via adapter').render()
+            efw = EditFormWrapper.from_adapter(Task, adapter, key, title='EditFromWrapper via adapter')
             efw.on_change(lambda e: data_form.set_content(f"Task {efw.form.item}"))
         ElementFilter().within(marker='my-form').props('dense').classes('w-full')
 

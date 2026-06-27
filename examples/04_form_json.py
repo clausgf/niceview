@@ -57,7 +57,7 @@ def page():
                                       title='Edit JSON (autosaves on change)',
                                       autosave=True,
                                       classes='w-full',
-                                      ).render()
+                                      )
 
         with ui.card().classes('flex-1'):
             ui.label(f'JSON — {AUTOSAVE_PATH.name}').classes('text-h6')
@@ -69,7 +69,7 @@ def page():
                 AppConfig, BUTTONS_PATH,
                 title='Edit JSON (uses Save / Refresh buttons)',
                 classes='w-full',
-            ).render()
+            )
 
         with ui.card().classes('flex-1'):
             ui.label(f'JSON — {BUTTONS_PATH.name}').classes('text-h6')

@@ -44,6 +44,7 @@ class EditGridWrapper():
     grid: ModelGrid
 
     # private config
+    _rendered: bool
     _title: str | None
     _description: str | None
     _delete_button: str | None
@@ -77,6 +78,7 @@ class EditGridWrapper():
         self._edit_button = kwargs.pop('edit_button', default_edit)
         self._refresh_button = kwargs.pop('refresh_button', '')
 
+        self._rendered = False
         self.title = None
         self.description = None
         self.title_row = None
@@ -92,27 +94,33 @@ class EditGridWrapper():
 
     @classmethod
     def from_list(cls, item_type: type[T], items: list[T], *, inline_edit: bool = False, **kwargs) -> Self:
-        """Create an EditGridWrapper backed by an in-memory list."""
+        """Create an EditGridWrapper backed by an in-memory list. Renders immediately."""
         wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _GRID_WRAPPER_INPUT_KEYS}
         grid_cls = ModelGridInlineEdit if inline_edit else ModelGrid
         grid = grid_cls.from_list(item_type, items, **kwargs)
-        return cls(grid, **wrapper_kwargs)  # type: ignore[arg-type]
+        instance = cls(grid, **wrapper_kwargs)  # type: ignore[arg-type]
+        instance.render()
+        return instance
 
     @classmethod
     def from_json(cls, item_type: type[T], path_name: Path, create_if_not_exist: bool = True, *, inline_edit: bool = False, **kwargs) -> Self:
-        """Create an EditGridWrapper backed by a JSON file."""
+        """Create an EditGridWrapper backed by a JSON file. Renders immediately."""
         wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _GRID_WRAPPER_INPUT_KEYS}
         grid_cls = ModelGridInlineEdit if inline_edit else ModelGrid
         grid = grid_cls.from_json(item_type, path_name, create_if_not_exist, **kwargs)
-        return cls(grid, **wrapper_kwargs)  # type: ignore[arg-type]
+        instance = cls(grid, **wrapper_kwargs)  # type: ignore[arg-type]
+        instance.render()
+        return instance
 
     @classmethod
     def from_adapter(cls, item_type: type[T], adapter: CollectionAdapter, *, inline_edit: bool = False, **kwargs) -> Self:
-        """Create an EditGridWrapper backed by any CollectionAdapter."""
+        """Create an EditGridWrapper backed by any CollectionAdapter. Renders immediately."""
         wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _GRID_WRAPPER_INPUT_KEYS}
         grid_cls = ModelGridInlineEdit if inline_edit else ModelGrid
         grid = grid_cls.from_adapter(item_type, adapter, **kwargs)
-        return cls(grid, **wrapper_kwargs)  # type: ignore[arg-type]
+        instance = cls(grid, **wrapper_kwargs)  # type: ignore[arg-type]
+        instance.render()
+        return instance
 
     # --- configuration -----------------------------------------------------
 
@@ -162,6 +170,8 @@ class EditGridWrapper():
 
     def render(self) -> Self:
         """Render title, description, CRUD buttons, and the grid into the current NiceGUI context."""
+        if self._rendered:
+            return self
         self.title = None
         self.description = None
         self.title_row = None
@@ -201,6 +211,7 @@ class EditGridWrapper():
             self.description = ui.markdown(self._description)
 
         self.grid.render()
+        self._rendered = True
         return self
 
     # --- CRUD actions ------------------------------------------------------
@@ -381,6 +392,7 @@ class EditFormWrapper():
         wrapper.save_button    → ui.button | None
         wrapper.refresh_button → ui.button | None
     """
+    _rendered: bool
     _title: str | None
     _description: str | None
     _save_button: str | None
@@ -407,6 +419,7 @@ class EditFormWrapper():
         self._save_button = kwargs.pop('save_button', default_save)
         self._refresh_button = kwargs.pop('refresh_button', default_refresh)
 
+        self._rendered = False
         self.title = None
         self.save_button = None
         self.refresh_button = None
@@ -421,24 +434,39 @@ class EditFormWrapper():
 
     @classmethod
     def from_item(cls, item_type_or_item: 'type[BaseModel] | BaseModel', item: 'BaseModel | None' = None, **kwargs) -> Self:
-        """Create an EditFormWrapper backed by an in-memory item (no persistence)."""
+        """Create an EditFormWrapper backed by an in-memory item. Renders immediately."""
         wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _FORM_WRAPPER_INPUT_KEYS}
+        repositories: 'dict | None' = kwargs.pop('repositories', None)
         form = ModelForm.from_item(item_type_or_item, item, **kwargs)
-        return cls(form, **wrapper_kwargs)
+        if repositories:
+            form.with_repositories(repositories)
+        instance = cls(form, **wrapper_kwargs)
+        instance.render()
+        return instance
 
     @classmethod
     def from_json(cls, item_type: type[BaseModel], json_path: Path, create_if_not_exist: bool = True, **kwargs) -> Self:
-        """Create an EditFormWrapper backed by a JSON file. Save and Refresh buttons shown by default."""
+        """Create an EditFormWrapper backed by a JSON file. Renders immediately with Save and Refresh buttons."""
         wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _FORM_WRAPPER_INPUT_KEYS}
+        repositories: 'dict | None' = kwargs.pop('repositories', None)
         form = ModelForm.from_json(item_type, json_path, create_if_not_exist, **kwargs)
-        return cls(form, **wrapper_kwargs)
+        if repositories:
+            form.with_repositories(repositories)
+        instance = cls(form, **wrapper_kwargs)
+        instance.render()
+        return instance
 
     @classmethod
     def from_adapter(cls, item_type: type[BaseModel], adapter: CollectionAdapter, key: str, **kwargs) -> Self:
-        """Create an EditFormWrapper backed by one item in a CollectionAdapter. Save and Refresh buttons shown by default."""
+        """Create an EditFormWrapper backed by one item in a CollectionAdapter. Renders immediately with Save and Refresh buttons."""
         wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _FORM_WRAPPER_INPUT_KEYS}
+        repositories: 'dict | None' = kwargs.pop('repositories', None)
         form = ModelForm.from_adapter(item_type, adapter, key, **kwargs)
-        return cls(form, **wrapper_kwargs)
+        if repositories:
+            form.with_repositories(repositories)
+        instance = cls(form, **wrapper_kwargs)
+        instance.render()
+        return instance
 
     # --- delegation --------------------------------------------------------
 
@@ -470,6 +498,8 @@ class EditFormWrapper():
 
     def render(self) -> Self:
         """Render title, description, action buttons, and the form into the current NiceGUI context."""
+        if self._rendered:
+            return self
         self.title = None
         self.save_button = None
         self.refresh_button = None
@@ -500,4 +530,5 @@ class EditFormWrapper():
             self.description = ui.markdown(self._description)
 
         self.form.render()
+        self._rendered = True
         return self

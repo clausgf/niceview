@@ -27,7 +27,6 @@ from nicegui import ui
 from nicegui.observables import ObservableList
 
 from niceview.dataadapter import ListAdapter
-from niceview.modelgrid import ModelGridInlineEdit
 from niceview.modeledit import EditGridWrapper
 
 
@@ -99,11 +98,10 @@ def page():
                     'Adapter CRUD mutations probagate, but direct mutations to the original list do **not**.'
                 )
 
-                wrapper_a = EditGridWrapper(
-                    ModelGridInlineEdit.from_adapter(Task, plain_adapter, classes='w-full'),
+                wrapper_a = EditGridWrapper.from_adapter(
+                    Task, plain_adapter, inline_edit=True, classes='w-full',
                     title='Tasks (Plain List)',
                 )
-                wrapper_a.render()
 
                 code_a = ui.code(_fmt(plain_tasks)).classes('w-full')
                 ui.timer(1, lambda: code_a.set_content(_fmt(plain_tasks)))
@@ -136,11 +134,10 @@ def page():
                     'Direct changes to list items, however, still require `update_rows()` or the refresh button.'
                 )
 
-                wrapper_b = EditGridWrapper(
-                    ModelGridInlineEdit.from_adapter(Task, obs_adapter, classes='w-full'),
+                wrapper_b = EditGridWrapper.from_adapter(
+                    Task, obs_adapter, inline_edit=True, classes='w-full',
                     title='Tasks (ObservableList)',
                 )
-                wrapper_b.render()
 
                 code_b = ui.code(_fmt(obs_tasks)).classes('w-full')
                 ui.timer(1, lambda: code_b.set_content(_fmt(obs_tasks)))

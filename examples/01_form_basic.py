@@ -32,7 +32,6 @@ def page():
     ui.separator()
 
     wrapper = EditFormWrapper.from_item(person, title='Edit Person', classes='w-96')
-    wrapper.render()
 
     change_log = ui.log(max_lines=10).classes('w-full h-32 mt-4')
     wrapper.on_change(lambda e: change_log.push(

@@ -159,27 +159,22 @@ Both wrappers add a title, optional description, and action buttons as chrome ab
 ```python
 from niceview.modeledit import EditGridWrapper, EditFormWrapper
 
-# Grid with CRUD buttons — factory methods create the ModelGrid automatically
-EditGridWrapper.from_list(User, user_list, title='Users').render()
-EditGridWrapper.from_json(User, Path('users.json'), title='Users').render()
-EditGridWrapper.from_adapter(User, adapter, title='Users').render()
+# Grid with CRUD buttons — factory methods create and render in one call
+EditGridWrapper.from_list(User, user_list, title='Users')
+EditGridWrapper.from_json(User, Path('users.json'), title='Users')
+EditGridWrapper.from_adapter(User, adapter, title='Users')
 
 # inline_edit=True uses ModelGridInlineEdit instead of ModelGrid
-EditGridWrapper.from_list(User, user_list, title='Users', inline_edit=True).render()
-
-# Or pass a pre-built grid for full control
-EditGridWrapper(ModelGrid.from_list(User, user_list), title='Users').render()
+EditGridWrapper.from_list(User, user_list, title='Users', inline_edit=True)
 
 # Form with chrome — factory methods mirror ModelForm's, accept all ModelForm options plus wrapper options
-EditFormWrapper.from_item(user, title='Edit User').render()
-EditFormWrapper.from_json(User, Path('user.json'), title='Config', autosave=True).render()
-EditFormWrapper.from_adapter(User, adapter, key, title='Edit User').render()
+EditFormWrapper.from_item(user, title='Edit User')
+EditFormWrapper.from_json(User, Path('user.json'), title='Config', autosave=True)
+EditFormWrapper.from_adapter(User, adapter, key, title='Edit User')
 
-# Wrap a pre-built ModelForm (when extra setup is needed first, e.g. model repositories)
-form = ModelForm.from_adapter(Book, books_adapter, book_id)
-wrapper = EditFormWrapper(form, title='Edit Book')
-wrapper.with_repositories({Author: authors_adapter})
-wrapper.render()
+# repositories= wires up modelselect fields (for FK relationships in EditFormWrapper)
+EditFormWrapper.from_adapter(Book, books_adapter, book_id, title='Edit Book',
+                             repositories={Author: authors_adapter})
 ```
 
 **`EditGridWrapper` button defaults** — all buttons shown by default (icon only):
@@ -201,11 +196,10 @@ wrapper.render()
 
 Autosave always suppresses `save_button`. Pass `None` to hide any button; pass a string to set its label (`''` = icon only).
 
-**Exposed NiceGUI elements** — after `render()`, chrome elements are accessible for further styling:
+**Exposed NiceGUI elements** — chrome elements are accessible for styling after the factory call:
 ```python
 # EditGridWrapper
-wrapper = EditGridWrapper(ModelGrid.from_list(User, user_list), title='Users')
-wrapper.render()
+wrapper = EditGridWrapper.from_list(User, user_list, title='Users')
 wrapper.title                              # ui.label | None
 wrapper.description                        # ui.markdown | None
 wrapper.title_row                          # ui.row | None
@@ -216,7 +210,6 @@ wrapper.refresh_button                     # ui.button | None
 
 # EditFormWrapper
 wrapper = EditFormWrapper.from_adapter(User, adapter, key, title='Edit User')
-wrapper.render()
 wrapper.title.classes('text-primary')      # ui.label | None
 wrapper.description                        # ui.markdown | None
 wrapper.title_row                          # ui.row | None
@@ -226,7 +219,7 @@ wrapper.refresh_button                     # ui.button | None
 
 **`EditGridWrapper` options:**
 ```python
-EditGridWrapper(grid,
+wrapper = EditGridWrapper.from_list(User, users,
     title='Users',        # shown as text-h6; None = no title row
     description='...',    # markdown below the title row
     add_button='Add',     # label or '' for icon-only; None = hidden
@@ -244,6 +237,7 @@ EditFormWrapper.from_item(user,
     description='...',           # markdown below the title row
     save_button='Save',          # label or '' for icon-only; None = hidden
     refresh_button='',           # same
+    repositories={Author: authors_adapter},  # modelselect FK fields
     # ModelForm options:
     include=['name', 'age'],
     autosave=True,
@@ -386,11 +380,11 @@ form = ModelForm.from_adapter(Book, adapter, str(book_id))
 form.render()
 
 # Form with chrome (title + save/refresh buttons)
-EditFormWrapper.from_adapter(Book, adapter, str(book_id), title='Edit Book').render()
+EditFormWrapper.from_adapter(Book, adapter, str(book_id), title='Edit Book')
 
 # Grid over the full table
 ModelGrid(Book, adapter).render()
-EditGridWrapper(ModelGrid(Book, adapter), title='Books').render()
+EditGridWrapper.from_adapter(Book, adapter, title='Books')
 ```
 
 

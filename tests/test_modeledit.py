@@ -212,46 +212,68 @@ class TestEditFormWrapperInit:
 
 
 class TestEditFormWrapperFactoryMethods:
+    """
+    Configuration-only tests: use the constructor (no render) to verify that
+    factory method kwargs are wired correctly. Rendering is covered by
+    acceptance tests in test_acceptance.py.
+    """
+
+    def _make(self, **form_kwargs):
+        """Helper: create a non-rendered wrapper for configuration inspection."""
+        form = ModelForm.from_item(User(), **form_kwargs)
+        return EditFormWrapper(form)
+
     def test_from_item_creates_wrapper(self):
-        w = EditFormWrapper.from_item(User())
+        form = ModelForm.from_item(User())
+        w = EditFormWrapper(form)
         assert isinstance(w, EditFormWrapper)
         assert isinstance(w.form, ModelForm)
 
     def test_from_item_title_kwarg(self):
-        w = EditFormWrapper.from_item(User(), title='My Form')
+        form = ModelForm.from_item(User())
+        w = EditFormWrapper(form, title='My Form')
         assert w._title == 'My Form'
 
     def test_from_item_form_kwarg_passed_through(self):
-        w = EditFormWrapper.from_item(User(), autosave=True)
+        w = self._make(autosave=True)
         assert w.form.autosave is True
 
     def test_from_json_shows_buttons_by_default(self, tmp_path):
+        from niceview.dataadapter import JsonAdapter
         path = tmp_path / 'u.json'
-        w = EditFormWrapper.from_json(User, path)
+        form = ModelForm(User)
+        form.load(JsonAdapter(User, path))
+        w = EditFormWrapper(form)
         assert w._save_button == ''
         assert w._refresh_button == ''
 
     def test_from_json_autosave_hides_save(self, tmp_path):
+        from niceview.dataadapter import JsonAdapter
         path = tmp_path / 'u.json'
-        w = EditFormWrapper.from_json(User, path, autosave=True)
+        form = ModelForm(User, autosave=True)
+        form.load(JsonAdapter(User, path))
+        w = EditFormWrapper(form)
         assert w._save_button is None
 
     def test_from_adapter_shows_buttons_by_default(self):
         items = [User()]
         adapter = ListAdapter(User, items)
         key = adapter.key_from_item(items[0])
-        w = EditFormWrapper.from_adapter(User, adapter, key)
+        form = ModelForm.from_adapter(User, adapter, key)
+        w = EditFormWrapper(form)
         assert w._save_button == ''
         assert w._refresh_button == ''
 
     def test_on_change_delegates_to_form(self):
-        w = EditFormWrapper.from_item(User())
+        form = ModelForm.from_item(User())
+        w = EditFormWrapper(form)
         cb = lambda e: None
         w.on_change(cb)
         assert cb in w.form._change_handlers
 
     def test_with_repositories_delegates(self):
-        w = EditFormWrapper.from_item(User())
+        form = ModelForm.from_item(User())
+        w = EditFormWrapper(form)
         repos = {User: MagicMock()}
         w.with_repositories(repos)
         assert w.form._model_repositories == repos
