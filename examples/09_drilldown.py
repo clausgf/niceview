@@ -1,7 +1,7 @@
 """
 # DrillDownWrapper / ModelList
 
-Mobile-friendly drill-down navigation: a contact list that opens a detail form per item.
+Responsive drill-down navigation: a contact list that opens a detail form per item.
 
 - **/contacts** — list page: all contacts as a tappable list, Add button in the header
 - **/contacts/{key}** — detail page: full form with Save, Refresh, Back, and Delete
@@ -9,7 +9,11 @@ Mobile-friendly drill-down navigation: a contact list that opens a detail form p
 Both pages are registered by `DrillDownWrapper.register('/contacts')` before `ui.run()`.
 The root `/` redirects to `/contacts`.
 
-Try on mobile viewport (DevTools → Toggle device toolbar) to see the intended experience.
+**Responsive split-panel layout:**
+- On mobile (< 1024 px): list page and detail page navigate separately (drill-down style)
+- On desktop (≥ 1024 px): list appears on the left, detail form on the right (side by side)
+
+No API changes — the responsive behaviour is built in via Quasar breakpoint CSS classes.
 """
 # Allows running without prior install. With uv: `uv run python examples/<file>.py`.
 import sys

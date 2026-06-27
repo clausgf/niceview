@@ -278,14 +278,21 @@ class DrillDownWrapper:
             if self._add_button is not None:
                 ui.button(self._add_button, icon='add').props('flat color=white').on_click(on_add_clicked)
 
-        model_list = ModelList(
-            self._item_type, self._adapter,
-            title_field=self._title_field,
-            subtitle_fields=self._subtitle_fields,
-            **self._list_kwargs,
-        )
-        model_list.on_select(lambda e: ui.navigate.to(f'{base_path}/{e.row_key}'))
-        model_list.render()
+        with ui.row().classes('w-full flex-wrap'):
+            # List panel: full width on mobile, left third on desktop
+            with ui.column().classes('col-12 col-md-4 q-pa-none'):
+                model_list = ModelList(
+                    self._item_type, self._adapter,
+                    title_field=self._title_field,
+                    subtitle_fields=self._subtitle_fields,
+                    **self._list_kwargs,
+                )
+                model_list.on_select(lambda e: ui.navigate.to(f'{base_path}/{e.row_key}'))
+                model_list.render()
+            # Placeholder panel: shown on desktop only, right two thirds
+            with ui.column().classes('col-8 gt-sm items-center justify-center q-pa-xl'):
+                ui.icon('touch_app').classes('text-grey-4 text-h2')
+                ui.label('Select an item to view details').classes('text-grey q-mt-sm')
 
     def _render_detail_page(self, base_path: str, key: str) -> None:
         try:
@@ -301,13 +308,27 @@ class DrillDownWrapper:
             await self._delete_item(base_path, key)
 
         with ui.header().classes('items-center'):
-            ui.button(icon='arrow_back').props('flat color=white').on_click(lambda _: ui.navigate.back())
+            # Back button visible on mobile only; desktop shows the list panel next to the form
+            ui.button(icon='arrow_back').props('flat color=white').classes('lt-md').on_click(lambda _: ui.navigate.back())
             ui.label(self._item_title(item)).classes('text-h6 grow')
             if self._delete_button is not None:
                 ui.button(self._delete_button, icon='delete').props('flat color=white').on_click(on_delete_clicked)
 
-        with ui.card().classes('w-full q-ma-md'):
-            EditFormWrapper.from_adapter(self._item_type, self._adapter, key).render()
+        with ui.row().classes('w-full flex-wrap'):
+            # List panel: shown on desktop only, left third
+            with ui.column().classes('col-4 gt-sm q-pa-none'):
+                model_list = ModelList(
+                    self._item_type, self._adapter,
+                    title_field=self._title_field,
+                    subtitle_fields=self._subtitle_fields,
+                    **self._list_kwargs,
+                )
+                model_list.on_select(lambda e: ui.navigate.to(f'{base_path}/{e.row_key}'))
+                model_list.render()
+            # Form panel: full width on mobile, right two thirds on desktop
+            with ui.column().classes('col-12 col-md-8'):
+                with ui.card().classes('w-full'):
+                    EditFormWrapper.from_adapter(self._item_type, self._adapter, key)
 
     # --- CRUD actions ------------------------------------------------------
 

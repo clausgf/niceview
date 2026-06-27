@@ -218,3 +218,50 @@ class TestDrillDownWrapperDetailPage:
 
         await user.open('/')
         await user.should_see('Not Found')
+
+
+# ---------------------------------------------------------------------------
+# DrillDownWrapper — split-panel layout
+# ---------------------------------------------------------------------------
+
+class TestDrillDownWrapperSplitPanel:
+    async def test_list_page_renders_list_widget(self, user: User) -> None:
+        contacts = [Contact(name='Alice'), Contact(name='Bob')]
+        wrapper = DrillDownWrapper.from_list(Contact, contacts, title='Contacts')
+
+        @ui.page('/')
+        def page():
+            wrapper._render_list_page('/contacts')
+
+        await user.open('/')
+        await user.should_see(ui.list)
+
+    async def test_detail_page_renders_list_for_side_panel(self, user: User) -> None:
+        contacts = [Contact(name='Alice'), Contact(name='Bob')]
+        adapter = ListAdapter(Contact, contacts)
+        wrapper = DrillDownWrapper.from_adapter(Contact, adapter)
+        key = adapter.key_from_item(contacts[0])
+
+        @ui.page('/')
+        def page():
+            wrapper._render_detail_page('/contacts', key)
+
+        await user.open('/')
+        # The detail page renders a list for the desktop side panel
+        await user.should_see(ui.list)
+
+    async def test_detail_page_renders_form_and_list(self, user: User) -> None:
+        contacts = [Contact(name='Alice', email='alice@example.com'), Contact(name='Bob')]
+        adapter = ListAdapter(Contact, contacts)
+        wrapper = DrillDownWrapper.from_adapter(Contact, adapter)
+        key = adapter.key_from_item(contacts[0])
+
+        @ui.page('/')
+        def page():
+            wrapper._render_detail_page('/contacts', key)
+
+        await user.open('/')
+        # Form fields rendered
+        await user.should_see('Name')
+        # Side panel list also rendered (desktop split-panel)
+        await user.should_see('Bob')

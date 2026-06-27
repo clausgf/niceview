@@ -254,6 +254,10 @@ ModelList / DrillDownWrapper
 suited for mobile-first single-column navigation. `DrillDownWrapper` registers two NiceGUI pages
 (list + per-item detail) and wires up navigation between them.
 
+**Responsive layout** is built in — no API changes needed:
+- Mobile (< 1024 px): separate list and detail pages with drill-down navigation
+- Desktop (≥ 1024 px): split-panel — list on the left, form on the right, side by side
+
 ```python
 from niceview.modellist import ModelList, DrillDownWrapper
 
@@ -499,6 +503,7 @@ not inspectable via the `User` fixture; row data is covered by unit tests instea
 Design decisions and Accepted Technical Debt
 --------------------------------------------
 - **Mobile navigation: `ModelList` + `DrillDownWrapper` as separate components**: A new `ModelList` (Quasar list) and `DrillDownWrapper` (two registered NiceGUI pages) are added alongside `ModelGrid` / `EditGridWrapper` rather than making the existing desktop components responsive. Motivation: the UX patterns are fundamentally different — card list with drill-down vs data table with dialogs — and a single component handling both would need too many conditional paths. The state-sharing problem between pages is solved by the `DrillDownWrapper` instance holding the adapter (shared per Python process, which is the normal NiceGUI single-user model).
+- **`DrillDownWrapper` split-panel layout**: Implemented as pure CSS using Quasar breakpoint utility classes (`gt-sm`, `lt-md`, `col-4`, `col-md-8`). No API changes, no JavaScript, no conditional Python logic. The list panel on the detail page is rendered unconditionally but hidden on mobile via `gt-sm`. This means on desktop, clicking a list item in the side panel navigates to a new URL (`base_path/{key}`) which re-renders the same split-panel layout with the new item selected.
 - **Form navigation / dirty state**: No detection when the user leaves an unsaved form. Options: (a) track dirty state via `on_change` and expose `is_dirty` property; (b) use a JS `beforeunload` guard (requires NiceGUI `ui.run_javascript`). Neither covers in-app navigation — NiceGUI has no built-in route guard.
 - **NiceGUI element lifecycle**: When are elements instantiated, active, deleted? `render()` must be called inside a NiceGUI page context; elements created outside a client context silently fail. No lifecycle hooks for cleanup.
 - **Tests for async dialog flows**: `create_item` / `update_item` / `delete_item` open a NiceGUI dialog (`await dialog`) and cannot be tested without a browser. The CRUD data operations are covered via `_apply_create`, `_apply_update`, `_apply_delete` (unit tests) and the render/button presence via acceptance tests. Full dialog flow testing would require the `Screen` fixture (Playwright-based).
@@ -509,7 +514,6 @@ Design decisions and Accepted Technical Debt
 
 Open Questions / TODO
 ---------------------
-- **Split-panel layout for desktop**: `DrillDownWrapper` renders the same two pages on desktop and mobile. A responsive split-panel variant (list left, form right on wide screens) is not yet implemented. Quasar breakpoint classes (`lt-md`, `gt-sm`) could hide/show panels without changing the page structure.
 - EditGridWrapper is not a complete dialog, but the interface needed to edit a collection. The refresh button is the only button to affect the table as a whole (refresh the UI from the model). For collections, we never have a *save* semantics. That to conclude for EditFormWrapper?
   - refresh button possible and makes sense, but already provided by ModelForm
   - save button also provided
