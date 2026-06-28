@@ -508,20 +508,6 @@ Run examples:
 uv run python examples/01_form_basic.py
 ```
 
-The `niceview-split` branch contains only the `niceview/` package directory for easy inclusion as a git subtree in other projects.
-
-Update `niceview-split` from `main`:
-```bash
-git subtree split --prefix=niceview --branch niceview-split main
-git push origin niceview-split --force
-```
-
-Pull the latest `niceview-split` into a consuming project:
-```bash
-git fetch niceview
-git subtree pull --prefix=niceview niceview niceview-split --squash
-```
-
 Unit tests cover data adapters, field resolution, validation logic, and pure CRUD operations.
 Acceptance tests (`tests/test_acceptance.py`) use the NiceGUI `User` fixture (headless, no browser)
 to verify render output and widget↔model interaction. AgGrid cell content is JS-rendered and
