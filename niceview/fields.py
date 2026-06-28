@@ -7,9 +7,15 @@ import importlib
 
 import annotated_types
 import pydantic
-import sqlalchemy
-from sqlmodel import SQLModel
 from niceview.fieldinfo import FieldInfo, _merge_field_infos
+
+try:
+    import sqlalchemy
+    from sqlmodel import SQLModel as _SQLModel
+    _SQLMODEL_AVAILABLE = True
+except ImportError:
+    _SQLModel = None  # type: ignore[assignment,misc]
+    _SQLMODEL_AVAILABLE = False
 
 log = logging.getLogger('niceview')
 
@@ -58,6 +64,7 @@ class _FieldInfoResolver:
         return nv_field_info
 
     def from_sqlmodel(self, field_name: str, field_type: type) -> FieldInfo | None:
+        import sqlalchemy  # sqlmodel is available (checked by caller)
         origin = typing.get_origin(field_type)
         args = typing.get_args(field_type)
 
@@ -243,7 +250,7 @@ class Fields(typing.Mapping[str, FieldInfo]):
 
     def _build_field_infos(self, resolver: _FieldInfoResolver, meta, field_infos: dict[str, FieldInfo]) -> tuple[list[str], dict[str, FieldInfo]]:
         pydantic_fields = self._item_type.model_fields
-        is_sqlmodel = issubclass(self._item_type, SQLModel)
+        is_sqlmodel = _SQLMODEL_AVAILABLE and issubclass(self._item_type, _SQLModel)
         meta_field_info: dict[str, FieldInfo] = getattr(meta, 'field_info', {}) if meta is not None else {}
 
         names: list[str] = []

@@ -316,7 +316,7 @@ or let the `from_*` factory methods create them transparently.
 | `ListAdapter(Type, list)` | Grid | In-memory list |
 | `JsonAdapter(Type, path)` | Form | Single object in a JSON file |
 | `JsonListAdapter(Type, path)` | Grid | List of objects in a JSON file |
-| `SqlModelAdapter(Type, engine)` | Grid, Form | SQLModel / SQLAlchemy table |
+| `SqlModelAdapter(Type, engine)` | Grid, Form | SQLModel / SQLAlchemy table *(optional)* |
 
 All JSON adapters write atomically (`.tmp` → rename).
 `JsonListAdapter` and `SqlModelAdapter` both implement `ReloadableAdapter`: `reload()` re-reads

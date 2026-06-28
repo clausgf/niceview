@@ -29,7 +29,7 @@ import sqlmodel
 from nicegui import ui
 
 import niceview
-from niceview.dataadapter import SqlModelAdapter
+from niceview.sqlmodel_adapter import SqlModelAdapter
 from niceview.wrapper import EditFormWrapper, EditGridWrapper
 
 log = logging.getLogger('niceview-example')

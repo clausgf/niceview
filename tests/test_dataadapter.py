@@ -2,11 +2,10 @@ import datetime
 import json
 import pytest
 import pydantic
-import sqlmodel
 from pathlib import Path
 from typing import Annotated
 
-from niceview.dataadapter import ListAdapter, JsonAdapter, JsonListAdapter, SqlModelAdapter
+from niceview.dataadapter import ListAdapter, JsonAdapter, JsonListAdapter
 from niceview.grid import ModelGrid, ModelGridInlineEdit
 
 
@@ -615,6 +614,10 @@ class TestModelGridInlineEditInit:
 # ---------------------------------------------------------------------------
 # SqlModelAdapter
 # ---------------------------------------------------------------------------
+
+sqlmodel = pytest.importorskip('sqlmodel', reason='sqlmodel not installed')
+SqlModelAdapter = pytest.importorskip('niceview.sqlmodel_adapter', reason='sqlmodel not installed').SqlModelAdapter
+
 
 def _now():
     return datetime.datetime.now(datetime.timezone.utc)

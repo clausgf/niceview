@@ -5,10 +5,12 @@ description = "NiceGUI adapter layer: generate forms and grids from Pydantic mod
 requires-python = ">=3.12"
 dependencies = [
     "nicegui>=3.0",
-    "sqlmodel>=0.0.22",
     "annotated-types>=0.7",
     "typing-extensions>=4.12",
 ]
+
+[project.optional-dependencies]
+sqlmodel = ["sqlmodel>=0.0.22"]
 
 [dependency-groups]
 dev = [
@@ -16,6 +18,7 @@ dev = [
     "pytest>=9.0",
     "pytest-asyncio>=1.0",
     "pytest-cov>=7.1.0",
+    "sqlmodel>=0.0.22",
 ]
 
 [tool.pytest.ini_options]

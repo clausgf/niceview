@@ -11,7 +11,7 @@ log = logging.getLogger('niceview-example')
 from niceview.wrapper import EditFormWrapper, EditGridWrapper
 from niceview.form import ModelForm
 from niceview.grid import ModelGridInlineEdit, ModelGrid
-from niceview.dataadapter import SqlModelAdapter
+from niceview.sqlmodel_adapter import SqlModelAdapter
 
 
 def _now_factory():

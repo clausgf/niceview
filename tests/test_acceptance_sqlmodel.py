@@ -14,13 +14,13 @@ Organised by relation type:
 
 import datetime
 import pytest
-import sqlmodel
+sqlmodel = pytest.importorskip('sqlmodel', reason='sqlmodel not installed')
 from typing import Annotated
 from nicegui import ui
 from nicegui.testing import User
 
 import niceview
-from niceview.dataadapter import SqlModelAdapter
+from niceview.sqlmodel_adapter import SqlModelAdapter
 from niceview.fields import Fields
 from niceview.form import ModelForm
 from niceview.wrapper import EditFormWrapper, EditGridWrapper
