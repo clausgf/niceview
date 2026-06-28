@@ -429,9 +429,9 @@ class ModelForm():
             return None
 
     def _render_editgrid_widget(self, field_name: str, field_info: FieldInfo) -> Any:
-        # Local imports to avoid circular dependencies (modelgrid/modeledit import modelform).
-        from niceview.modeledit import EditGridWrapper
-        from niceview.modelgrid import ModelGrid, TableItemEventArguments
+        # Local imports to avoid circular dependencies (grid/wrapper import form).
+        from niceview.wrapper import EditGridWrapper
+        from niceview.grid import ModelGrid, TableItemEventArguments
         from niceview.dataadapter import ListAdapter, FilteredAdapter
 
         def notify_change(e: TableItemEventArguments) -> None:

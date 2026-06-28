@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pydantic
 from typing import Literal
 from nicegui import ui
-from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
+from niceview.grid import ModelGrid, ModelGridInlineEdit
 
 
 class Task(pydantic.BaseModel):
@@ -44,17 +44,18 @@ def page():
 
     with ui.card().classes('w-full'):
         ui.label('ModelGrid — read-only').classes('text-h6')
-        ModelGrid.from_list(Task, tasks, classes='w-full').render()
+        ModelGrid.from_list(Task, tasks).render().widget.classes('w-full')
 
     with ui.card().classes('w-full'):
         ui.label('ModelGridInlineEdit — in-memory').classes('text-h6')
-        grid = ModelGridInlineEdit.from_list(Task, tasks, classes='w-full')
-        grid.render()
+        ui.label('Double-click a cell to edit it. Changes are persisted in memory only.').classes('text-small')
+        grid = ModelGridInlineEdit.from_list(Task, tasks)
+        grid.render().widget.classes('w-full')
         grid.on_change(lambda e: ui.notify(f'{e.field_name} → {e.new_value}'))
 
     with ui.card().classes('w-full'):
         ui.label(f'ModelGridInlineEdit — JSON file ({TASKS_PATH})').classes('text-h6')
-        ModelGridInlineEdit.from_json(Task, TASKS_PATH, classes='w-full').render()
+        ModelGridInlineEdit.from_json(Task, TASKS_PATH).render().widget.classes('w-full')
 
 
 ui.run(title='05 — ModelGrid')

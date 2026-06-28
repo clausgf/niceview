@@ -27,7 +27,7 @@ from nicegui import ui
 from nicegui.observables import ObservableList
 
 from niceview.dataadapter import ListAdapter
-from niceview.modeledit import EditGridWrapper
+from niceview.wrapper import EditGridWrapper
 
 
 class Task(pydantic.BaseModel):

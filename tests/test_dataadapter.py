@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Annotated
 
 from niceview.dataadapter import ListAdapter, JsonAdapter, JsonListAdapter, SqlModelAdapter
-from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
+from niceview.grid import ModelGrid, ModelGridInlineEdit
 
 
 class Item(pydantic.BaseModel):
@@ -594,7 +594,7 @@ class TestModelGridUpdateRows:
 class TestModelGridInlineEditInit:
     def test_cells_are_editable_by_default(self):
         grid = ModelGridInlineEdit.from_list(Item, [])
-        assert grid.defaultColDef.get('editable') is True
+        assert grid._defaultColDef.get('editable') is True
 
     def test_change_handlers_start_empty(self):
         grid = ModelGridInlineEdit.from_list(Item, [])

@@ -8,8 +8,8 @@ from nicegui import ui
 from nicegui.events import Handler, ClickEventArguments, handle_event
 
 from niceview.dataadapter import CollectionAdapter, ItemAdapter, ReloadableAdapter
-from niceview.modelform import ModelForm, FieldChangeEventArguments
-from niceview.modelgrid import ModelGridInlineEdit, ModelGrid, T, TableItemEventArguments
+from niceview.form import ModelForm, FieldChangeEventArguments
+from niceview.grid import ModelGridInlineEdit, ModelGrid, T, TableItemEventArguments
 from niceview.util import submit_dialog
 
 log = logging.getLogger('niceview')
@@ -66,9 +66,9 @@ class EditGridWrapper():
 
     def __init__(self, grid: ModelGrid, **kwargs: Unpack[_EditGridWrapperInputs]) -> None:
         self.grid = grid
-        if self.grid.rowSelection and self.grid.rowSelection != 'single':
-            raise ValueError(f"EditGridWrapper only supports single row selection, got '{self.grid.rowSelection}'")
-        self.grid.rowSelection = 'single'
+        if self.grid._rowSelection and self.grid._rowSelection != 'single':
+            raise ValueError(f"EditGridWrapper only supports single row selection, got '{self.grid._rowSelection}'")
+        self.grid._rowSelection = 'single'
 
         default_edit = None if isinstance(self.grid, ModelGridInlineEdit) else ''
         self._title = kwargs.pop('title', f'{self.grid._fields._item_type.__name__} List')

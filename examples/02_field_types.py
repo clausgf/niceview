@@ -6,16 +6,21 @@ One form showing all field types supported by NiceView:
 | Python type | Widget |
 |---|---|
 | `str` | `ui.input` or `ui.textarea` (via `widget_type` override) |
+| `str` with `password=True` | `ui.input` (password mode with toggle) |
+| `str` with `autocomplete=[...]` | `ui.input` (with autocomplete dropdown) |
 | `int`, `float` | `ui.number` |
+| `int`/`float` with `prefix`/`suffix` | `ui.number` (with unit decoration) |
 | `bool` | `ui.switch` or `ui.checkbox` |
 | `datetime.date` | HTML date input |
 | `datetime.time` | HTML time input |
 | `datetime.datetime` | HTML datetime-local input |
 | `datetime.timedelta` | `ui.input` (ISO 8601 duration) |
 | `Literal[...]` | `ui.select`, `ui.radio`, or `ui.toggle` (via `widget_type` override) |
+| `Literal[...]` with `with_input=True` | `ui.select` (searchable) |
+| `list[str]` with `select_options` + `multiple=True` | `ui.select` (multi-select) |
 | `str` (color) | `ui.color_input` (via `widget_type` override) |
 | `list[str]` | `ui.input_chips` |
-| `list[int]`, `list[float]`, `list[bool]` | `ui.input` |
+| `list[int]`, `list[float]`, `list[bool]` | `ui.input` (comma-separated) |
 | `int` with `ge`/`le` + `widget_type='slider'` | `ui.slider` |
 | `int` with `le` + `widget_type='rating'` | `ui.rating` |
 | `list[BaseModel]` | Inline `EditGridWrapper` |
@@ -33,7 +38,7 @@ import pydantic
 from nicegui import ElementFilter, ui
 
 import niceview
-from niceview.modelform import ModelForm
+from niceview.form import ModelForm
 
 
 class Tag(pydantic.BaseModel):
@@ -46,8 +51,11 @@ class Tag(pydantic.BaseModel):
 class AllTypes(pydantic.BaseModel):
     text: str = pydantic.Field(default='hello', title='String')
     text_area: Annotated[str, niceview.Field(widget_type='ui.textarea', label='String in Textarea')] = 'hello\nworld'
+    password: Annotated[str, pydantic.Field(title='Password'), niceview.Field(password=True, password_toggle_button=True)] = 'hunter2'
+    city: Annotated[str, pydantic.Field(title='City (autocomplete)'), niceview.Field(autocomplete=['Berlin', 'Munich', 'Hamburg', 'Cologne', 'Frankfurt', 'Stuttgart'])] = 'Berlin'
     number_int: int = pydantic.Field(default=42, ge=0, le=1000, title='Integer (0-1000)')
     number_float: float = pydantic.Field(default=3.14, title='Float')
+    speed: Annotated[float, pydantic.Field(title='Speed'), niceview.Field(suffix=' km/h', precision=1)] = 120.0
     flag_switch: bool = pydantic.Field(default=True, title='Bool')
     flag_checkbox: Annotated[bool, pydantic.Field(title='Bool in Checkbox'), niceview.Field(widget_type='ui.checkbox')] = False
     date: datetime.date = pydantic.Field(default_factory=datetime.date.today, title='Date')
@@ -61,12 +69,15 @@ class AllTypes(pydantic.BaseModel):
         title='Timedelta',
     )
     choice: Literal['red', 'green', 'blue'] = 'green' # label and widget are auto-detected from the Literal type
+    choice_search: Annotated[Literal['apple', 'banana', 'cherry', 'date', 'elderberry'], niceview.Field(widget_type='ui.select', with_input=True, label='Fruit (searchable select)')] = 'apple'
+    choice_multi: Annotated[list[str], niceview.Field(widget_type='ui.select', select_options=['red', 'green', 'blue'], multiple=True, clearable=True)] = pydantic.Field(default_factory=lambda: ['red', 'blue'], title='Colors (multi-select)')
     choice_radio: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.radio', props='inline')] = 'green'
     choice_toggle: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.toggle')] = 'green'
     color: Annotated[str, niceview.Field(widget_type='ui.color_input', label='Color', color_preview=True)] = '#4a90e2'
-    volume: Annotated[int, pydantic.Field(default=50, ge=0, le=100, title='Volume'), niceview.Field(widget_type='slider', step=1)]
-    priority: Annotated[int, pydantic.Field(default=3, ge=1, le=5, title='Priority'), niceview.Field(widget_type='rating')]
+    volume: Annotated[int, pydantic.Field(ge=0, le=100, title='Volume'), niceview.Field(widget_type='slider', step=1)] = 50
+    priority: Annotated[int, pydantic.Field(ge=1, le=5, title='Priority'), niceview.Field(widget_type='rating')] = 3
     chips: list[str] = pydantic.Field(default_factory=lambda: ['foo', 'bar'], title='Chips (list[str])')
+    nums: list[int] = pydantic.Field(default_factory=lambda: [1, 2, 3], title='Numbers (list[int], comma-separated)')
     tags: list[Tag] = pydantic.Field(
         default_factory=lambda: [Tag(label='important')],
         title='Tags (list of BaseModel with __str__ method)',

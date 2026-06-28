@@ -30,7 +30,7 @@ from nicegui import ui
 
 import niceview
 from niceview.dataadapter import SqlModelAdapter
-from niceview.modeledit import EditFormWrapper, EditGridWrapper
+from niceview.wrapper import EditFormWrapper, EditGridWrapper
 
 log = logging.getLogger('niceview-example')
 logging.getLogger('niceview').setLevel(logging.DEBUG)
@@ -106,7 +106,7 @@ def book_edit_page(book_id: int):
     books = SqlModelAdapter(Book, engine)
     authors = SqlModelAdapter(Author, engine)
     with ui.card().classes('w-full max-w-lg'):
-        EditFormWrapper.from_adapter(Book, books, str(book_id), title='Edit Book', classes='w-full',
+        EditFormWrapper.from_adapter(Book, books, str(book_id), title='Edit Book',
                                      repositories={Author: authors})
     ui.button('← Back', on_click=lambda: ui.navigate.to('/books')).props('flat')
 

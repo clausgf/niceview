@@ -7,9 +7,9 @@ import sqlmodel
 from nicegui import ui
 
 import niceview
-from niceview.modeledit import EditGridWrapper
-from niceview.modelform import ModelForm
-from niceview.modelgrid import ModelGridInlineEdit, ModelGrid
+from niceview.wrapper import EditGridWrapper
+from niceview.form import ModelForm
+from niceview.grid import ModelGridInlineEdit, ModelGrid
 
 
 def now_factory():

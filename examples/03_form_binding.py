@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pydantic
 from nicegui import ui
-from niceview.modelform import ModelForm
+from niceview.form import ModelForm
 
 
 class User(pydantic.BaseModel):
@@ -38,7 +38,7 @@ def page():
     with ui.row().classes('w-full items-start gap-8'):
         with ui.card():
             ui.label('Form').classes('text-h6')
-            ModelForm.from_item(user, classes='w-80').render()
+            ModelForm.from_item(user).render()
 
         with ui.card():
             ui.label('Bound values').classes('text-h6')

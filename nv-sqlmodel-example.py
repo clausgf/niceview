@@ -8,9 +8,9 @@ from nicegui import ui
 import niceview
 
 log = logging.getLogger('niceview-example')
-from niceview.modeledit import EditFormWrapper, EditGridWrapper
-from niceview.modelform import ModelForm
-from niceview.modelgrid import ModelGridInlineEdit, ModelGrid
+from niceview.wrapper import EditFormWrapper, EditGridWrapper
+from niceview.form import ModelForm
+from niceview.grid import ModelGridInlineEdit, ModelGrid
 from niceview.dataadapter import SqlModelAdapter
 
 

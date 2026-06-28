@@ -19,8 +19,8 @@ from nicegui.events import Handler, ClickEventArguments, handle_event
 from niceview.dataadapter import CollectionAdapter, ListAdapter, JsonListAdapter, ReactiveAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
-from niceview.modelform import ModelForm
-from niceview.modeledit import EditFormWrapper
+from niceview.form import ModelForm
+from niceview.wrapper import EditFormWrapper
 from niceview.util import submit_dialog
 
 log = logging.getLogger('niceview')
@@ -43,7 +43,6 @@ class _ModelListOptionInputs(typing_extensions.TypedDict, total=False):
     """Named field layout profile from Meta.profiles (e.g. 'summary', 'detail')."""
     title_field: str | None
     subtitle_fields: list[str] | None
-    classes: str
 
 
 class ModelList:
@@ -68,7 +67,6 @@ class ModelList:
     _subtitle_fields: list[str]
     _select_handlers: list[Handler[ListItemSelectEventArguments]]
     _auto_update_registered: bool
-    classes: str
     widget: ui.list | None
 
     def __init__(self, item_type: type[T], adapter: CollectionAdapter, **kwargs: Unpack[_ModelListOptionInputs]) -> None:
@@ -82,7 +80,6 @@ class ModelList:
         self._select_handlers = []
         self._auto_update_registered = False
         self.widget = None
-        self.classes = kwargs.pop('classes', '')
 
         visible = [n for n in self._fields if not self._fields[n].hidden]
         title_field = kwargs.pop('title_field', None)
@@ -169,7 +166,7 @@ class ModelList:
 
     def render(self) -> Self:
         """Render the list widget into the current NiceGUI context."""
-        with ui.list().props('dense separator').classes(self.classes) as self.widget:
+        with ui.list().props('dense separator') as self.widget:
             self._render_items()
 
         if not self._auto_update_registered and isinstance(self._data, ReactiveAdapter):
@@ -329,8 +326,8 @@ class DrillDownWrapper:
                 )
                 model_list.on_select(lambda e: ui.navigate.to(f'{base_path}/{e.row_key}'))
                 model_list.render()
-            # Form panel: full width on mobile, right two thirds on desktop
-            with ui.column().classes('col-12 col-md-8'):
+            # Form panel: fills remaining space (100% on mobile when list hidden, ~67% on desktop)
+            with ui.column().classes('col'):
                 with ui.card().classes('w-full'):
                     EditFormWrapper.from_adapter(self._item_type, self._adapter, key)
 

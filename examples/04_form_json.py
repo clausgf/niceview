@@ -3,7 +3,7 @@
 
 Two rows, each pairing a form variant with a live JSON file viewer:
 
-- **Row 1 — Autosave**: writes to disk after every validated change; no button needed.
+- **Row 1 — Autosave**: writes to disk after every validated change (often after leaving a field); no button needed.
 - **Row 2 — Save / Refresh buttons**: explicit control; *Save* persists, *Refresh* reloads.
 
 Each row uses its own JSON file so you can observe both modes independently.
@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pydantic
 from nicegui import ui
-from niceview.modeledit import EditFormWrapper
+from niceview.wrapper import EditFormWrapper
 
 
 class AppConfig(pydantic.BaseModel):
@@ -43,7 +43,9 @@ def make_json_viewer(path: Path) -> None:
             content.set_content('(file not yet created)')
 
     reload()
-    ui.button('Reload', icon='refresh', on_click=reload).props('flat dense')
+    ui.timer(1, reload)  # Initial load after 1 second to allow form to save first.
+    ui.label('Auto-refreshes every second').classes('text-small')
+    #ui.button('Reload', icon='refresh', on_click=reload).props('flat dense')
 
 
 @ui.page('/')
@@ -56,7 +58,6 @@ def page():
             EditFormWrapper.from_json(AppConfig, AUTOSAVE_PATH,
                                       title='Edit JSON (autosaves on change)',
                                       autosave=True,
-                                      classes='w-full',
                                       )
 
         with ui.card().classes('flex-1'):
@@ -68,7 +69,6 @@ def page():
             EditFormWrapper.from_json(
                 AppConfig, BUTTONS_PATH,
                 title='Edit JSON (uses Save / Refresh buttons)',
-                classes='w-full',
             )
 
         with ui.card().classes('flex-1'):

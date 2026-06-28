@@ -22,8 +22,8 @@ from nicegui.testing import User
 import niceview
 from niceview.dataadapter import SqlModelAdapter
 from niceview.fields import Fields
-from niceview.modelform import ModelForm
-from niceview.modeledit import EditFormWrapper, EditGridWrapper
+from niceview.form import ModelForm
+from niceview.wrapper import EditFormWrapper, EditGridWrapper
 
 
 # ---------------------------------------------------------------------------
@@ -467,7 +467,7 @@ class TestAuthorOneToManyRender:
         """
         from typing import cast
         from niceview.dataadapter import FilteredAdapter
-        from niceview.modeledit import EditGridWrapper
+        from niceview.wrapper import EditGridWrapper
 
         engine = make_engine()
         author1_id, _, _, _, _ = seed_engine(engine)
@@ -521,7 +521,7 @@ class TestAuthorOneToManyRender:
 
     def test_books_editgrid_columns(self) -> None:
         """The embedded books editgrid shows title, published, and author columns (not hidden FK/PK fields)."""
-        from niceview.modelgrid import _collect_aggrid_cols
+        from niceview.grid import _collect_aggrid_cols
         from niceview.fields import Fields
         cols = _collect_aggrid_cols(Fields(Book))
         col_fields = [c['field'] for c in cols]

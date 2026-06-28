@@ -17,9 +17,9 @@ from nicegui.testing import User
 from typing import Annotated, Literal
 
 import niceview
-from niceview.modelform import ModelForm
-from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
-from niceview.modeledit import EditFormWrapper, EditGridWrapper
+from niceview.form import ModelForm
+from niceview.grid import ModelGrid, ModelGridInlineEdit
+from niceview.wrapper import EditFormWrapper, EditGridWrapper
 
 
 class Person(pydantic.BaseModel):

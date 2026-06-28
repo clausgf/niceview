@@ -9,9 +9,9 @@ from fastapi import HTTPException
 from nicegui import ui
 
 from niceview.dataadapter import ListAdapter
-from niceview.modelform import ModelForm
-from niceview.modelgrid import ModelGrid
-from niceview.modeledit import EditFormWrapper, EditGridWrapper
+from niceview.form import ModelForm
+from niceview.grid import ModelGrid
+from niceview.wrapper import EditFormWrapper, EditGridWrapper
 
 
 class User(pydantic.BaseModel):
@@ -372,12 +372,12 @@ class TestEditGridWrapperRowSelectionValidation:
     def test_single_row_selection_does_not_raise(self):
         grid = ModelGrid.from_list(User, [], rowSelection='single')
         wrapper = EditGridWrapper(grid)
-        assert wrapper.grid.rowSelection == 'single'
+        assert wrapper.grid._rowSelection == 'single'
 
     def test_none_row_selection_does_not_raise(self):
         grid = ModelGrid.from_list(User, [])
         wrapper = EditGridWrapper(grid)
-        assert wrapper.grid.rowSelection == 'single'
+        assert wrapper.grid._rowSelection == 'single'
 
 
 # ---------------------------------------------------------------------------
@@ -443,7 +443,7 @@ class TestEditGridWrapperDeleteItemOnFailure:
         self.wrapper.on_change(handler)
         self.wrapper._apply_delete = MagicMock(side_effect=RuntimeError('DB error'))
 
-        with patch('niceview.modeledit.submit_dialog', new=AsyncMock(return_value=True)), \
+        with patch('niceview.wrapper.submit_dialog', new=AsyncMock(return_value=True)), \
              patch.object(ui, 'notify'):
             asyncio.run(self.wrapper.delete_item())
 
@@ -452,7 +452,7 @@ class TestEditGridWrapperDeleteItemOnFailure:
     def test_update_rows_still_called_when_apply_raises(self):
         self.wrapper._apply_delete = MagicMock(side_effect=RuntimeError('DB error'))
 
-        with patch('niceview.modeledit.submit_dialog', new=AsyncMock(return_value=True)), \
+        with patch('niceview.wrapper.submit_dialog', new=AsyncMock(return_value=True)), \
              patch.object(ui, 'notify'):
             asyncio.run(self.wrapper.delete_item())
 
@@ -465,7 +465,7 @@ class TestEditGridWrapperDeleteItemOnFailure:
         self.wrapper.grid.widget.client = MagicMock()
         self.wrapper._apply_delete = MagicMock()
 
-        with patch('niceview.modeledit.submit_dialog', new=AsyncMock(return_value=True)), \
+        with patch('niceview.wrapper.submit_dialog', new=AsyncMock(return_value=True)), \
              patch.object(ui, 'notify'):
             asyncio.run(self.wrapper.delete_item())
 

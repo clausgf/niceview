@@ -59,9 +59,6 @@ class _ModelGridOptionInputs(typing_extensions.TypedDict, total=False):
     profile: str | None
     """Named field layout profile from Meta.profiles (e.g. 'summary', 'detail')."""
 
-    classes: str
-    style: str
-    props: str
     theme: str
     auto_size_columns: bool
     defaultColDef: dict
@@ -82,23 +79,22 @@ class ModelGrid:
       ModelGrid.from_adapter(Type, adapter)    — any CollectionAdapter
 
     After render(), the NiceGUI ag-Grid element is available as grid.widget.
+    Apply classes/style/props via grid.widget after render:
+      grid.render()
+      grid.widget.classes('w-full')
     Call update_rows() to refresh the displayed data from the adapter.
     """
     _fields: Fields
     _data: CollectionAdapter
     _selection_handlers: list[Handler[ValueChangeEventArguments]]
     _auto_update_registered: bool
-    _cols: list[dict[str, Any]]
     _rows: list[dict[str, Any]]
     widget: ui.aggrid | None
-    classes: str
-    style: str
-    props: str
-    theme: str
-    auto_size_columns: bool | None
-    defaultColDef: dict
-    rowSelection: Literal[None, 'single', 'multiple']
-    cell_renderers: dict[str, Callable[[Any], Any]]
+    _theme: str
+    _auto_size_columns: bool | None
+    _defaultColDef: dict
+    _rowSelection: Literal[None, 'single', 'multiple']
+    _cell_renderers: dict[str, Callable[[Any], Any]]
 
     def __init__(self, item_type: type[T], adapter: CollectionAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> None:
         """
@@ -115,14 +111,11 @@ class ModelGrid:
         self._selection_handlers = []
         self._auto_update_registered = False
         self.widget = None
-        self.classes = kwargs.pop('classes', '')
-        self.style = kwargs.pop('style', '')
-        self.props = kwargs.pop('props', '')
-        self.theme = kwargs.pop('theme', '')
-        self.auto_size_columns = kwargs.pop('auto_size_columns', None)
-        self.defaultColDef = kwargs.pop('defaultColDef', {}).copy()
-        self.rowSelection = kwargs.pop('rowSelection', None)
-        self.cell_renderers = kwargs.pop('cell_renderers', {}).copy()
+        self._theme = kwargs.pop('theme', '')
+        self._auto_size_columns = kwargs.pop('auto_size_columns', None)
+        self._defaultColDef = kwargs.pop('defaultColDef', {}).copy()
+        self._rowSelection = kwargs.pop('rowSelection', None)
+        self._cell_renderers = kwargs.pop('cell_renderers', {}).copy()
 
     # --- factory methods ---------------------------------------------------
 
@@ -176,8 +169,8 @@ class ModelGrid:
         """
         if not callable(callback):
             raise TypeError(f"callback must be callable, got {type(callback)}")
-        if self.rowSelection != 'single':
-            log.warning(f"on_select is only supported for single row selection, but rowSelection is '{self.rowSelection}'")
+        if self._rowSelection != 'single':
+            log.warning(f"on_select is only supported for single row selection, but rowSelection is '{self._rowSelection}'")
         self._selection_handlers.append(callback)
         return self
 
@@ -197,8 +190,8 @@ class ModelGrid:
                 if field_info.hidden or field_info.table_hidden:
                     continue
                 value = getattr(item, field_name)
-                if field_name in self.cell_renderers:
-                    row[field_name] = self.cell_renderers[field_name](value)
+                if field_name in self._cell_renderers:
+                    row[field_name] = self._cell_renderers[field_name](value)
                 elif isinstance(value, list):
                     row[field_name] = ', '.join(str(v) for v in value)
                 elif isinstance(value, BaseModel):
@@ -212,25 +205,26 @@ class ModelGrid:
 
     def render(self) -> Self:
         """Render the ag-Grid widget into the current NiceGUI context."""
-        self._cols = _collect_aggrid_cols(self._fields)
+        cols = _collect_aggrid_cols(self._fields)
         self._rows = []
         self.update_rows()
 
-        aggrid_kwargs = {k: v for k in ['theme', 'auto_size_columns'] if (v := getattr(self, k))}
+        aggrid_kwargs: dict[str, Any] = {}
+        if self._theme:
+            aggrid_kwargs['theme'] = self._theme
+        if self._auto_size_columns is not None:
+            aggrid_kwargs['auto_size_columns'] = self._auto_size_columns
         config: dict[str, Any] = {
-            'columnDefs': self._cols,
+            'columnDefs': cols,
             'rowData': self._rows,
             'stopEditingWhenCellsLoseFocus': True,
         }
-        if self.defaultColDef:
-            config['defaultColDef'] = self.defaultColDef
-        if self.rowSelection:
-            config['rowSelection'] = self.rowSelection
+        if self._defaultColDef:
+            config['defaultColDef'] = self._defaultColDef
+        if self._rowSelection:
+            config['rowSelection'] = self._rowSelection
 
         self.widget = ui.aggrid(config, **aggrid_kwargs)
-        self.widget.classes(self.classes)
-        self.widget.style(self.style)
-        self.widget.props(self.props)
         self.widget.on('selectionChanged', self._handle_selection_changed)
 
         if not self._auto_update_registered and isinstance(self._data, ReactiveAdapter):
@@ -277,7 +271,7 @@ class ModelGridInlineEdit(ModelGrid):
     def __init__(self, item_type: type[T], adapter: CollectionAdapter, **kwargs: Unpack[_InlineEditableModelGridOptionInputs]) -> None:
         self.cell_readers = kwargs.pop('cell_readers', {})
         super().__init__(item_type, adapter, **kwargs)  # type: ignore[arg-type, misc]
-        self.defaultColDef.update({'editable': True})
+        self._defaultColDef.update({'editable': True})
         self._change_handlers = []
 
     def on_change(self, callback: Handler[TableItemFieldEventArguments]) -> Self:

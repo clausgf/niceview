@@ -22,7 +22,7 @@ import pydantic
 from typing import Literal
 from nicegui import ElementFilter, ui
 from niceview.dataadapter import ListAdapter
-from niceview.modeledit import EditGridWrapper, EditFormWrapper
+from niceview.wrapper import EditGridWrapper, EditFormWrapper
 
 
 class Task(pydantic.BaseModel):
