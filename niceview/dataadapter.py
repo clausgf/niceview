@@ -1,6 +1,7 @@
 import datetime
 import json
 import logging
+import threading
 from pathlib import Path
 from typing import Any, Callable, Generic, TypeVar, Iterator, Protocol, runtime_checkable
 from fastapi import HTTPException, status
@@ -269,15 +270,47 @@ class JsonAdapter(Generic[T]):
     """
     An ItemAdapter backed by a JSON file containing a single Pydantic model instance.
     Writes are atomic (.tmp → rename).
+
+    lock_field: if set, save() compares the field value against the current file
+    contents before writing. A mismatch means another user saved in the meantime
+    and raises ValueError (optimistic locking). The field is updated to now() on
+    every successful save. A per-file threading.Lock makes the read-compare-write
+    sequence atomic within the process.
+
+    created_field: if set, the field is populated with now() on the first save()
+    (when the field value is None) and never overwritten thereafter.
     """
 
-    def __init__(self, item_type: type[T], path_name: Path, create_if_not_exist: bool = True) -> None:
+    _registry_lock = threading.Lock()
+    _file_locks: dict[Path, threading.Lock] = {}
+
+    @classmethod
+    def _get_file_lock(cls, path: Path) -> threading.Lock:
+        with cls._registry_lock:
+            if path not in cls._file_locks:
+                cls._file_locks[path] = threading.Lock()
+            return cls._file_locks[path]
+
+    def __init__(
+        self,
+        item_type: type[T],
+        path_name: Path,
+        create_if_not_exist: bool = True,
+        lock_field: str | None = None,
+        created_field: str | None = None,
+    ) -> None:
         if not isinstance(item_type, type) or not issubclass(item_type, pydantic.BaseModel):
             raise TypeError(f"item_type must be a subclass of pydantic.BaseModel, got {item_type}")
-        self._item_type = item_type
-        self._path_name = path_name
         if path_name.exists() and not path_name.is_file():
             raise ValueError(f"Path {path_name} exists but is not a file.")
+        if lock_field and lock_field not in item_type.model_fields:
+            raise ValueError(f"Item type {item_type} does not have a field named {lock_field}")
+        if created_field and created_field not in item_type.model_fields:
+            raise ValueError(f"Item type {item_type} does not have a field named {created_field}")
+        self._item_type = item_type
+        self._path_name = path_name
+        self._lock_field = lock_field
+        self._created_field = created_field
         if create_if_not_exist and not path_name.exists():
             self.save(self._item_type())
 
@@ -286,10 +319,30 @@ class JsonAdapter(Generic[T]):
         return self._item_type.model_validate_json(json_data)
 
     def save(self, item: T) -> T:
+        if self._lock_field:
+            with self._get_file_lock(self._path_name):
+                if self._path_name.exists():
+                    current = self.read()
+                    if getattr(current, self._lock_field) != getattr(item, self._lock_field):
+                        raise ValueError(
+                            "Optimistic Locking: the item was modified by another user. "
+                            "Reload and re-apply your changes."
+                        )
+                now = datetime.datetime.now(datetime.timezone.utc)
+                if self._created_field and getattr(item, self._created_field) is None:
+                    setattr(item, self._created_field, now)
+                setattr(item, self._lock_field, now)
+                self._write(item)
+        else:
+            if self._created_field and getattr(item, self._created_field) is None:
+                setattr(item, self._created_field, datetime.datetime.now(datetime.timezone.utc))
+            self._write(item)
+        return item
+
+    def _write(self, item: T) -> None:
         temp_file = self._path_name.with_suffix('.tmp')
         temp_file.write_text(item.model_dump_json(indent=2), encoding='utf-8')
         temp_file.rename(self._path_name)
-        return item  # return same object to preserve in-memory references (e.g. nested grid adapters)
 
 
 class JsonListAdapter(ListAdapter[T], ReloadableAdapter):

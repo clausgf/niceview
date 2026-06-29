@@ -320,6 +320,90 @@ class TestJsonAdapter:
         assert item.name == 'existing'
 
 
+class TestJsonAdapterLockField:
+    def test_lock_field_set_on_save(self, tmp_path):
+        path = tmp_path / 'data.json'
+        adapter = JsonAdapter(TimestampedItem, path, lock_field='created_at')
+        item = adapter.read()
+        assert item.created_at is not None
+
+    def test_lock_field_updated_on_save(self, tmp_path):
+        import time
+        path = tmp_path / 'data.json'
+        adapter = JsonAdapter(TimestampedItem, path, lock_field='created_at')
+        item = adapter.read()
+        old_ts = item.created_at
+        time.sleep(0.01)
+        updated = adapter.save(item)
+        assert updated.created_at > old_ts
+
+    def test_stale_lock_raises(self, tmp_path):
+        path = tmp_path / 'data.json'
+        adapter = JsonAdapter(TimestampedItem, path, lock_field='created_at')
+        item_a = adapter.read()
+        item_b = adapter.read()
+        adapter.save(item_a)   # A saves first → lock_field advances
+        with pytest.raises(ValueError, match='Optimistic Locking'):
+            adapter.save(item_b)   # B has stale lock → rejected
+
+    def test_fresh_save_after_reload_succeeds(self, tmp_path):
+        path = tmp_path / 'data.json'
+        adapter = JsonAdapter(TimestampedItem, path, lock_field='created_at')
+        item_a = adapter.read()
+        adapter.save(item_a)
+        item_b = adapter.read()   # reload → fresh lock value
+        adapter.save(item_b)      # must succeed
+
+    def test_invalid_lock_field_raises(self, tmp_path):
+        path = tmp_path / 'data.json'
+        with pytest.raises(ValueError, match='does not have a field named'):
+            JsonAdapter(Item, path, lock_field='nonexistent')
+
+
+class TestJsonAdapterCreatedField:
+    def test_created_field_set_on_first_save(self, tmp_path):
+        path = tmp_path / 'data.json'
+        adapter = JsonAdapter(TimestampedItem, path, created_field='created_at')
+        item = adapter.read()
+        assert item.created_at is not None
+
+    def test_created_field_not_overwritten_on_subsequent_save(self, tmp_path):
+        import time
+        path = tmp_path / 'data.json'
+        adapter = JsonAdapter(TimestampedItem, path, created_field='created_at')
+        item = adapter.read()
+        original_ts = item.created_at
+        time.sleep(0.01)
+        adapter.save(item)
+        reloaded = adapter.read()
+        assert reloaded.created_at == original_ts
+
+    def test_created_and_lock_field_together(self, tmp_path):
+        import time
+        path = tmp_path / 'data.json'
+
+        class Entry(pydantic.BaseModel):
+            name: str = ''
+            created_at: datetime.datetime | None = None
+            updated_at: datetime.datetime | None = None
+
+        adapter = JsonAdapter(Entry, path, lock_field='updated_at', created_field='created_at')
+        item = adapter.read()
+        assert item.created_at is not None
+        assert item.updated_at is not None
+        original_created = item.created_at
+        time.sleep(0.01)
+        adapter.save(item)
+        reloaded = adapter.read()
+        assert reloaded.created_at == original_created   # unchanged
+        assert reloaded.updated_at > original_created    # advanced
+
+    def test_invalid_created_field_raises(self, tmp_path):
+        path = tmp_path / 'data.json'
+        with pytest.raises(ValueError, match='does not have a field named'):
+            JsonAdapter(Item, path, created_field='nonexistent')
+
+
 # ---------------------------------------------------------------------------
 # JsonListAdapter
 # ---------------------------------------------------------------------------

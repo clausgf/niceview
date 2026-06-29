@@ -314,7 +314,7 @@ or let the `from_*` factory methods create them transparently.
 | Adapter | Backs | Description |
 |---|---|---|
 | `ListAdapter(Type, list)` | Grid | In-memory list |
-| `JsonAdapter(Type, path)` | Form | Single object in a JSON file |
+| `JsonAdapter(Type, path)` | Form | Single object in a JSON file; supports `lock_field=`, `created_field=` |
 | `JsonListAdapter(Type, path)` | Grid | List of objects in a JSON file; supports `created_field=` |
 | `SqlModelAdapter(Type, engine)` | Grid, Form | SQLModel / SQLAlchemy table *(optional)* |
 
