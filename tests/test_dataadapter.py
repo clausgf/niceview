@@ -17,6 +17,11 @@ class Item(pydantic.BaseModel):
         return self.name
 
 
+class TimestampedItem(pydantic.BaseModel):
+    name: str = ''
+    created_at: datetime.datetime | None = None
+
+
 # ---------------------------------------------------------------------------
 # ListAdapter
 # ---------------------------------------------------------------------------
@@ -448,6 +453,69 @@ class TestJsonListAdapterReload:
         adapter = JsonListAdapter(Item, path)
         adapter.create(Item(name='x'))
         assert not path.with_suffix('.tmp').exists()
+
+
+# ---------------------------------------------------------------------------
+# ListAdapter created_field
+# ---------------------------------------------------------------------------
+
+class TestListAdapterCreatedField:
+    def test_created_field_set_on_create(self):
+        adapter = ListAdapter(TimestampedItem, [], created_field='created_at')
+        item = adapter.create(TimestampedItem(name='x'))
+        assert item.created_at is not None
+
+    def test_created_field_is_utc(self):
+        before = datetime.datetime.now(datetime.timezone.utc)
+        adapter = ListAdapter(TimestampedItem, [], created_field='created_at')
+        item = adapter.create(TimestampedItem(name='x'))
+        after = datetime.datetime.now(datetime.timezone.utc)
+        ts = item.created_at.replace(tzinfo=datetime.timezone.utc)
+        assert before <= ts <= after
+
+    def test_created_field_not_overwritten_on_update(self):
+        import time
+        adapter = ListAdapter(TimestampedItem, [], created_field='created_at')
+        item = adapter.create(TimestampedItem(name='x'))
+        original = item.created_at
+        time.sleep(0.01)
+        item.name = 'changed'
+        adapter.update(item)
+        assert item.created_at == original
+
+    def test_created_field_invalid_name_raises(self):
+        with pytest.raises(ValueError, match='does not have a field named'):
+            ListAdapter(TimestampedItem, [], created_field='nonexistent')
+
+    def test_created_field_none_by_default(self):
+        adapter = ListAdapter(TimestampedItem, [])
+        item = adapter.create(TimestampedItem(name='x'))
+        assert item.created_at is None
+
+
+class TestJsonListAdapterCreatedField:
+    def test_created_field_set_on_create(self, tmp_path):
+        path = tmp_path / 'items.json'
+        adapter = JsonListAdapter(TimestampedItem, path, created_field='created_at')
+        item = adapter.create(TimestampedItem(name='x'))
+        assert item.created_at is not None
+
+    def test_created_field_persisted_to_json(self, tmp_path):
+        path = tmp_path / 'items.json'
+        adapter = JsonListAdapter(TimestampedItem, path, created_field='created_at')
+        adapter.create(TimestampedItem(name='x'))
+        raw = json.loads(path.read_text())
+        assert raw[0]['created_at'] is not None
+
+    def test_created_field_survives_reload(self, tmp_path):
+        path = tmp_path / 'items.json'
+        adapter = JsonListAdapter(TimestampedItem, path, created_field='created_at')
+        item = adapter.create(TimestampedItem(name='x'))
+        original_ts = item.created_at
+        adapter2 = JsonListAdapter(TimestampedItem, path, created_field='created_at')
+        reloaded = list(adapter2)[0]
+        assert reloaded.created_at is not None
+        assert reloaded.created_at.replace(tzinfo=datetime.timezone.utc) == original_ts.replace(tzinfo=datetime.timezone.utc)
 
 
 # ---------------------------------------------------------------------------

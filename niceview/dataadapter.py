@@ -118,12 +118,17 @@ class ListAdapter(_ChangeNotifier, CollectionAdapter[T]):
     mutation via the adapter (create/update/delete). When the backing list is an
     ObservableList, direct mutations on the list object (bypassing the adapter)
     also fire the handlers and the key map is reconciled automatically.
+
+    created_field: if set, datetime.now(utc) is written to that field on create().
     """
-    def __init__(self, item_type: type[T], items: list[T]) -> None:
+    def __init__(self, item_type: type[T], items: list[T], created_field: str | None = None) -> None:
+        if created_field and created_field not in item_type.model_fields:
+            raise ValueError(f"Item type {item_type} does not have a field named {created_field}")
         self._item_type = item_type
         self._items = items
         self._counter = len(items)
         self._id_to_key: dict[int, str] = {id(item): str(i) for i, item in enumerate(items)}
+        self._created_field = created_field
         self._init_notifier()
         self._in_mutation = False
         from nicegui.observables import ObservableList
@@ -167,6 +172,8 @@ class ListAdapter(_ChangeNotifier, CollectionAdapter[T]):
     def create(self, item: T) -> T:
         if not isinstance(item, self._item_type):
             raise TypeError(f"Expected item to be an instance of {self._item_type}, got {type(item)}")
+        if self._created_field:
+            setattr(item, self._created_field, datetime.datetime.now(datetime.timezone.utc))
         key = str(self._counter)
         self._counter += 1
         self._in_mutation = True
@@ -297,7 +304,7 @@ class JsonListAdapter(ListAdapter[T], ReloadableAdapter):
     deletions within a session but reassigned after reload().
     """
 
-    def __init__(self, item_type: type[T], path_name: Path, create_if_not_exist: bool = True) -> None:
+    def __init__(self, item_type: type[T], path_name: Path, create_if_not_exist: bool = True, created_field: str | None = None) -> None:
         if not isinstance(item_type, type) or not issubclass(item_type, pydantic.BaseModel):
             raise TypeError(f"item_type must be a subclass of pydantic.BaseModel, got {item_type}")
         if path_name.exists() and not path_name.is_file():
@@ -313,7 +320,7 @@ class JsonListAdapter(ListAdapter[T], ReloadableAdapter):
         else:
             raise FileNotFoundError(f"JSON file not found: {path_name}")
 
-        super().__init__(item_type, items)
+        super().__init__(item_type, items, created_field=created_field)
 
         if not path_name.exists():
             self._persist()

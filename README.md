@@ -315,7 +315,7 @@ or let the `from_*` factory methods create them transparently.
 |---|---|---|
 | `ListAdapter(Type, list)` | Grid | In-memory list |
 | `JsonAdapter(Type, path)` | Form | Single object in a JSON file |
-| `JsonListAdapter(Type, path)` | Grid | List of objects in a JSON file |
+| `JsonListAdapter(Type, path)` | Grid | List of objects in a JSON file; supports `created_field=` |
 | `SqlModelAdapter(Type, engine)` | Grid, Form | SQLModel / SQLAlchemy table *(optional)* |
 
 All JSON adapters write atomically (`.tmp` → rename).
@@ -351,6 +351,7 @@ or the `EditGridWrapper` Refresh button for that case.
 ```python
 # Adapter mutations → grid auto-updates (all adapter types)
 adapter = ListAdapter(User, items)
+adapter = ListAdapter(User, items, created_field='created_at')   # set created_at on create()
 grid = ModelGridInlineEdit.from_adapter(User, adapter)
 grid.render()
 adapter.create(User(name='Carol'))   # grid refreshes automatically
