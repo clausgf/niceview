@@ -34,6 +34,14 @@ def _now():
     return datetime.datetime.now(datetime.timezone.utc)
 
 
+class Note(sqlmodel.SQLModel, table=True):
+    __table_args__ = {'extend_existing': True}
+    id: int | None = sqlmodel.Field(default=None, primary_key=True)
+    text: str = sqlmodel.Field(default='')
+    created_at: datetime.datetime | None = sqlmodel.Field(default=None)
+    updated_at: datetime.datetime | None = sqlmodel.Field(default=None)
+
+
 class Author(sqlmodel.SQLModel, table=True):
     __table_args__ = {'extend_existing': True}
     id: Annotated[int | None, sqlmodel.Field(default=None, primary_key=True), niceview.Field(hidden=True)]
@@ -177,6 +185,11 @@ class TestSqlModelAdapterCRUD:
         with pytest.raises(ValueError):
             self.adapter.delete(999)
 
+    def test_create_does_not_set_created_field_when_not_configured(self):
+        created = self.adapter.create(Author(name='Alice', email='alice@test.com'))
+        # Author has no created_at field; just verifying no exception is raised
+        assert created.id is not None
+
     def test_query_all_strs_yields_str_representation(self):
         """query_all_strs() yields (key, str(item)) pairs used to populate modelselect."""
         a1 = self.adapter.create(Author(name='Alice', email='alice@test.com'))
@@ -184,6 +197,58 @@ class TestSqlModelAdapterCRUD:
         pairs = dict(self.adapter._query_all_strs())
         assert pairs[self.adapter.key_from_item(a1)] == 'Alice'
         assert pairs[self.adapter.key_from_item(a2)] == 'Bob'
+
+
+# ===========================================================================
+# Section 0b: SqlModelAdapter created_field
+# ===========================================================================
+
+class TestSqlModelAdapterCreatedField:
+    """Tests for the created_field parameter on SqlModelAdapter."""
+
+    def make_note_engine(self):
+        engine = sqlmodel.create_engine(
+            'sqlite:///:memory:',
+            connect_args={'check_same_thread': False},
+        )
+        sqlmodel.SQLModel.metadata.create_all(engine)
+        return engine
+
+    def test_created_field_set_on_create(self):
+        engine = self.make_note_engine()
+        adapter = SqlModelAdapter(Note, engine, lock_field='updated_at', created_field='created_at')
+        note = adapter.create(Note(text='hello'))
+        assert note.created_at is not None
+
+    def test_created_field_is_utc_datetime(self):
+        engine = self.make_note_engine()
+        adapter = SqlModelAdapter(Note, engine, lock_field='updated_at', created_field='created_at')
+        before = datetime.datetime.now(datetime.timezone.utc)
+        note = adapter.create(Note(text='hello'))
+        after = datetime.datetime.now(datetime.timezone.utc)
+        assert before <= note.created_at.replace(tzinfo=datetime.timezone.utc) <= after
+
+    def test_created_field_not_overwritten_on_update(self):
+        import time
+        engine = self.make_note_engine()
+        adapter = SqlModelAdapter(Note, engine, lock_field='updated_at', created_field='created_at')
+        note = adapter.create(Note(text='hello'))
+        original_created_at = note.created_at
+        time.sleep(0.01)
+        note.text = 'changed'
+        updated = adapter.update(note)
+        assert updated.created_at == original_created_at
+
+    def test_created_field_invalid_name_raises(self):
+        engine = self.make_note_engine()
+        with pytest.raises(ValueError, match='does not have a field named'):
+            SqlModelAdapter(Note, engine, created_field='nonexistent_field')
+
+    def test_created_field_none_by_default(self):
+        engine = self.make_note_engine()
+        adapter = SqlModelAdapter(Note, engine, lock_field='updated_at')
+        note = adapter.create(Note(text='hello'))
+        assert note.created_at is None  # not set, stays at model default
 
 
 # ===========================================================================

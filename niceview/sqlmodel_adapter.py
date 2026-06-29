@@ -25,8 +25,11 @@ class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T], ReloadableAdapter):
 
     Supports optimistic locking via lock_field (default 'updated_at').
     Set lock_field=None to disable locking.
+
+    created_field (default None): if set, the named field is automatically
+    populated with datetime.now(utc) when create() is called.
     """
-    def __init__(self, item_type: type[T], engine: Engine, key_field: str = 'id', lock_field: str | None = 'updated_at') -> None:
+    def __init__(self, item_type: type[T], engine: Engine, key_field: str = 'id', lock_field: str | None = 'updated_at', created_field: str | None = None) -> None:
         if not isinstance(item_type, type) or not issubclass(item_type, sqlmodel.SQLModel):
             raise TypeError(f"item_type must be a subclass of SQLModel, got {item_type}")
         if not key_field:
@@ -35,11 +38,14 @@ class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T], ReloadableAdapter):
             raise ValueError(f"Item type {item_type} does not have a field named {key_field}")
         if lock_field and not hasattr(item_type, lock_field):
             raise ValueError(f"Item type {item_type} does not have a field named {lock_field}")
+        if created_field and not hasattr(item_type, created_field):
+            raise ValueError(f"Item type {item_type} does not have a field named {created_field}")
 
         self._item_type = item_type
         self._engine = engine
         self._key_field = key_field
         self._lock_field = lock_field
+        self._created_field = created_field
         self._init_notifier()
 
     def __iter__(self) -> Iterator[T]:
@@ -74,8 +80,10 @@ class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T], ReloadableAdapter):
         if not isinstance(item, sqlmodel.SQLModel):
             raise TypeError(f"Expected item to be an instance of {self._item_type}, got {type(item)}")
         with sqlmodel.Session(self._engine) as session:
+            now = datetime.datetime.now(datetime.timezone.utc)
+            if self._created_field:
+                setattr(item, self._created_field, now)
             if self._lock_field:
-                now = datetime.datetime.now(datetime.timezone.utc)
                 setattr(item, self._lock_field, now)
             session.add(item)
             session.commit()

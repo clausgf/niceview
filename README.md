@@ -376,8 +376,10 @@ obs.append(User(name='Bob'))   # also triggers update_rows(), no adapter call ne
 ```python
 from niceview.dataadapter import SqlModelAdapter
 
-adapter = SqlModelAdapter(Book, engine)                    # with optimistic locking (updated_at)
-adapter = SqlModelAdapter(Book, engine, lock_field=None)   # without locking
+adapter = SqlModelAdapter(Book, engine)                                          # optimistic locking on updated_at
+adapter = SqlModelAdapter(Book, engine, lock_field=None)                         # without locking
+adapter = SqlModelAdapter(Book, engine, created_field='created_at')              # set created_at on create()
+adapter = SqlModelAdapter(Book, engine, created_field='created_at', lock_field='updated_at')  # both
 
 # Form for a specific record (fields only) — key must be str
 form = ModelForm.from_adapter(Book, adapter, str(book_id))
