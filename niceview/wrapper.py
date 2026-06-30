@@ -445,11 +445,11 @@ class EditFormWrapper():
         return instance
 
     @classmethod
-    def from_json(cls, item_type: type[BaseModel], json_path: Path, create_if_not_exist: bool = True, **kwargs) -> Self:
+    def from_json(cls, item_type: type[BaseModel], json_path: Path, create_if_not_exist: bool = True, lock_field: str | None = None, created_field: str | None = None, **kwargs) -> Self:
         """Create an EditFormWrapper backed by a JSON file. Renders immediately with Save and Refresh buttons."""
         wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _FORM_WRAPPER_INPUT_KEYS}
         repositories: 'dict | None' = kwargs.pop('repositories', None)
-        form = ModelForm.from_json(item_type, json_path, create_if_not_exist, **kwargs)
+        form = ModelForm.from_json(item_type, json_path, create_if_not_exist, lock_field=lock_field, created_field=created_field, **kwargs)
         if repositories:
             form.with_repositories(repositories)
         instance = cls(form, **wrapper_kwargs)
@@ -457,8 +457,12 @@ class EditFormWrapper():
         return instance
 
     @classmethod
-    def from_adapter(cls, item_type: type[BaseModel], adapter: CollectionAdapter, key: str, **kwargs) -> Self:
-        """Create an EditFormWrapper backed by one item in a CollectionAdapter. Renders immediately with Save and Refresh buttons."""
+    def from_adapter(cls, item_type: type[BaseModel], adapter: 'CollectionAdapter | ItemAdapter', key: str | None = None, **kwargs) -> Self:
+        """Create an EditFormWrapper backed by an adapter. Renders immediately with Save and Refresh buttons.
+
+        With key: wraps CollectionAdapter + key in a BoundItem.
+        Without key: treats adapter directly as an ItemAdapter (e.g. JsonAdapter).
+        """
         wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _FORM_WRAPPER_INPUT_KEYS}
         repositories: 'dict | None' = kwargs.pop('repositories', None)
         form = ModelForm.from_adapter(item_type, adapter, key, **kwargs)

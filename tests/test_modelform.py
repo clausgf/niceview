@@ -9,7 +9,7 @@ from nicegui import ui
 
 import sqlmodel
 
-from niceview.dataadapter import BoundItem, ListAdapter, SqlModelAdapter
+from niceview.dataadapter import BoundItem, ListAdapter, JsonAdapter, SqlModelAdapter
 from niceview.form import ModelForm
 
 
@@ -206,6 +206,21 @@ class TestFromAdapter:
         form = ModelForm.from_adapter(User, adapter, key)
         assert isinstance(form, ModelForm)
 
+    def test_from_adapter_without_key_uses_item_adapter(self, tmp_path):
+        path = tmp_path / 'user.json'
+        adapter = JsonAdapter(User, path)
+        form = ModelForm.from_adapter(User, adapter)
+        assert form.item.name == ''
+        assert form._item_adapter is adapter
+
+    def test_from_adapter_without_key_save_persists(self, tmp_path):
+        path = tmp_path / 'user.json'
+        adapter = JsonAdapter(User, path)
+        form = ModelForm.from_adapter(User, adapter)
+        form._validated_item.name = 'Via adapter'
+        form.save()
+        assert json.loads(path.read_text())['name'] == 'Via adapter'
+
 
 # ---------------------------------------------------------------------------
 # from_json
@@ -291,6 +306,49 @@ class TestFromJson:
         data = json.loads(path.read_text(encoding='utf-8'))
         assert len(data['tags']) == 1
         assert data['tags'][0]['label'] == 'dev'
+
+    def test_from_json_lock_field_set_on_init(self, tmp_path):
+        class Timestamped(pydantic.BaseModel):
+            name: str = ''
+            updated_at: datetime.datetime | None = None
+        path = tmp_path / 't.json'
+        form = ModelForm.from_json(Timestamped, path, lock_field='updated_at')
+        assert form.item.updated_at is not None
+
+    def test_from_json_stale_lock_raises_on_save(self, tmp_path):
+        class Timestamped(pydantic.BaseModel):
+            name: str = ''
+            updated_at: datetime.datetime | None = None
+        path = tmp_path / 't.json'
+        form_a = ModelForm.from_json(Timestamped, path, lock_field='updated_at')
+        form_b = ModelForm.from_json(Timestamped, path, lock_field='updated_at')
+        form_a._validated_item.name = 'A'
+        form_a.save()  # advances lock
+        form_b._validated_item.name = 'B'
+        with pytest.raises(ValueError, match='Optimistic Locking'):
+            form_b.save()
+
+    def test_from_json_created_field_set_on_init(self, tmp_path):
+        class Timestamped(pydantic.BaseModel):
+            name: str = ''
+            created_at: datetime.datetime | None = None
+        path = tmp_path / 't.json'
+        form = ModelForm.from_json(Timestamped, path, created_field='created_at')
+        assert form.item.created_at is not None
+
+    def test_from_json_created_field_not_overwritten_on_save(self, tmp_path):
+        import time
+        class Timestamped(pydantic.BaseModel):
+            name: str = ''
+            created_at: datetime.datetime | None = None
+        path = tmp_path / 't.json'
+        form = ModelForm.from_json(Timestamped, path, created_field='created_at')
+        original = form.item.created_at
+        time.sleep(0.01)
+        form._validated_item.name = 'changed'
+        form.save()
+        form.refresh()
+        assert form.item.created_at == original
 
 
 # ---------------------------------------------------------------------------

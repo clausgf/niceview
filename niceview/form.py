@@ -163,19 +163,24 @@ class ModelForm():
         return ret
 
     @classmethod
-    def from_adapter(cls, item_type: type[BaseModel], adapter: CollectionAdapter, key: str, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
+    def from_adapter(cls, item_type: type[BaseModel], adapter: 'CollectionAdapter | ItemAdapter', key: str | None = None, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
-        Create a ModelForm bound to one item in a CollectionAdapter (via BoundItem).
-        Calls save() to persist changes; calls refresh() to re-read from the backend.
+        Create a ModelForm bound to an adapter.
+
+        With key: wraps CollectionAdapter + key in a BoundItem.
+        Without key: treats adapter directly as an ItemAdapter (e.g. JsonAdapter).
         """
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
         instance = cls(item_type, **kwargs)
-        instance.load(BoundItem(adapter, key))
+        if key is not None:
+            instance.load(BoundItem(adapter, key))  # type: ignore[arg-type]
+        else:
+            instance.load(adapter)  # type: ignore[arg-type]
         return instance
 
     @classmethod
-    def from_json(cls, item_type: type[BaseModel], json_path: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
+    def from_json(cls, item_type: type[BaseModel], json_path: Path, create_if_not_exist: bool = True, lock_field: str | None = None, created_field: str | None = None, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
         Create a ModelForm bound to a single-item JSON file.
         The file is created with default values if it does not exist.
@@ -184,7 +189,7 @@ class ModelForm():
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
         instance = cls(item_type, **kwargs)
-        instance.load(JsonAdapter(item_type, json_path, create_if_not_exist=create_if_not_exist))
+        instance.load(JsonAdapter(item_type, json_path, create_if_not_exist=create_if_not_exist, lock_field=lock_field, created_field=created_field))
         return instance
 
     # --- item and form state management ------------------------------------

@@ -55,8 +55,8 @@ NiceView follows a consistent factory pattern across all backends and UI compone
 | | **ModelForm** (single item, fields only) | **EditFormWrapper** (single item + chrome) | **ModelGrid / ModelGridInlineEdit** (list) |
 |---|---|---|---|
 | **In-memory** | `ModelForm.from_item(Type, instance)` | `EditFormWrapper.from_item(Type, instance)` | `ModelGrid.from_list(Type, items)`<br>`EditGridWrapper.from_list(Type, items)` |
-| **JSON file** | `ModelForm.from_json(Type, path)` | `EditFormWrapper.from_json(Type, path)` | `ModelGrid.from_json(Type, path)`<br>`EditGridWrapper.from_json(Type, path)` |
-| **Any adapter** | `ModelForm.from_adapter(Type, adapter, key)` | `EditFormWrapper.from_adapter(Type, adapter, key)` | `ModelGrid.from_adapter(Type, adapter)`<br>`EditGridWrapper.from_adapter(Type, adapter)` |
+| **JSON file** | `ModelForm.from_json(Type, path, lock_field=, created_field=)` | `EditFormWrapper.from_json(Type, path, lock_field=, created_field=)` | `ModelGrid.from_json(Type, path)`<br>`EditGridWrapper.from_json(Type, path)` |
+| **Any adapter** | `ModelForm.from_adapter(Type, adapter, key?)` | `EditFormWrapper.from_adapter(Type, adapter, key?)` | `ModelGrid.from_adapter(Type, adapter)`<br>`EditGridWrapper.from_adapter(Type, adapter)` |
 
 All `from_*` methods accept the same keyword options (see below).
 `ModelGridInlineEdit` uses the same factory methods as `ModelGrid` via inheritance.
@@ -80,11 +80,15 @@ from niceview.modelform import ModelForm
 form = ModelForm.from_item(user)
 form = ModelForm.from_item(User, user)
 
-# JSON file — persists on save, supports refresh
+# JSON file — persists on save, supports refresh; optional locking / timestamps
 form = ModelForm.from_json(User, Path('user.json'))
+form = ModelForm.from_json(User, Path('user.json'), lock_field='updated_at', created_field='created_at')
 
-# Any CollectionAdapter — full control over storage
+# CollectionAdapter + key — any storage backend
 form = ModelForm.from_adapter(User, adapter, str(key))
+
+# ItemAdapter directly (e.g. JsonAdapter) — no key needed
+form = ModelForm.from_adapter(User, json_adapter)
 
 form.render()
 ```
