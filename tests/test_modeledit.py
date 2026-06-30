@@ -278,6 +278,57 @@ class TestEditFormWrapperFactoryMethods:
         w.with_repositories(repos)
         assert w.form._model_repositories == repos
 
+    def test_from_json_lock_field_set(self, tmp_path):
+        import datetime
+        from niceview.dataadapter import JsonAdapter
+
+        class Ts1(pydantic.BaseModel):
+            name: str = ''
+            updated_at: datetime.datetime | None = None
+
+        path = tmp_path / 't.json'
+        form = ModelForm.from_json(Ts1, path, lock_field='updated_at')
+        assert form.item.updated_at is not None
+
+    def test_from_json_stale_lock_raises(self, tmp_path):
+        import datetime
+        from unittest.mock import patch
+        from niceview.dataadapter import JsonAdapter
+
+        class Ts2(pydantic.BaseModel):
+            name: str = ''
+            updated_at: datetime.datetime | None = None
+
+        path = tmp_path / 't.json'
+        form_a = ModelForm.from_json(Ts2, path, lock_field='updated_at')
+        form_b = ModelForm.from_json(Ts2, path, lock_field='updated_at')
+        form_a._validated_item.name = 'A'
+        with patch.object(ui, 'notify'):
+            form_a.save()
+        form_b._validated_item.name = 'B'
+        with pytest.raises(ValueError, match='Optimistic Locking'):
+            with patch.object(ui, 'notify'):
+                form_b.save()
+
+    def test_from_adapter_without_key_uses_json_adapter(self, tmp_path):
+        from niceview.dataadapter import JsonAdapter
+        path = tmp_path / 'u.json'
+        adapter = JsonAdapter(User, path)
+        form = ModelForm.from_adapter(User, adapter)
+        assert form._item_adapter is adapter
+        assert form.item.name == ''
+
+    def test_from_adapter_without_key_save_persists(self, tmp_path):
+        from unittest.mock import patch
+        from niceview.dataadapter import JsonAdapter
+        path = tmp_path / 'u.json'
+        adapter = JsonAdapter(User, path)
+        form = ModelForm.from_adapter(User, adapter)
+        form._validated_item.name = 'Persisted'
+        with patch.object(ui, 'notify'):
+            form.save()
+        assert json.loads(path.read_text())['name'] == 'Persisted'
+
 
 # ---------------------------------------------------------------------------
 # ModelGrid.adapter property
