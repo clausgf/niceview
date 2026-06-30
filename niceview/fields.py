@@ -1,4 +1,5 @@
 import datetime
+import enum
 import logging
 import sys
 import types
@@ -123,6 +124,11 @@ class _FieldInfoResolver:
             if nv_field_info.select_options is None:
                 nv_field_info.select_options = list(typing.get_args(field_type))
             log.debug(f"_field_info_from_pydantic: {field_name=} widget_type=ui.select select_options={nv_field_info.select_options}")
+        elif isinstance(field_type, type) and issubclass(field_type, enum.Enum):
+            nv_field_info.widget_type = 'ui.select'
+            if nv_field_info.select_options is None:
+                nv_field_info.select_options = {member: member.name for member in field_type}
+            log.debug(f"_field_info_from_pydantic: {field_name=} widget_type=ui.select (Enum) select_options={nv_field_info.select_options}")
         elif typing.get_origin(field_type) == list:
             self._infer_list_widget_type(field_name, field_type, nv_field_info)
         else:

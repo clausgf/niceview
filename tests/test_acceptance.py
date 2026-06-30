@@ -10,6 +10,7 @@ Known limitations of the User fixture:
 - ui.number with max= clamps input to the allowed range instead of
   discarding it; out-of-range numeric input becomes a valid clamped value.
 """
+import enum
 import pydantic
 import pytest
 from nicegui import ui
@@ -340,6 +341,67 @@ class ProfiledPerson(pydantic.BaseModel):
             'summary': ['name'],
             'detail': '__all__',
         }
+
+
+class Backend(enum.Enum):
+    PROMETHEUS = 1
+    INFLUX2 = 2
+    SQL = 3
+
+
+class TelemetryConfig(pydantic.BaseModel):
+    name: str = pydantic.Field(default='', title='Name')
+    backend: Backend = pydantic.Field(default=Backend.PROMETHEUS, title='Backend')
+
+
+class TestModelFormEnumWidget:
+    async def test_enum_renders_as_select(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(TelemetryConfig()).render()
+
+        await user.open('/')
+        await user.should_see(ui.select)
+
+    async def test_enum_initial_value_displayed(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(TelemetryConfig(backend=Backend.INFLUX2))
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        assert captured[0].item.backend == Backend.INFLUX2
+
+    async def test_enum_change_updates_model(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(TelemetryConfig())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        captured[0].widgets['backend'].set_value(Backend.SQL)
+        assert captured[0].item.backend == Backend.SQL
+
+    async def test_enum_select_options_are_enum_members(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(TelemetryConfig())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        options = captured[0].widgets['backend'].options
+        assert Backend.PROMETHEUS in options
+        assert Backend.INFLUX2 in options
+        assert Backend.SQL in options
 
 
 class TestModelFormProfiles:

@@ -414,6 +414,7 @@ NiceView automatically selects a widget based on the Python type annotation:
 | `datetime.datetime` | HTML datetime-local input |
 | `datetime.timedelta` | `ui.input` (ISO 8601 duration) |
 | `Literal['a', 'b', ...]` | `ui.select` |
+| `Enum` subclass | `ui.select` (keys = enum members, labels = member names) |
 | `list[str]` | `ui.input_chips` |
 | `list[BaseModel]` | Inline `EditGridWrapper` |
 | `Optional[T]` | Unwrapped to `T`, then same as above |
