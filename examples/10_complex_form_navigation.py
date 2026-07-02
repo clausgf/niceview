@@ -56,8 +56,8 @@ def main_page() -> None:
 
     with ui.row().classes('w-full flex-wrap') as root_row:
 
-        # ── Left / main content ─────────────────────────────────────────────
-        with ui.column().classes('col-12 q-pa-md') as left_col:
+        # ── Left / main content — col-md-8 always, col-12 on mobile ──────────
+        with ui.column().classes('col-12 col-md-8 q-pa-md'):
 
             ui.label('Dashboard').classes('text-h4 q-mb-lg')
 
@@ -71,7 +71,7 @@ def main_page() -> None:
                 ui.button('Profile', icon='person',
                           on_click=lambda: _open('Profile', render_profile, '/profile'))
 
-        # ── Right / form panel (starts hidden) ─────────────────────────────
+        # ── Right / form panel — col-md-4, starts hidden ───────────────────
         with ui.column().classes('col-12 col-md-4 q-pa-md') as panel_col:
             with ui.card().classes('w-full'):
                 panel_body = ui.column().classes('w-full')
@@ -82,7 +82,6 @@ def main_page() -> None:
 
     def _hide_panel() -> None:
         panel_col.set_visibility(False)
-        left_col.classes(remove='col-md-8')          # back to full width
 
     async def _open(title: str, render_fn, mobile_url: str) -> None:
         is_mobile = await ui.run_javascript(
@@ -91,7 +90,6 @@ def main_page() -> None:
             ui.navigate.to(mobile_url)
             return
 
-        left_col.classes(add='col-md-8')             # shrink to make room
         panel_col.set_visibility(True)
         panel_body.clear()
         with panel_body:
