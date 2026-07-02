@@ -19,7 +19,7 @@ def submit_dialog(title: str, message: str, buttons: list[str] = ["Cancel", "OK"
        result = await dialog  # result is the button text "Cancel" or "OK"
        """
 
-    dialog = ui.dialog().style('width: 400px')
+    dialog = ui.dialog().props(':maximized="$q.screen.lt.md" transition-show="slide-up" transition-hide="slide-down"').style('width: 400px')
     with dialog:
         with ui.card().classes('w-full'):
             ui.label(title).classes('text-h6 center')

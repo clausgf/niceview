@@ -352,7 +352,7 @@ class EditGridWrapper():
                         setattr(form._validated_item, field_name, cur)
             dialog.submit('confirm')
 
-        with ui.dialog().style('width: 400px') as dialog:
+        with ui.dialog().props(':maximized="$q.screen.lt.md" transition-show="slide-up" transition-hide="slide-down"').style('width: 400px') as dialog:
             with ui.card().classes('w-full'):
                 form.render()
                 with ui.card_section().classes('w-full'):
