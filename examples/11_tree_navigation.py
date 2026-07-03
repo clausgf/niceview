@@ -177,8 +177,7 @@ def _list_with_placeholder(item_type, adapter, title_field: str, subtitle_fields
 def page_projects() -> None:
     page_header('Projects')
     with ui.grid(columns='repeat(auto-fill, minmax(280px, 1fr))').classes('w-full gap-4 q-pa-md'):
-        for project in projects_adapter:
-            key = projects_adapter.key_from_item(project)
+        for key, project in projects_adapter.items():
             with ui.card().classes('cursor-pointer').on(
                     'click', lambda k=key: ui.navigate.to(R.project(k))):
                 with ui.card_section():

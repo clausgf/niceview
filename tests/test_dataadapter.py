@@ -1038,3 +1038,68 @@ class TestFilteredAdapterReload:
         inner = ListAdapter(Item, [Item(name='a')])
         fa = FilteredAdapter(inner, predicate=lambda i: True)
         fa.reload()  # should not raise
+
+
+# ---------------------------------------------------------------------------
+# items() — CollectionAdapter default + FilteredAdapter
+# ---------------------------------------------------------------------------
+
+class TestCollectionAdapterItems:
+    def setup_method(self):
+        self.items = [Item(name='a'), Item(name='b'), Item(name='c')]
+        self.adapter = ListAdapter(Item, self.items)
+
+    def test_items_yields_tuples(self):
+        result = list(self.adapter.items())
+        assert len(result) == 3
+        for key, item in result:
+            assert isinstance(key, str)
+            assert isinstance(item, Item)
+
+    def test_items_key_matches_key_from_item(self):
+        for key, item in self.adapter.items():
+            assert key == self.adapter.key_from_item(item)
+
+    def test_items_all_items_present(self):
+        names = [item.name for _, item in self.adapter.items()]
+        assert names == ['a', 'b', 'c']
+
+    def test_items_key_allows_read(self):
+        for key, item in self.adapter.items():
+            assert self.adapter.read(key) is item
+
+    def test_items_empty_adapter(self):
+        adapter = ListAdapter(Item, [])
+        assert list(adapter.items()) == []
+
+    def test_items_json_list_adapter(self, tmp_path):
+        path = tmp_path / 'items.json'
+        adapter = JsonListAdapter(Item, path)
+        adapter.create(Item(name='x'))
+        adapter.create(Item(name='y'))
+        pairs = list(adapter.items())
+        assert len(pairs) == 2
+        names = [item.name for _, item in pairs]
+        assert names == ['x', 'y']
+
+
+class TestFilteredAdapterItems:
+    def setup_method(self):
+        self.items = [Item(name='a', value=1), Item(name='b', value=2), Item(name='c', value=1)]
+        self.inner = ListAdapter(Item, self.items)
+        self.filtered = __import__('niceview.dataadapter', fromlist=['FilteredAdapter']).FilteredAdapter(
+            self.inner, predicate=lambda i: i.value == 1)
+
+    def test_items_only_matching(self):
+        pairs = list(self.filtered.items())
+        assert len(pairs) == 2
+        names = [item.name for _, item in pairs]
+        assert set(names) == {'a', 'c'}
+
+    def test_items_key_matches_inner(self):
+        for key, item in self.filtered.items():
+            assert key == self.inner.key_from_item(item)
+
+    def test_items_key_readable_via_inner(self):
+        for key, item in self.filtered.items():
+            assert self.inner.read(key) is item

@@ -89,6 +89,11 @@ class CollectionAdapter(Generic[T], Protocol):
         """Delete the item with the given key. Raises KeyError/ValueError if not found."""
         ...
 
+    def items(self) -> Iterator[tuple[str, T]]:
+        """Yield (key, item) pairs — like dict.items(), combining __iter__ with key_from_item."""
+        for item in self:
+            yield self.key_from_item(item), item
+
 
 class BoundItem(Generic[T]):
     """
@@ -245,6 +250,11 @@ class FilteredAdapter(_ChangeNotifier, Generic[T]):
 
     def key_from_item(self, item: T) -> str:
         return self._inner.key_from_item(item)
+
+    def items(self) -> Iterator[tuple[str, T]]:
+        """Yield (key, item) pairs for items that pass the predicate."""
+        for item in self:
+            yield self._inner.key_from_item(item), item
 
     def read(self, key: str) -> T:
         return self._inner.read(key)

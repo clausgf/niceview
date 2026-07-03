@@ -346,11 +346,18 @@ from disk (JSON) or fires a grid-refresh notification (SQL, where every `read()`
 | Protocol | Methods | Used by |
 |---|---|---|
 | `ItemAdapter[T]` | `read() -> T`, `save(item) -> T` | `ModelForm` |
-| `CollectionAdapter[T]` | `__iter__`, `key_from_item(item) -> str`, `read(key) -> T`, `create(item) -> T`, `update(item) -> T`, `delete(key)` | `ModelGrid`, `EditGridWrapper` |
+| `CollectionAdapter[T]` | `__iter__`, `key_from_item(item) -> str`, `items() -> Iterator[(str, T)]`, `read(key) -> T`, `create(item) -> T`, `update(item) -> T`, `delete(key)` | `ModelGrid`, `EditGridWrapper` |
 | `ReloadableAdapter` | `reload()` | `EditGridWrapper` (Refresh button), `FilteredAdapter` (forwarded) |
 | `ReactiveAdapter` | `on_change(handler)` | `ModelGrid` (auto-update) |
 
 `update()` returns the stored item, which may differ from the input (e.g. `SqlModelAdapter` refreshes `updated_at`). `key_from_item()` raises `KeyError` if the item is not in the adapter; `read()` raises `KeyError`/`ValueError` if the key is not found.
+
+`items()` yields `(key, item)` pairs — like `dict.items()`, useful whenever key and item are needed together (e.g. building navigation URLs):
+```python
+for key, project in projects_adapter.items():
+    with ui.card().on('click', lambda k=key: ui.navigate.to(f'/projects/{k}')):
+        ui.label(project.name)
+```
 
 `BoundItem(adapter, key)` wraps a `CollectionAdapter` + a string key into an `ItemAdapter` —
 the standard bridge for master-detail navigation (e.g. `ModelForm.from_adapter()`).
