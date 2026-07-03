@@ -618,3 +618,25 @@ class TestRenderField:
         await user.open('/')
         form, label = captured[0]
         assert label is form._nonfield_error_element
+
+    async def test_render_field_label_override(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(Person()).render_field('name', label='Kurzname')
+
+        await user.open('/')
+        await user.should_see('Kurzname')
+        await user.should_not_see('Name')
+
+    async def test_render_field_label_empty(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(Person())
+            form.render_field('name', label='')
+            captured.append(form)
+
+        await user.open('/')
+        assert captured[0].widgets['name'].label == ''
+        await user.should_not_see('Name')

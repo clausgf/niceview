@@ -12,7 +12,7 @@ from nicegui import ui
 from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, handle_event
 
 from niceview.dataadapter import BoundItem, JsonAdapter, CollectionAdapter, ItemAdapter
-from niceview.fieldinfo import FieldInfo
+from niceview.fieldinfo import FieldInfo, _FieldInfoInputs, _merge_field_infos
 from niceview.fields import Fields
 
 log = logging.getLogger('niceview')
@@ -607,12 +607,16 @@ class ModelForm():
 
         return widget
 
-    def render_field(self, field_name: str) -> Any:
+    def render_field(self, field_name: str, **kwargs: Unpack[_FieldInfoInputs]) -> Any:
         """
         Render a single named field in the current NiceGUI context.
 
         Returns the created widget so callers can style it immediately:
           form.render_field('name').classes('w-full')
+
+        Optional kwargs override FieldInfo attributes for this render only:
+          form.render_field('name', label='Short name')
+          form.render_field('is_active', label='')   # suppress label
 
         Unlike render(), this does not reset existing widgets — call it multiple
         times inside any layout structure to position fields individually.
@@ -628,6 +632,8 @@ class ModelForm():
             raise ValueError(f"Field info for '{field_name}' not found")
         if field_info.hidden:
             raise ValueError(f"Field '{field_name}' is hidden and cannot be rendered individually")
+        if kwargs:
+            field_info = _merge_field_infos(field_info, FieldInfo(**kwargs))
         widget = self._render_widget(field_name, field_info)
         self.widgets[field_name] = widget
         return widget

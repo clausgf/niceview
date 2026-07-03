@@ -104,6 +104,12 @@ with ui.row():
         form.render_field('active')
 form.render_nonfield_errors().classes('q-mt-sm')      # returns the ui.label
 ```
+`render_field()` accepts optional `niceview.Field` kwargs to override field metadata for this render only:
+```python
+form.render_field('name', label='Short name')   # custom label
+form.render_field('is_active', label='')        # suppress label
+form.render_field('budget', suffix='k€')        # add suffix
+```
 `render_field()` returns the created widget (`ui.element` subclass) and raises `ValueError` for unknown or hidden fields.
 `render_nonfield_errors()` returns the `ui.label`; omit the call to suppress model-level error display.
 `render()` is equivalent to calling `render_field()` for all non-hidden fields followed by `render_nonfield_errors()`.
@@ -529,7 +535,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 479 tests
+uv run pytest          # 492 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 
