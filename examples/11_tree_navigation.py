@@ -131,6 +131,13 @@ class R:
 _STATUS_COLOR = {'planning': 'blue', 'active': 'green', 'done': 'grey'}
 
 
+def _fields_full_width(wrapper: EditFormWrapper) -> None:
+    """Make all rendered form fields full width (layout-only, no NiceView API change)."""
+    for widget in wrapper.form.widgets.values():
+        if hasattr(widget, 'classes') and callable(widget.classes):
+            widget.classes('w-full')
+
+
 def page_header(title: str, back_url: str | None = None) -> None:
     """App bar with optional back button (always visible, never just the browser back)."""
     with ui.header().classes('items-center gap-1'):
@@ -198,8 +205,7 @@ def page_project(pid: str) -> None:
 
     with ui.row().classes('w-full flex-wrap q-pa-md gap-4 items-start'):
         with ui.card().classes('col'):
-            EditFormWrapper.from_adapter(Project, projects_adapter, pid,
-                                         field_classes='w-full')
+            _fields_full_width(EditFormWrapper.from_adapter(Project, projects_adapter, pid))
 
         with ui.card().classes('col-auto'):
             ui.label('Sub-pages').classes('text-subtitle2 q-mb-sm')
@@ -254,9 +260,8 @@ def page_task(pid: str, tid: str) -> None:
 
     with ui.column().classes('q-pa-md w-full max-w-lg'):
         with ui.card().classes('w-full'):
-            EditFormWrapper.from_adapter(Task, tasks_adapter, tid,
-                                         exclude=['project_key'],
-                                         field_classes='w-full')
+            _fields_full_width(EditFormWrapper.from_adapter(Task, tasks_adapter, tid,
+                                                             exclude=['project_key']))
 
 
 # ---------------------------------------------------------------------------
@@ -299,9 +304,8 @@ def page_note(pid: str, nid: str) -> None:
 
     with ui.column().classes('q-pa-md w-full max-w-lg'):
         with ui.card().classes('w-full'):
-            EditFormWrapper.from_adapter(Note, notes_adapter, nid,
-                                         exclude=['project_key'],
-                                         field_classes='w-full')
+            _fields_full_width(EditFormWrapper.from_adapter(Note, notes_adapter, nid,
+                                                             exclude=['project_key']))
 
 
 ui.run(title='Tree Navigation')

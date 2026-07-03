@@ -53,9 +53,6 @@ class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
     on_change: Handler[FieldChangeEventArguments]
     """Callback to execute when value changes. To reduce the number of change events, fields like ui.input or ui.number also have to loose focus (blur)."""
 
-    field_classes: str | None
-    """CSS classes to add to every rendered field widget (e.g. 'w-full'). Applied after per-field classes from FieldInfo."""
-
 
 class ModelForm():
     """
@@ -122,7 +119,6 @@ class ModelForm():
 
         self.autosave = _get_param('autosave', False)
         self.local_tz = _get_param('local_tz', None)
-        self.field_classes: str | None = _get_param('field_classes', None)
 
         if on_change_callback := kwargs.pop('on_change', None):
             self.on_change(on_change_callback)
@@ -608,8 +604,6 @@ class ModelForm():
 
         if is_native_widget:
             self._apply_widget_field_info(widget, field_info)
-            if self.field_classes and hasattr(widget, 'classes') and callable(widget.classes):
-                widget.classes(self.field_classes)
 
         return widget
 
