@@ -510,3 +510,84 @@ class TestEditGridWrapperRender:
 
         await user.open('/')
         await user.should_see(ui.aggrid)
+
+
+# ---------------------------------------------------------------------------
+# render_field / render_nonfield_errors
+# ---------------------------------------------------------------------------
+
+class TestRenderField:
+    async def test_single_field_renders_widget(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(Person())
+            form.render_field('name')
+            captured.append(form)
+
+        await user.open('/')
+        assert 'name' in captured[0].widgets
+        await user.should_see('Name')
+
+    async def test_other_fields_not_rendered(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(Person())
+            form.render_field('name')
+            captured.append(form)
+
+        await user.open('/')
+        assert 'age' not in captured[0].widgets
+        assert 'active' not in captured[0].widgets
+
+    async def test_multiple_render_field_calls_accumulate(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(Person())
+            form.render_field('name')
+            form.render_field('age')
+            captured.append(form)
+
+        await user.open('/')
+        assert 'name' in captured[0].widgets
+        assert 'age' in captured[0].widgets
+        assert 'active' not in captured[0].widgets
+
+    async def test_render_field_unknown_raises(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(Person())
+            with pytest.raises(ValueError, match="not in the form"):
+                form.render_field('nonexistent')
+
+        await user.open('/')
+
+    async def test_render_field_widget_wired_to_model(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(Person(name='Alice'))
+            form.render_field('name')
+            captured.append(form)
+
+        await user.open('/')
+        assert captured[0].widgets['name'].value == 'Alice'
+
+    async def test_render_nonfield_errors_creates_element(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(Person())
+            form.render_field('name')
+            form.render_nonfield_errors()
+            captured.append(form)
+
+        await user.open('/')
+        assert captured[0]._nonfield_error_element is not None

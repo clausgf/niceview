@@ -93,6 +93,21 @@ form = ModelForm.from_adapter(User, json_adapter)
 form.render()
 ```
 
+**Custom field layout** — render fields individually to control placement in rows/columns:
+```python
+form = ModelForm.from_item(user)
+with ui.row():
+    with ui.column():
+        form.render_field('name')
+        form.render_field('age')
+    with ui.column():
+        form.render_field('active')
+form.render_nonfield_errors()   # place the model-level error label anywhere
+```
+`render_field()` raises `ValueError` for unknown or hidden fields.
+`render_nonfield_errors()` is optional; omit it to suppress model-level error display.
+`render()` is equivalent to calling `render_field()` for all non-hidden fields followed by `render_nonfield_errors()`.
+
 **Options** (apply to all `ModelForm` and `ModelGrid` factory methods):
 ```python
 ModelForm.from_item(user,

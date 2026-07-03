@@ -607,9 +607,42 @@ class ModelForm():
 
         return widget
 
+    def render_field(self, field_name: str) -> Self:
+        """
+        Render a single named field in the current NiceGUI context.
+
+        Unlike render(), this does not reset existing widgets — call it multiple
+        times inside any layout structure to position fields individually.
+        The non-field error label is not rendered; call render_nonfield_errors()
+        separately to place it wherever needed.
+
+        Raises ValueError for unknown or hidden fields.
+        """
+        if field_name not in self._fields:
+            raise ValueError(f"Field '{field_name}' is not in the form's field set")
+        field_info = self._fields[field_name]
+        if not field_info:
+            raise ValueError(f"Field info for '{field_name}' not found")
+        if field_info.hidden:
+            raise ValueError(f"Field '{field_name}' is hidden and cannot be rendered individually")
+        self.widgets[field_name] = self._render_widget(field_name, field_info)
+        return self
+
+    def render_nonfield_errors(self) -> Self:
+        """
+        Render the non-field (model-level) validation error label in the current NiceGUI context.
+
+        Call this separately when using render_field() to control its placement.
+        render() calls this automatically at the end.
+        """
+        self._nonfield_error_element = ui.label('').classes('text-negative w-full')
+        self._nonfield_error_element.set_visibility(False)
+        return self
+
     def render(self) -> Self:
         """
-        Render the form fields. Use EditFormWrapper for title, description and action buttons.
+        Render all non-hidden fields followed by the non-field error label.
+        Use render_field() and render_nonfield_errors() instead when custom layout is needed.
         """
         self.widgets = {}
         for field_name in self._fields:
@@ -619,10 +652,7 @@ class ModelForm():
             if field_info.hidden:
                 continue
             self.widgets[field_name] = self._render_widget(field_name, field_info)
-
-        self._nonfield_error_element = ui.label('').classes('text-negative w-full')
-        self._nonfield_error_element.set_visibility(False)
-
+        self.render_nonfield_errors()
         return self
 
     # --- value conversion --------------------------------------------------
