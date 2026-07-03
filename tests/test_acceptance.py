@@ -591,3 +591,30 @@ class TestRenderField:
 
         await user.open('/')
         assert captured[0]._nonfield_error_element is not None
+
+    async def test_render_field_returns_widget(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(Person())
+            widget = form.render_field('name')
+            captured.append((form, widget))
+
+        await user.open('/')
+        form, widget = captured[0]
+        assert widget is form.widgets['name']
+
+    async def test_render_nonfield_errors_returns_label(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(Person())
+            form.render_field('name')
+            label = form.render_nonfield_errors()
+            captured.append((form, label))
+
+        await user.open('/')
+        form, label = captured[0]
+        assert label is form._nonfield_error_element

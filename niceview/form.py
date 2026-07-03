@@ -607,9 +607,12 @@ class ModelForm():
 
         return widget
 
-    def render_field(self, field_name: str) -> Self:
+    def render_field(self, field_name: str) -> Any:
         """
         Render a single named field in the current NiceGUI context.
+
+        Returns the created widget so callers can style it immediately:
+          form.render_field('name').classes('w-full')
 
         Unlike render(), this does not reset existing widgets — call it multiple
         times inside any layout structure to position fields individually.
@@ -625,19 +628,23 @@ class ModelForm():
             raise ValueError(f"Field info for '{field_name}' not found")
         if field_info.hidden:
             raise ValueError(f"Field '{field_name}' is hidden and cannot be rendered individually")
-        self.widgets[field_name] = self._render_widget(field_name, field_info)
-        return self
+        widget = self._render_widget(field_name, field_info)
+        self.widgets[field_name] = widget
+        return widget
 
-    def render_nonfield_errors(self) -> Self:
+    def render_nonfield_errors(self) -> ui.label:
         """
         Render the non-field (model-level) validation error label in the current NiceGUI context.
+
+        Returns the created ui.label so callers can style it:
+          form.render_nonfield_errors().classes('q-mt-sm')
 
         Call this separately when using render_field() to control its placement.
         render() calls this automatically at the end.
         """
         self._nonfield_error_element = ui.label('').classes('text-negative w-full')
         self._nonfield_error_element.set_visibility(False)
-        return self
+        return self._nonfield_error_element
 
     def render(self) -> Self:
         """

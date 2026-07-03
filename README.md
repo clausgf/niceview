@@ -98,14 +98,14 @@ form.render()
 form = ModelForm.from_item(user)
 with ui.row():
     with ui.column():
-        form.render_field('name')
-        form.render_field('age')
+        form.render_field('name').classes('w-full')   # returns the widget for direct styling
+        form.render_field('age').classes('w-full')
     with ui.column():
         form.render_field('active')
-form.render_nonfield_errors()   # place the model-level error label anywhere
+form.render_nonfield_errors().classes('q-mt-sm')      # returns the ui.label
 ```
-`render_field()` raises `ValueError` for unknown or hidden fields.
-`render_nonfield_errors()` is optional; omit it to suppress model-level error display.
+`render_field()` returns the created widget (`ui.element` subclass) and raises `ValueError` for unknown or hidden fields.
+`render_nonfield_errors()` returns the `ui.label`; omit the call to suppress model-level error display.
 `render()` is equivalent to calling `render_field()` for all non-hidden fields followed by `render_nonfield_errors()`.
 
 **Options** (apply to all `ModelForm` and `ModelGrid` factory methods):
