@@ -522,7 +522,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 421 tests
+uv run pytest          # 479 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 
@@ -530,6 +530,20 @@ Run examples:
 ```bash
 uv run python examples/01_form_basic.py
 ```
+
+| Example | Topic |
+|---|---|
+| `01_form_basic.py` | `ModelForm` — basic usage |
+| `02_field_types.py` | `ModelForm` — all supported field types |
+| `03_form_binding.py` | `ModelForm` — NiceGUI binding |
+| `04_form_json.py` | `ModelForm` — JSON persistence |
+| `05_grid.py` | `ModelGrid` |
+| `06_edit_wrapper.py` | `EditGridWrapper` / `EditFormWrapper` |
+| `07_sqlmodel.py` | `SqlModelAdapter` |
+| `08_reactive_grid.py` | Reactive grid — auto-update via `ObservableList` |
+| `09_drilldown.py` | `DrillDownWrapper` / `ModelList` |
+| `10_complex_form_navigation.py` | Split-panel navigation on desktop, full-page on mobile (pure NiceGUI) |
+| `11_tree_navigation.py` | Multi-level tree navigation — 4 levels, explicit back buttons, central URL factory |
 
 Unit tests cover data adapters, field resolution, validation logic, and pure CRUD operations.
 Acceptance tests (`tests/test_acceptance.py`) use the NiceGUI `User` fixture (headless, no browser)
@@ -540,6 +554,7 @@ not inspectable via the `User` fixture; row data is covered by unit tests instea
 Design decisions and Accepted Technical Debt
 --------------------------------------------
 - **Mobile navigation: `ModelList` + `DrillDownWrapper` as separate components**: A new `ModelList` (Quasar list) and `DrillDownWrapper` (two registered NiceGUI pages) are added alongside `ModelGrid` / `EditGridWrapper` rather than making the existing desktop components responsive. Motivation: the UX patterns are fundamentally different — card list with drill-down vs data table with dialogs — and a single component handling both would need too many conditional paths. The state-sharing problem between pages is solved by the `DrillDownWrapper` instance holding the adapter (shared per Python process, which is the normal NiceGUI single-user model).
+- **Multi-level tree navigation**: `DrillDownWrapper` covers the common 2-level (list → detail) case. For deeper trees (card grid → edit form → sub-list → sub-detail, etc.) the recommended pattern is explicit `@ui.page` routes with a central URL factory class (`R`) and a shared `page_header(title, back_url)` helper — see `examples/11_tree_navigation.py`. This keeps each page self-contained, makes URL changes a one-place edit, and ensures the back button is always explicit and visible (not relying on browser history).
 - **`DrillDownWrapper` split-panel layout**: Implemented as pure CSS using Quasar breakpoint utility classes (`gt-sm`, `lt-md`, `col-4`, `col-md-8`). No API changes, no JavaScript, no conditional Python logic. The list panel on the detail page is rendered unconditionally but hidden on mobile via `gt-sm`. This means on desktop, clicking a list item in the side panel navigates to a new URL (`base_path/{key}`) which re-renders the same split-panel layout with the new item selected.
 - **Form navigation / dirty state**: No detection when the user leaves an unsaved form. Options: (a) track dirty state via `on_change` and expose `is_dirty` property; (b) use a JS `beforeunload` guard (requires NiceGUI `ui.run_javascript`). Neither covers in-app navigation — NiceGUI has no built-in route guard.
 - **NiceGUI element lifecycle**: When are elements instantiated, active, deleted? `render()` must be called inside a NiceGUI page context; elements created outside a client context silently fail. No lifecycle hooks for cleanup.
