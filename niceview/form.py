@@ -682,12 +682,18 @@ class ModelForm():
                 raise ValueError(f"Model repository for {item_type.__name__} not found in form's model repositories")
             value = repository.key_from_item(value) if value is not None else None
 
-        elif type(value) is datetime.datetime:
-            tz = ZoneInfo(self.local_tz) if self.local_tz else None
-            value = value.astimezone(tz).replace(tzinfo=None, microsecond=0).isoformat()
+        elif widget_type == 'datetime':
+            if value is not None:
+                tz = ZoneInfo(self.local_tz) if self.local_tz else None
+                value = value.astimezone(tz).replace(tzinfo=None, microsecond=0).isoformat()
 
-        elif type(value) is datetime.time:
-            value = value.replace(microsecond=0).isoformat()
+        elif widget_type == 'date':
+            if value is not None:
+                value = value.isoformat()
+
+        elif widget_type == 'time':
+            if value is not None:
+                value = value.replace(microsecond=0).isoformat()
 
         elif widget_type == 'timedelta':
             timedelta_adapter = TypeAdapter(datetime.timedelta)
@@ -737,9 +743,18 @@ class ModelForm():
             value = expanded
 
         elif widget_type == 'datetime':
-            dt = datetime.datetime.fromisoformat(value)
-            tz = ZoneInfo(self.local_tz) if self.local_tz else None
-            value = dt.replace(tzinfo=tz).astimezone(datetime.timezone.utc)
+            if value:
+                dt = datetime.datetime.fromisoformat(value)
+                tz = ZoneInfo(self.local_tz) if self.local_tz else None
+                value = dt.replace(tzinfo=tz).astimezone(datetime.timezone.utc)
+            else:
+                value = None
+
+        elif widget_type == 'date':
+            value = datetime.date.fromisoformat(value) if value else None
+
+        elif widget_type == 'time':
+            value = datetime.time.fromisoformat(value) if value else None
 
         elif widget_type == 'timedelta':
             timedelta_adapter = TypeAdapter(datetime.timedelta)

@@ -16,7 +16,7 @@ import pydantic
 import pytest
 from nicegui import ui
 from nicegui.testing import User
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Optional
 
 import niceview
 from niceview.form import ModelForm
@@ -644,11 +644,12 @@ class TestRenderField:
 
 
 # ---------------------------------------------------------------------------
-# ModelForm — datetime / time widget precision
+# ModelForm — datetime / time widget precision and None handling
 # ---------------------------------------------------------------------------
 
 _DT_WITH_MICROSECONDS = datetime.datetime(2026, 7, 4, 14, 23, 45, 783421, tzinfo=datetime.timezone.utc)
 _TIME_WITH_MICROSECONDS = datetime.time(9, 30, 15, 500000)
+_DATE_VALUE = datetime.date(2026, 7, 4)
 
 
 class _EventModel(pydantic.BaseModel):
@@ -661,6 +662,12 @@ class _AlarmModel(pydantic.BaseModel):
     ring: datetime.time = pydantic.Field(
         default=_TIME_WITH_MICROSECONDS, title='Ring'
     )
+
+
+class _AppointmentModel(pydantic.BaseModel):
+    day: Optional[datetime.date] = pydantic.Field(default=None, title='Day')
+    start: Optional[datetime.datetime] = pydantic.Field(default=None, title='Start')
+    alarm: Optional[datetime.time] = pydantic.Field(default=None, title='Alarm')
 
 
 class TestModelFormDatetimeWidget:
@@ -691,3 +698,78 @@ class TestModelFormDatetimeWidget:
         value = captured[0].widgets['ring'].value
         assert '.' not in value, f"Widget value contains sub-seconds: {value!r}"
         assert value == '09:30:15'
+
+    async def test_none_datetime_loads_as_empty_widget(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_AppointmentModel())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        form = captured[0]
+        assert form.widgets['start'].value is None or form.widgets['start'].value == ''
+        assert form.widgets['alarm'].value is None or form.widgets['alarm'].value == ''
+        assert form.widgets['day'].value is None or form.widgets['day'].value == ''
+
+    async def test_empty_datetime_widget_sets_none_on_model(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_EventModel())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        form = captured[0]
+        form.widgets['start'].value = ''
+        form._from_widget_value_to_current_item('start')
+        assert form._current_item.start is None
+
+    async def test_empty_time_widget_sets_none_on_model(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_AlarmModel())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        form = captured[0]
+        form.widgets['ring'].value = ''
+        form._from_widget_value_to_current_item('ring')
+        assert form._current_item.ring is None
+
+    async def test_date_widget_parses_string_to_date(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_AppointmentModel(day=_DATE_VALUE))
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        form = captured[0]
+        assert form.widgets['day'].value == '2026-07-04'
+        form._from_widget_value_to_current_item('day')
+        assert form._current_item.day == _DATE_VALUE
+
+    async def test_empty_date_widget_sets_none_on_model(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_AppointmentModel(day=_DATE_VALUE))
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        form = captured[0]
+        form.widgets['day'].value = ''
+        form._from_widget_value_to_current_item('day')
+        assert form._current_item.day is None
