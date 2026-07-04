@@ -684,7 +684,10 @@ class ModelForm():
 
         elif type(value) is datetime.datetime:
             tz = ZoneInfo(self.local_tz) if self.local_tz else None
-            value = value.astimezone(tz).replace(tzinfo=None).isoformat()
+            value = value.astimezone(tz).replace(tzinfo=None, microsecond=0).isoformat()
+
+        elif type(value) is datetime.time:
+            value = value.replace(microsecond=0).isoformat()
 
         elif widget_type == 'timedelta':
             timedelta_adapter = TypeAdapter(datetime.timedelta)

@@ -535,7 +535,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 492 tests
+uv run pytest          # 494 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 

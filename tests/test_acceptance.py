@@ -10,6 +10,7 @@ Known limitations of the User fixture:
 - ui.number with max= clamps input to the allowed range instead of
   discarding it; out-of-range numeric input becomes a valid clamped value.
 """
+import datetime
 import enum
 import pydantic
 import pytest
@@ -640,3 +641,53 @@ class TestRenderField:
         await user.open('/')
         assert captured[0].widgets['name'].label == ''
         await user.should_not_see('Name')
+
+
+# ---------------------------------------------------------------------------
+# ModelForm — datetime / time widget precision
+# ---------------------------------------------------------------------------
+
+_DT_WITH_MICROSECONDS = datetime.datetime(2026, 7, 4, 14, 23, 45, 783421, tzinfo=datetime.timezone.utc)
+_TIME_WITH_MICROSECONDS = datetime.time(9, 30, 15, 500000)
+
+
+class _EventModel(pydantic.BaseModel):
+    start: datetime.datetime = pydantic.Field(
+        default_factory=lambda: _DT_WITH_MICROSECONDS, title='Start'
+    )
+
+
+class _AlarmModel(pydantic.BaseModel):
+    ring: datetime.time = pydantic.Field(
+        default=_TIME_WITH_MICROSECONDS, title='Ring'
+    )
+
+
+class TestModelFormDatetimeWidget:
+    async def test_datetime_microseconds_truncated_in_widget(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_EventModel())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        value = captured[0].widgets['start'].value
+        assert '.' not in value, f"Widget value contains sub-seconds: {value!r}"
+        assert value == '2026-07-04T14:23:45'
+
+    async def test_time_microseconds_truncated_in_widget(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_AlarmModel())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        value = captured[0].widgets['ring'].value
+        assert '.' not in value, f"Widget value contains sub-seconds: {value!r}"
+        assert value == '09:30:15'
