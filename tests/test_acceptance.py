@@ -710,9 +710,9 @@ class TestModelFormDatetimeWidget:
 
         await user.open('/')
         form = captured[0]
-        assert form.widgets['start'].value is None or form.widgets['start'].value == ''
-        assert form.widgets['alarm'].value is None or form.widgets['alarm'].value == ''
-        assert form.widgets['day'].value is None or form.widgets['day'].value == ''
+        assert form.widgets['start'].value == ''
+        assert form.widgets['alarm'].value == ''
+        assert form.widgets['day'].value == ''
 
     async def test_empty_datetime_widget_sets_none_on_model(self, user: User) -> None:
         captured = []

@@ -686,14 +686,14 @@ class ModelForm():
             if value is not None:
                 tz = ZoneInfo(self.local_tz) if self.local_tz else None
                 value = value.astimezone(tz).replace(tzinfo=None, microsecond=0).isoformat()
+            else:
+                value = ''
 
         elif widget_type == 'date':
-            if value is not None:
-                value = value.isoformat()
+            value = value.isoformat() if value is not None else ''
 
         elif widget_type == 'time':
-            if value is not None:
-                value = value.replace(microsecond=0).isoformat()
+            value = value.replace(microsecond=0).isoformat() if value is not None else ''
 
         elif widget_type == 'timedelta':
             timedelta_adapter = TypeAdapter(datetime.timedelta)
