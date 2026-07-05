@@ -1,4 +1,67 @@
+from typing import Callable
 from nicegui import ui
+
+
+async def confirm_dialog(
+    title: str,
+    message: str,
+    *,
+    ok_label: str = 'OK',
+    cancel_label: str = 'Cancel',
+    ok_color: str = 'primary',
+) -> bool:
+    """Show a confirmation dialog. Returns True if confirmed, False if cancelled.
+
+    Usage:
+        if not await confirm_dialog('Delete Device', f'Delete {name!r}? Irreversible.',
+                                    ok_label='Delete', ok_color='negative'):
+            return
+    """
+    dialog = ui.dialog().props(':maximized="$q.screen.lt.md" transition-show="slide-up" transition-hide="slide-down"').style('width: 400px')
+    with dialog:
+        with ui.card().classes('w-full'):
+            ui.label(title).classes('text-h6')
+            ui.markdown(message)
+            with ui.row().classes('w-full place-content-end'):
+                ui.button(cancel_label, on_click=lambda: dialog.submit(False))
+                ui.button(ok_label, on_click=lambda: dialog.submit(True)).props(f'color={ok_color}')
+    return await dialog
+
+
+async def input_dialog(
+    title: str,
+    *,
+    label: str,
+    placeholder: str = '',
+    value: str = '',
+    validator: Callable[[str], bool] | None = None,
+    error_message: str = 'Invalid input',
+) -> str | None:
+    """Show an input dialog. Returns the entered string, or None if cancelled.
+
+    Usage:
+        name = await input_dialog('Create Project', label='Project Name',
+                                   placeholder='my-project', validator=is_valid_filename,
+                                   error_message='Only letters, digits, _ - + allowed')
+        if name is None:
+            return  # cancelled
+        create_project(name)
+    """
+    dialog = ui.dialog().props(':maximized="$q.screen.lt.md" transition-show="slide-up" transition-hide="slide-down"').style('width: 400px')
+    with dialog:
+        with ui.card().classes('w-full'):
+            ui.label(title).classes('text-h6')
+            validation = {error_message: validator} if validator is not None else None
+            inp = ui.input(label=label, placeholder=placeholder, value=value, validation=validation)
+            with ui.row().classes('w-full place-content-end'):
+                ui.button('Cancel', on_click=lambda: dialog.submit(None))
+                def on_ok():
+                    if validator is not None and not validator(inp.value):
+                        inp.validate()
+                        return
+                    dialog.submit(inp.value)
+                ui.button('OK', on_click=on_ok).props('color=primary')
+    return await dialog
 
 
 def submit_dialog(title: str, message: str, buttons: list[str] = ["Cancel", "OK"]) -> ui.dialog:

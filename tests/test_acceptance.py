@@ -10,13 +10,16 @@ Known limitations of the User fixture:
 - ui.number with max= clamps input to the allowed range instead of
   discarding it; out-of-range numeric input becomes a valid clamped value.
 """
+import asyncio
 import datetime
 import enum
 import pydantic
 import pytest
 from nicegui import ui
 from nicegui.testing import User
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Callable, Literal, Optional
+
+from niceview.util import confirm_dialog, input_dialog
 
 import niceview
 from niceview.form import ModelForm
@@ -773,3 +776,133 @@ class TestModelFormDatetimeWidget:
         form.widgets['day'].value = ''
         form._from_widget_value_to_current_item('day')
         assert form._current_item.day is None
+
+
+# ---------------------------------------------------------------------------
+# confirm_dialog / input_dialog
+# Dialog functions are triggered by a button click (not awaited in the page
+# handler directly) because NiceGUI's User fixture requires the page handler
+# to return before page setup completes.
+# ---------------------------------------------------------------------------
+
+class TestConfirmDialog:
+    async def test_ok_returns_true(self, user: User) -> None:
+        results: list[bool] = []
+
+        @ui.page('/')
+        def page():
+            async def show():
+                results.append(await confirm_dialog('Delete Device', 'Irreversible.'))
+            ui.button('Open', on_click=show)
+
+        await user.open('/')
+        user.find('Open').click()
+        await user.should_see('Delete Device')
+        await user.should_see('Irreversible.')
+        user.find('OK').click()
+        await asyncio.sleep(0.1)
+        assert results == [True]
+
+    async def test_cancel_returns_false(self, user: User) -> None:
+        results: list[bool] = []
+
+        @ui.page('/')
+        def page():
+            async def show():
+                results.append(await confirm_dialog('Title', 'Msg'))
+            ui.button('Open', on_click=show)
+
+        await user.open('/')
+        user.find('Open').click()
+        await user.should_see('Msg')  # wait for dialog
+        user.find('Cancel').click()
+        await asyncio.sleep(0.1)
+        assert results == [False]
+
+    async def test_custom_labels(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            async def show():
+                await confirm_dialog('Title', 'Msg', ok_label='Delete', cancel_label='Abort')
+            ui.button('Open', on_click=show)
+
+        await user.open('/')
+        user.find('Open').click()
+        await user.should_see('Delete')
+        await user.should_see('Abort')
+
+
+class TestInputDialog:
+    async def test_ok_returns_entered_value(self, user: User) -> None:
+        results: list = []
+
+        @ui.page('/')
+        def page():
+            async def show():
+                results.append(await input_dialog('Create Project', label='Project Name'))
+            ui.button('Open', on_click=show)
+
+        await user.open('/')
+        user.find('Open').click()
+        await user.should_see('Project Name')
+        user.find('Project Name').type('hello')
+        user.find('OK').click()
+        await asyncio.sleep(0.1)
+        assert results == ['hello']
+
+    async def test_cancel_returns_none(self, user: User) -> None:
+        results: list = []
+
+        @ui.page('/')
+        def page():
+            async def show():
+                results.append(await input_dialog('Title', label='Name'))
+            ui.button('Open', on_click=show)
+
+        await user.open('/')
+        user.find('Open').click()
+        await user.should_see('Name')  # wait for dialog
+        user.find('Cancel').click()
+        await asyncio.sleep(0.1)
+        assert results == [None]
+
+    async def test_validator_blocks_invalid_input(self, user: User) -> None:
+        results: list = []
+
+        @ui.page('/')
+        def page():
+            async def show():
+                results.append(await input_dialog(
+                    'Title', label='Name',
+                    validator=lambda v: v.isalpha(),
+                    error_message='Letters only',
+                ))
+            ui.button('Open', on_click=show)
+
+        await user.open('/')
+        user.find('Open').click()
+        await user.should_see('Name')  # wait for dialog
+        user.find('Name').type('123')
+        user.find('OK').click()
+        await asyncio.sleep(0.1)
+        assert results == []  # validator blocked submission
+
+    async def test_validator_accepts_valid_input(self, user: User) -> None:
+        results: list = []
+
+        @ui.page('/')
+        def page():
+            async def show():
+                results.append(await input_dialog(
+                    'Title', label='Name',
+                    validator=lambda v: v.isalpha(),
+                ))
+            ui.button('Open', on_click=show)
+
+        await user.open('/')
+        user.find('Open').click()
+        await user.should_see('Name')  # wait for dialog
+        user.find('Name').type('hello')
+        user.find('OK').click()
+        await asyncio.sleep(0.1)
+        assert results == ['hello']
