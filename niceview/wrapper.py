@@ -290,7 +290,7 @@ class EditGridWrapper():
             self._notify_change_handlers(self.grid.adapter.key_from_item(item), item)
         except ConflictError as e:
             log.warning(f'Optimistic lock conflict updating item {row_key}: {e}')
-            ui.notify(str(e), color='negative')
+            ui.notify('This item was changed by another user. The list has been refreshed — please edit again.', color='negative')
             self.grid.update_rows()
         except Exception as e:
             log.error(f'Error updating item: {e}')
