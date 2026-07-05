@@ -290,9 +290,9 @@ class TestEditFormWrapperFactoryMethods:
         form = ModelForm.from_json(Ts1, path, lock_field='updated_at')
         assert form.item.updated_at is not None
 
-    def test_from_json_stale_lock_raises(self, tmp_path):
+    def test_from_json_stale_lock_notifies(self, tmp_path):
         import datetime
-        from unittest.mock import patch
+        from unittest.mock import patch, MagicMock
         from niceview.dataadapter import JsonAdapter
 
         class Ts2(pydantic.BaseModel):
@@ -303,12 +303,13 @@ class TestEditFormWrapperFactoryMethods:
         form_a = ModelForm.from_json(Ts2, path, lock_field='updated_at')
         form_b = ModelForm.from_json(Ts2, path, lock_field='updated_at')
         form_a._validated_item.name = 'A'
-        with patch.object(ui, 'notify'):
+        notify_calls = []
+        with patch.object(ui, 'notify', side_effect=lambda *a, **kw: notify_calls.append((a, kw))):
             form_a.save()
-        form_b._validated_item.name = 'B'
-        with pytest.raises(ValueError, match='Optimistic Locking'):
-            with patch.object(ui, 'notify'):
-                form_b.save()
+            form_b._validated_item.name = 'B'
+            form_b.save()  # stale lock → ConflictError caught, notify shown, no exception
+        conflict_msgs = [args for args, kw in notify_calls if kw.get('color') == 'negative']
+        assert conflict_msgs, f"Expected conflict notification, got: {notify_calls}"
 
     def test_from_adapter_without_key_uses_json_adapter(self, tmp_path):
         from niceview.dataadapter import JsonAdapter

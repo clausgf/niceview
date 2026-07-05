@@ -348,6 +348,21 @@ All JSON adapters write atomically (`.tmp` → rename).
 `JsonListAdapter` and `SqlModelAdapter` both implement `ReloadableAdapter`: `reload()` re-reads
 from disk (JSON) or fires a grid-refresh notification (SQL, where every `read()` is already live).
 
+**Optimistic locking:** When `lock_field=` is set, `save()` compares the field value against the
+current file/DB before writing. If another user saved in the meantime the timestamps differ and
+`niceview.ConflictError` is raised. `ModelForm.save()` catches this and shows a user-facing
+`ui.notify` message; `EditGridWrapper` does the same for grid updates. Custom code calling
+`adapter.save()` directly should catch `ConflictError` explicitly:
+
+```python
+from niceview import ConflictError
+
+try:
+    adapter.save(item)
+except ConflictError:
+    ui.notify('Someone else changed this item. Please reload.', color='warning')
+```
+
 **Adapter protocols** — implement these for custom backends:
 
 | Protocol | Methods | Used by |

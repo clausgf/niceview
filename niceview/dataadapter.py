@@ -10,6 +10,11 @@ import pydantic
 log = logging.getLogger('niceview')
 
 
+class ConflictError(Exception):
+    """Raised when a save is rejected because another user modified the item in the meantime."""
+    pass
+
+
 T = TypeVar('T', bound=pydantic.BaseModel)
 
 
@@ -334,9 +339,9 @@ class JsonAdapter(Generic[T]):
                 if self._path_name.exists():
                     current = self.read()
                     if getattr(current, self._lock_field) != getattr(item, self._lock_field):
-                        raise ValueError(
-                            "Optimistic Locking: the item was modified by another user. "
-                            "Reload and re-apply your changes."
+                        raise ConflictError(
+                            "This item was changed by another user while you were editing it. "
+                            "Please reload and re-apply your changes."
                         )
                 now = datetime.datetime.now(datetime.timezone.utc)
                 if self._created_field and getattr(item, self._created_field) is None:

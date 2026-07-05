@@ -5,7 +5,7 @@ import pydantic
 from pathlib import Path
 from typing import Annotated
 
-from niceview.dataadapter import ListAdapter, JsonAdapter, JsonListAdapter
+from niceview.dataadapter import ConflictError, ListAdapter, JsonAdapter, JsonListAdapter
 from niceview.grid import ModelGrid, ModelGridInlineEdit
 
 
@@ -343,7 +343,7 @@ class TestJsonAdapterLockField:
         item_a = adapter.read()
         item_b = adapter.read()
         adapter.save(item_a)   # A saves first → lock_field advances
-        with pytest.raises(ValueError, match='Optimistic Locking'):
+        with pytest.raises(ConflictError):
             adapter.save(item_b)   # B has stale lock → rejected
 
     def test_fresh_save_after_reload_succeeds(self, tmp_path):

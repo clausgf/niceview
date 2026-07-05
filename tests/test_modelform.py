@@ -315,7 +315,7 @@ class TestFromJson:
         form = ModelForm.from_json(Timestamped, path, lock_field='updated_at')
         assert form.item.updated_at is not None
 
-    def test_from_json_stale_lock_raises_on_save(self, tmp_path):
+    def test_from_json_stale_lock_notifies_on_save(self, tmp_path):
         class Timestamped(pydantic.BaseModel):
             name: str = ''
             updated_at: datetime.datetime | None = None
@@ -323,10 +323,14 @@ class TestFromJson:
         form_a = ModelForm.from_json(Timestamped, path, lock_field='updated_at')
         form_b = ModelForm.from_json(Timestamped, path, lock_field='updated_at')
         form_a._validated_item.name = 'A'
-        form_a.save()  # advances lock
-        form_b._validated_item.name = 'B'
-        with pytest.raises(ValueError, match='Optimistic Locking'):
-            form_b.save()
+        notify_calls = []
+        with MagicMock() as m:
+            ui.notify = lambda *a, **kw: notify_calls.append((a, kw))
+            form_a.save()  # advances lock
+            form_b._validated_item.name = 'B'
+            form_b.save()  # stale lock → ConflictError caught, notify shown, no exception
+        assert any('changed' in str(args) or 'conflict' in str(args).lower() or 'reload' in str(args).lower()
+                   for args, _ in notify_calls), f"Expected conflict notification, got: {notify_calls}"
 
     def test_from_json_created_field_set_on_init(self, tmp_path):
         class Timestamped(pydantic.BaseModel):
