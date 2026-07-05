@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from nicegui import ui
 from nicegui.events import Handler, ClickEventArguments, handle_event
 
-from niceview.dataadapter import CollectionAdapter, ConflictError, ItemAdapter, ReloadableAdapter
+from niceview.dataadapter import CollectionAdapter, ConflictError, StorageError, ItemAdapter, ReloadableAdapter
 from niceview.form import ModelForm, FieldChangeEventArguments
 from niceview.grid import ModelGridInlineEdit, ModelGrid, T, TableItemEventArguments
 from niceview.util import submit_dialog
@@ -291,6 +291,10 @@ class EditGridWrapper():
         except ConflictError as e:
             log.warning(f'Optimistic lock conflict updating item {row_key}: {e}')
             ui.notify('This item was changed by another user. The list has been refreshed — please edit again.', color='negative')
+            self.grid.update_rows()
+        except StorageError as e:
+            log.error(f'Storage error updating item {row_key}: {e}')
+            ui.notify(str(e), color='negative')
             self.grid.update_rows()
         except Exception as e:
             log.error(f'Error updating item: {e}')

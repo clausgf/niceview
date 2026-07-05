@@ -354,6 +354,31 @@ class TestJsonAdapterLockField:
         item_b = adapter.read()   # reload → fresh lock value
         adapter.save(item_b)      # must succeed
 
+    def test_none_lock_field_in_file_does_not_raise(self, tmp_path):
+        # lock_field is None in the file → no conflict (missing lock data = no locking)
+        path = tmp_path / 'data.json'
+        adapter = JsonAdapter(TimestampedItem, path, lock_field='created_at')
+        item = adapter.read()
+        item.created_at = None  # simulate: field was null in the file
+        adapter.save(item)  # must not raise ConflictError
+
+    def test_none_lock_field_on_item_does_not_raise(self, tmp_path):
+        # item has no lock value yet (freshly constructed) → no conflict
+        path = tmp_path / 'data.json'
+        adapter = JsonAdapter(TimestampedItem, path, lock_field='created_at')
+        item = adapter.read()
+        item.created_at = None  # item has no timestamp
+        adapter.save(item)  # must not raise
+
+    def test_corrupted_file_raises_storage_error(self, tmp_path):
+        from niceview.dataadapter import StorageError
+        path = tmp_path / 'data.json'
+        adapter = JsonAdapter(TimestampedItem, path, lock_field='created_at')
+        path.write_text('not valid json', encoding='utf-8')
+        item = TimestampedItem()
+        with pytest.raises(StorageError):
+            adapter.save(item)
+
     def test_invalid_lock_field_raises(self, tmp_path):
         path = tmp_path / 'data.json'
         with pytest.raises(ValueError, match='does not have a field named'):

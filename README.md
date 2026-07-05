@@ -348,19 +348,27 @@ All JSON adapters write atomically (`.tmp` → rename).
 `JsonListAdapter` and `SqlModelAdapter` both implement `ReloadableAdapter`: `reload()` re-reads
 from disk (JSON) or fires a grid-refresh notification (SQL, where every `read()` is already live).
 
-**Optimistic locking:** When `lock_field=` is set, `save()` compares the field value against the
-current file/DB before writing. If another user saved in the meantime the timestamps differ and
-`niceview.ConflictError` is raised. `ModelForm.save()` catches this and shows a user-facing
-`ui.notify` message; `EditGridWrapper` does the same for grid updates. Custom code calling
-`adapter.save()` directly should catch `ConflictError` explicitly:
+**Optimistic locking:** When `lock_field=` is set, `save()` compares the stored timestamp against
+the one in memory before writing. The check only fires when *both* sides have a non-`None` value —
+a `None` on either side is treated as "no lock data" and the save proceeds. Two exceptions can be
+raised; both are caught by `ModelForm.save()` and `EditGridWrapper` with a user-facing `ui.notify`:
+
+| Exception | When raised |
+|---|---|
+| `niceview.ConflictError` | Both timestamps are set but differ (concurrent modification) |
+| `niceview.StorageError` | The stored file cannot be read during the lock check (corrupted, wrong schema, I/O error) |
+
+Custom code calling `adapter.save()` directly should handle both:
 
 ```python
-from niceview import ConflictError
+from niceview import ConflictError, StorageError
 
 try:
     adapter.save(item)
 except ConflictError:
     ui.notify('Someone else changed this item. Please reload.', color='warning')
+except StorageError:
+    ui.notify('The data file could not be read. Please contact your administrator.', color='negative')
 ```
 
 **Adapter protocols** — implement these for custom backends:

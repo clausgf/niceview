@@ -11,7 +11,7 @@ from pydantic import BaseModel, TypeAdapter
 from nicegui import ui
 from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, handle_event
 
-from niceview.dataadapter import BoundItem, ConflictError, JsonAdapter, CollectionAdapter, ItemAdapter
+from niceview.dataadapter import BoundItem, ConflictError, StorageError, JsonAdapter, CollectionAdapter, ItemAdapter
 from niceview.fieldinfo import FieldInfo, _FieldInfoInputs, _merge_field_infos
 from niceview.fields import Fields
 
@@ -273,6 +273,9 @@ class ModelForm():
         try:
             updated = self._item_adapter.save(self.item)
         except ConflictError as e:
+            ui.notify(str(e), color='negative')
+            return
+        except StorageError as e:
             ui.notify(str(e), color='negative')
             return
         if updated is not None and updated is not self._validated_item:

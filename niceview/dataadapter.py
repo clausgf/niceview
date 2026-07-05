@@ -15,6 +15,11 @@ class ConflictError(Exception):
     pass
 
 
+class StorageError(Exception):
+    """Raised when the stored data cannot be read (corrupted file, schema mismatch, I/O error)."""
+    pass
+
+
 T = TypeVar('T', bound=pydantic.BaseModel)
 
 
@@ -337,8 +342,16 @@ class JsonAdapter(Generic[T]):
         if self._lock_field:
             with self._get_file_lock(self._path_name):
                 if self._path_name.exists():
-                    current = self.read()
-                    if getattr(current, self._lock_field) != getattr(item, self._lock_field):
+                    try:
+                        current = self.read()
+                    except Exception as e:
+                        raise StorageError(
+                            "The stored data could not be read — the file may be corrupted "
+                            "or have been modified externally."
+                        ) from e
+                    current_lock = getattr(current, self._lock_field)
+                    item_lock = getattr(item, self._lock_field)
+                    if current_lock is not None and item_lock is not None and current_lock != item_lock:
                         raise ConflictError(
                             "This item was changed by another user while you were editing it. "
                             "Please reload and re-apply your changes."

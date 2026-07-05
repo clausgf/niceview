@@ -1,10 +1,10 @@
 import logging
 from typing import Unpack
 from niceview.fieldinfo import _FieldInfoInputs, FieldInfo
-from niceview.dataadapter import BoundItem, ConflictError
+from niceview.dataadapter import BoundItem, ConflictError, StorageError
 from niceview.modellist import ModelList, DrillDownWrapper
 
-__all__ = ['Field', 'FieldInfo', 'BoundItem', 'ConflictError', 'ModelList', 'DrillDownWrapper']
+__all__ = ['Field', 'FieldInfo', 'BoundItem', 'ConflictError', 'StorageError', 'ModelList', 'DrillDownWrapper']
 
 log = logging.getLogger('niceview')
 log.addHandler(logging.NullHandler())
