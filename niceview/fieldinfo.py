@@ -9,6 +9,15 @@ from nicegui import ui
 from nicegui.elements.mixins.validation_element import ValidationFunction, ValidationDict
 
 
+WidgetType = Literal[
+    'ui.input', 'ui.number', 'ui.textarea', 'ui.checkbox', 'ui.switch', 'ui.select', 'ui.radio', 'ui.toggle', 'ui.color_input', 'ui.input_chips',
+    'datetime', 'date', 'time', 'timedelta',
+    'slider', 'rating',
+    'editgrid', 'modelselect',
+]
+"""All widget types a field can be rendered as."""
+
+
 class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
     """
     This class exists solely to add type checking for `**kwargs` (idea from pydantic class _FromFieldInfoInputs)
@@ -20,12 +29,7 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
     hidden: bool
     editable: bool
     help_text: str
-    widget_type: Literal[
-        'ui.input', 'ui.number', 'ui.textarea', 'ui.checkbox', 'ui.switch', 'ui.select', 'ui.radio', 'ui.toggle', 'ui.color_input', 'ui.input_chips',
-        'datetime', 'date', 'time', 'timedelta',
-        'slider', 'rating',
-        'editgrid', 'modelselect',
-    ]
+    widget_type: WidgetType
 
     props: str
     classes: str
@@ -103,12 +107,7 @@ class FieldInfo():
     editable: bool = True
     help_text: str | None = None
     # widget type for the field  (default infered from field type)
-    widget_type: Literal[
-        'ui.input', 'ui.number', 'ui.textarea', 'ui.checkbox', 'ui.switch', 'ui.select', 'ui.radio', 'ui.toggle', 'ui.color_input', 'ui.input_chips',
-        'datetime', 'date', 'time', 'timedelta',
-        'slider', 'rating',
-        'editgrid', 'modelselect',
-    ] | None = None
+    widget_type: WidgetType | None = None
 
     # ui.element
     props: str | None = None

@@ -170,7 +170,9 @@ class ModelList:
             self._render_items()
 
         if not self._auto_update_registered and isinstance(self._data, ReactiveAdapter):
-            self._data.on_change(lambda: self.update_rows())
+            def _refresh() -> None:
+                self.update_rows()
+            self._data.on_change(_refresh)
             self._auto_update_registered = True
 
         return self
@@ -202,7 +204,7 @@ class DrillDownWrapper:
     _delete_button: str | None
     _list_kwargs: dict[str, Any]
 
-    def __init__(self, item_type: type[T], adapter: CollectionAdapter, **kwargs: Any) -> None:
+    def __init__(self, item_type: type[BaseModel], adapter: CollectionAdapter, **kwargs: Any) -> None:
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {type(item_type)}")
         self._item_type = item_type

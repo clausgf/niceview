@@ -130,12 +130,12 @@ class ModelForm():
 
     @typing.overload
     @classmethod
-    def from_item(cls, item: BaseModel, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self: ...
+    def from_item(cls, item: BaseModel, /, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self: ...
     @typing.overload
     @classmethod
-    def from_item(cls, item_type: type[BaseModel], item: BaseModel, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self: ...
+    def from_item(cls, item_type: type[BaseModel], item: BaseModel, /, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self: ...
     @classmethod
-    def from_item(cls, item_type_or_item: 'type[BaseModel] | BaseModel', item: 'BaseModel | None' = None, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
+    def from_item(cls, item_type_or_item: 'type[BaseModel] | BaseModel', item: 'BaseModel | None' = None, /, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
         Create a ModelForm editing an in-memory item (no persistence).
 
@@ -241,7 +241,12 @@ class ModelForm():
 
         Use this for master-detail navigation (switching the displayed item at runtime).
         """
-        item_adapter: ItemAdapter = BoundItem(adapter, key) if key is not None else adapter  # type: ignore[arg-type]
+        # The overloads guarantee: with key -> CollectionAdapter, without key -> ItemAdapter.
+        item_adapter: ItemAdapter
+        if key is not None:
+            item_adapter = BoundItem(typing.cast(CollectionAdapter, adapter), key)
+        else:
+            item_adapter = typing.cast(ItemAdapter, adapter)
         self._item_adapter = item_adapter
         item = item_adapter.read()
         if not isinstance(item, BaseModel):
@@ -263,7 +268,7 @@ class ModelForm():
 
     def save(self) -> None:
         """Persist the current item to the adapter. No-op if validation errors are present."""
-        if not self.adapter_bound:
+        if self._item_adapter is None:
             raise ValueError("No adapter set. Use from_adapter(), from_json(), or load() first.")
 
         if self.has_validation_errors:
@@ -469,11 +474,11 @@ class ModelForm():
             fk_info = self._get_fk_info(field_name)
             if fk_info is not None:
                 fk_field, parent_value = fk_info
-                data = FilteredAdapter(
-                    repo,
-                    predicate=lambda item, fk=fk_field, val=parent_value: getattr(item, fk, None) == val,
-                    defaults={fk_field: parent_value},
-                )
+
+                def matches_parent(item: Any, fk: str = fk_field, val: Any = parent_value) -> bool:
+                    return getattr(item, fk, None) == val
+
+                data = FilteredAdapter(repo, predicate=matches_parent, defaults={fk_field: parent_value})
             else:
                 data = ListAdapter(field_info.item_type, getattr(self._validated_item, field_name))
         else:
@@ -738,7 +743,7 @@ class ModelForm():
                 value = float(value) if value is not None else 0.0
 
         elif widget_type == 'ui.input_chips':
-            expanded = []
+            expanded: list[Any] = []
             for v in value:
                 if isinstance(v, str) and ',' in v:
                     expanded.extend(item.strip() for item in v.split(','))
@@ -775,7 +780,9 @@ class ModelForm():
             # Do NOT also set the relationship attribute: SQLAlchemy would cascade-insert the
             # detached related instance, violating UNIQUE constraints on the related table.
             fk_field = f'{field_name}_id'
-            if fk_field in getattr(type(self._current_item), 'model_fields', {}):
+            assert self._current_item is not None
+            if fk_field in type(self._current_item).model_fields:
+                fk_val: Any
                 if value is not None:
                     key_str = repository.key_from_item(value)
                     fk_type = type(self._current_item).model_fields[fk_field].annotation

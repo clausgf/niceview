@@ -228,7 +228,9 @@ class ModelGrid:
         self.widget.on('selectionChanged', self._handle_selection_changed)
 
         if not self._auto_update_registered and isinstance(self._data, ReactiveAdapter):
-            self._data.on_change(lambda: self.update_rows())
+            def _refresh() -> None:
+                self.update_rows()
+            self._data.on_change(_refresh)
             self._auto_update_registered = True
 
         return self

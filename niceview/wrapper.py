@@ -445,7 +445,14 @@ class EditFormWrapper():
         """Create an EditFormWrapper backed by an in-memory item. Renders immediately."""
         wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _FORM_WRAPPER_INPUT_KEYS}
         repositories: 'dict | None' = kwargs.pop('repositories', None)
-        form = ModelForm.from_item(item_type_or_item, item, **kwargs)
+        if isinstance(item_type_or_item, BaseModel):
+            if item is not None:
+                raise TypeError("When passing an item instance as the first argument, do not pass a second item")
+            form = ModelForm.from_item(item_type_or_item, **kwargs)
+        else:
+            if item is None:
+                raise TypeError("When passing an item type as the first argument, an item instance is required")
+            form = ModelForm.from_item(item_type_or_item, item, **kwargs)
         if repositories:
             form.with_repositories(repositories)
         instance = cls(form, **wrapper_kwargs)

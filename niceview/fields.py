@@ -8,7 +8,7 @@ import importlib
 
 import annotated_types
 import pydantic
-from niceview.fieldinfo import FieldInfo, _merge_field_infos
+from niceview.fieldinfo import FieldInfo, WidgetType, _merge_field_infos
 
 try:
     import sqlalchemy
@@ -24,7 +24,7 @@ log = logging.getLogger('niceview')
 class _FieldInfoResolver:
     """Converts a single Pydantic or SQLModel field annotation to a niceview FieldInfo."""
 
-    _widget_lookup: dict[type, str] = {
+    _widget_lookup: dict[type, WidgetType] = {
         str: 'ui.input',
         int: 'ui.number',
         float: 'ui.number',
@@ -281,6 +281,7 @@ class Fields(typing.Mapping[str, FieldInfo]):
             if not self.is_included(field_name):
                 continue
 
+            fi: FieldInfo | None
             if field_name in pydantic_fields:
                 fi = resolver.from_pydantic(field_name, pydantic_fields[field_name])
             elif is_sqlmodel:
