@@ -309,7 +309,7 @@ class TestJsonAdapter:
         adapter = JsonAdapter(Item, path, create_if_not_exist=True)
         adapter.save(Item(name='v2', value=2))
         # temp file must not linger
-        assert not path.with_suffix('.tmp').exists()
+        assert not path.with_name(path.name + '.tmp').exists()
         assert path.exists()
 
     def test_create_if_not_exist_false_with_existing_file(self, tmp_path):
@@ -561,7 +561,7 @@ class TestJsonListAdapterReload:
         path = tmp_path / 'items.json'
         adapter = JsonListAdapter(Item, path)
         adapter.create(Item(name='x'))
-        assert not path.with_suffix('.tmp').exists()
+        assert not path.with_name(path.name + '.tmp').exists()
 
 
 # ---------------------------------------------------------------------------
@@ -945,10 +945,28 @@ class TestSqlModelAdapterUpdate:
         with pytest.raises(ValueError, match='Optimistic Locking'):
             adapter.update(item)  # stale lock field
 
+    def test_update_conflict_raises_conflict_error(self, engine):
+        # The conflict is a ConflictError (subclass of ValueError), so UI wrappers
+        # can catch it specifically while old callers catching ValueError still work.
+        adapter = SqlModelAdapter(DbItem, engine)
+        item = adapter.create(DbItem(name='conflict2'))
+        item.name = 'v1'
+        adapter.update(item)
+        item.name = 'v2'
+        with pytest.raises(ConflictError):
+            adapter.update(item)
+
     def test_update_missing_raises(self, engine):
         adapter = SqlModelAdapter(DbItem, engine)
         ghost = DbItem(id=9999, name='ghost', updated_at=_now())
         with pytest.raises(ValueError):
+            adapter.update(ghost)
+
+    def test_update_missing_is_not_conflict(self, engine):
+        # A deleted/missing row must report "not found", not an optimistic-lock conflict.
+        adapter = SqlModelAdapter(DbItem, engine)
+        ghost = DbItem(id=9999, name='ghost', updated_at=_now())
+        with pytest.raises(ValueError, match='not found'):
             adapter.update(ghost)
 
     def test_update_no_lock_field(self, engine):

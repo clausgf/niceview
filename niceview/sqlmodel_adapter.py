@@ -12,7 +12,7 @@ import pydantic
 from sqlalchemy import Engine
 import sqlmodel
 
-from niceview.dataadapter import CollectionAdapter, ReloadableAdapter, _ChangeNotifier
+from niceview.dataadapter import CollectionAdapter, ConflictError, ReloadableAdapter, _ChangeNotifier
 
 log = logging.getLogger('niceview')
 
@@ -114,9 +114,13 @@ class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T], ReloadableAdapter):
                 )
                 db_item = session.exec(stmt).first()
                 if not db_item:
-                    raise ValueError(
-                        f"Optimistic Locking: Item with key={key} not found or already updated. "
-                        f"(expected lock={getattr(item, self._lock_field)})"
+                    # Distinguish a real conflict from a deleted/missing row.
+                    if session.get(self._item_type, self._key_to_native(key)) is None:
+                        raise ValueError(f"Item with key {key} not found in the database.")
+                    log.warning(f"Optimistic lock conflict for key={key} (expected lock={getattr(item, self._lock_field)})")
+                    raise ConflictError(
+                        "Optimistic Locking: this item was changed by another user while you were editing it. "
+                        "Please reload and re-apply your changes."
                     )
             else:
                 db_item = session.get(self._item_type, self._key_to_native(key))

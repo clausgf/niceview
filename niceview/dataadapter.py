@@ -10,8 +10,12 @@ import pydantic
 log = logging.getLogger('niceview')
 
 
-class ConflictError(Exception):
-    """Raised when a save is rejected because another user modified the item in the meantime."""
+class ConflictError(ValueError):
+    """Raised when a save is rejected because another user modified the item in the meantime.
+
+    Subclasses ValueError for backward compatibility: optimistic locking conflicts
+    were previously reported as plain ValueError.
+    """
     pass
 
 
@@ -292,8 +296,9 @@ class JsonAdapter(Generic[T]):
     Writes are atomic (.tmp → rename).
 
     lock_field: if set, save() compares the field value against the current file
-    contents before writing. A mismatch means another user saved in the meantime
-    and raises ValueError (optimistic locking). The field is updated to now() on
+    contents before writing (optimistic locking). A mismatch means another user
+    saved in the meantime and raises ConflictError; if the file cannot be read
+    during the check, StorageError is raised. The field is updated to now() on
     every successful save. A per-file threading.Lock makes the read-compare-write
     sequence atomic within the process.
 
@@ -368,7 +373,9 @@ class JsonAdapter(Generic[T]):
         return item
 
     def _write(self, item: T) -> None:
-        temp_file = self._path_name.with_suffix('.tmp')
+        # Append .tmp to the full name (data.json -> data.json.tmp) so files that
+        # share a stem but differ in extension never collide on the temp file.
+        temp_file = self._path_name.with_name(self._path_name.name + '.tmp')
         temp_file.write_text(item.model_dump_json(indent=2), encoding='utf-8')
         temp_file.rename(self._path_name)
 
@@ -408,7 +415,7 @@ class JsonListAdapter(ListAdapter[T], ReloadableAdapter):
 
     def _persist(self) -> None:
         """Write the full item list to disk atomically."""
-        temp_file = self._path_name.with_suffix('.tmp')
+        temp_file = self._path_name.with_name(self._path_name.name + '.tmp')
         data = [item.model_dump(mode='json') for item in self._items]
         temp_file.write_text(json.dumps(data, indent=2), encoding='utf-8')
         temp_file.rename(self._path_name)
