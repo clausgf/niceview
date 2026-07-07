@@ -96,7 +96,9 @@ class FieldInfo():
     label: str = ''
     placeholder: str | None = None
 
-    required: bool = False  # this is not the same as required in pydantic
+    # None = unresolved; set from pydantic's is_required() during field resolution.
+    # Note: UI-level required is not the same as required in pydantic.
+    required: bool | None = None
     hidden: bool = False
     editable: bool = True
     help_text: str | None = None

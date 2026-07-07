@@ -409,3 +409,101 @@ class TestValidation:
     def test_validation_error_list_empty_when_valid(self):
         fields = Fields(ValidatedModel)
         assert fields.validation_error_list({'name': 'Hi', 'age': 30}) == []
+
+
+# ---------------------------------------------------------------------------
+# Inherited fields (regression: cls.__annotations__ misses base-class fields)
+# ---------------------------------------------------------------------------
+
+class _BasePerson(pydantic.BaseModel):
+    name: str = ''
+
+
+class _Employee(_BasePerson):
+    salary: int = 0
+
+
+class TestInheritedFields:
+    def test_inherited_field_included(self):
+        fields = Fields(_Employee)
+        assert 'name' in fields
+        assert 'salary' in fields
+
+    def test_base_fields_come_first(self):
+        fields = Fields(_Employee)
+        assert list(fields) == ['name', 'salary']
+
+    def test_overridden_field_keeps_base_position(self):
+        class _Manager(_Employee):
+            name: str = 'boss'  # override
+        fields = Fields(_Manager)
+        assert list(fields) == ['name', 'salary']
+
+
+# ---------------------------------------------------------------------------
+# Annotated FieldInfo must not be mutated (it is shared class-level state)
+# ---------------------------------------------------------------------------
+
+class TestAnnotatedFieldInfoNotMutated:
+    def test_metadata_instance_unchanged_after_resolution(self):
+        nv = niceview.Field(min=5)
+
+        class M(pydantic.BaseModel):
+            x: Annotated[int, pydantic.Field(default=0), nv] = 0
+
+        before = dict(vars(nv))
+        fields = Fields(M)
+        assert vars(nv) == before  # no widget_type/label/etc. leaked into the annotation
+        assert fields['x'] is not nv  # resolution works on a copy
+        assert fields['x'].min == 5  # values still transferred
+        assert fields['x'].widget_type == 'ui.number'
+
+
+# ---------------------------------------------------------------------------
+# required resolution from pydantic
+# ---------------------------------------------------------------------------
+
+class TestRequiredResolution:
+    def test_required_field_resolved_true(self):
+        class M(pydantic.BaseModel):
+            req: str
+
+        assert Fields(M)['req'].required is True
+
+    def test_optional_field_resolved_false(self):
+        class M(pydantic.BaseModel):
+            opt: str = 'x'
+
+        assert Fields(M)['opt'].required is False
+
+    def test_explicit_required_not_overwritten(self):
+        class M(pydantic.BaseModel):
+            opt: Annotated[str, niceview.Field(required=True)] = 'x'
+
+        assert Fields(M)['opt'].required is True
+
+
+# ---------------------------------------------------------------------------
+# Meta.field_infos (documented plural name) and Meta.field_info (legacy)
+# ---------------------------------------------------------------------------
+
+class TestMetaFieldInfosNames:
+    def test_plural_field_infos_applied(self):
+        class M(pydantic.BaseModel):
+            name: str = ''
+            secret: str = ''
+
+            class Meta:
+                field_infos = {'secret': FieldInfo(hidden=True)}
+
+        assert Fields(M)['secret'].hidden is True
+
+    def test_singular_field_info_still_works(self):
+        class M(pydantic.BaseModel):
+            name: str = ''
+            secret: str = ''
+
+            class Meta:
+                field_info = {'secret': FieldInfo(hidden=True)}
+
+        assert Fields(M)['secret'].hidden is True

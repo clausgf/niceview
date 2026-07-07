@@ -12,8 +12,9 @@ class TestDefaults:
     def test_hidden_is_false(self):
         assert FieldInfo().hidden is False
 
-    def test_required_is_false(self):
-        assert FieldInfo().required is False
+    def test_required_is_unresolved_none(self):
+        # None = unresolved; Fields resolution sets it from pydantic's is_required()
+        assert FieldInfo().required is None
 
     def test_widget_type_is_none(self):
         assert FieldInfo().widget_type is None

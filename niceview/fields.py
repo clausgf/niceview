@@ -45,7 +45,11 @@ class _FieldInfoResolver:
         if field_type is None:
             raise ValueError(f"Field '{field_name}' has no type annotation")
 
-        nv_field_info = next((i for i in py_field_info.metadata if isinstance(i, FieldInfo)), FieldInfo())
+        # Copy the FieldInfo found in the Annotated metadata: it is attached to the model
+        # class and shared by every Fields/form/grid instance — mutating it would leak
+        # resolved state (labels, widget types, select options) across instances.
+        found = next((i for i in py_field_info.metadata if isinstance(i, FieldInfo)), None)
+        nv_field_info = _merge_field_infos(found, FieldInfo()) if found is not None else FieldInfo()
         log.debug(f"_field_info_from_pydantic: {field_name=} nv_field_info from metadata: {vars(nv_field_info)}")
 
         nv_field_info.field_type = field_type
@@ -257,12 +261,23 @@ class Fields(typing.Mapping[str, FieldInfo]):
     def _build_field_infos(self, resolver: _FieldInfoResolver, meta, field_infos: dict[str, FieldInfo]) -> tuple[list[str], dict[str, FieldInfo]]:
         pydantic_fields = self._item_type.model_fields
         is_sqlmodel = _SQLMODEL_AVAILABLE and issubclass(self._item_type, _SQLModel)
-        meta_field_info: dict[str, FieldInfo] = getattr(meta, 'field_info', {}) if meta is not None else {}
+        # 'field_infos' is the documented name; 'field_info' (singular) is accepted for backward compatibility.
+        meta_field_info: dict[str, FieldInfo] = {}
+        if meta is not None:
+            meta_field_info = getattr(meta, 'field_infos', None) or getattr(meta, 'field_info', {})
 
         names: list[str] = []
         infos: dict[str, FieldInfo] = {}
 
-        for field_name, field_type in self._item_type.__annotations__.items():
+        # Collect annotations across the MRO so inherited model fields are included
+        # (cls.__annotations__ only contains the class's own annotations). Base-class
+        # fields come first, matching pydantic's model_fields ordering; an override
+        # in a subclass keeps the base-class position (dict.update semantics).
+        annotations: dict[str, typing.Any] = {}
+        for klass in reversed(self._item_type.__mro__):
+            annotations.update(getattr(klass, '__annotations__', {}))
+
+        for field_name, field_type in annotations.items():
             if not self.is_included(field_name):
                 continue
 
