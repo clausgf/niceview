@@ -171,7 +171,7 @@ class TestSqlModelAdapterCRUD:
         second = self.adapter.read(key)
         self.adapter.update(second)
         # created now has a stale updated_at
-        with pytest.raises(ValueError, match='Optimistic Locking'):
+        with pytest.raises(ValueError, match='changed by another user'):
             self.adapter.update(created)
 
     def test_delete_removes_item(self):

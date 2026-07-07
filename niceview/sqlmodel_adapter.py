@@ -119,7 +119,7 @@ class SqlModelAdapter(_ChangeNotifier, CollectionAdapter[T], ReloadableAdapter):
                         raise ValueError(f"Item with key {key} not found in the database.")
                     log.warning(f"Optimistic lock conflict for key={key} (expected lock={getattr(item, self._lock_field)})")
                     raise ConflictError(
-                        "Optimistic Locking: this item was changed by another user while you were editing it. "
+                        "This item was changed by another user while you were editing it. "
                         "Please reload and re-apply your changes."
                     )
             else:

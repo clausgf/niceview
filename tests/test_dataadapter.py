@@ -949,7 +949,7 @@ class TestSqlModelAdapterUpdate:
         item.name = 'v1'
         v1 = adapter.update(item)
         item.name = 'v2'
-        with pytest.raises(ValueError, match='Optimistic Locking'):
+        with pytest.raises(ValueError, match='changed by another user'):
             adapter.update(item)  # stale lock field
 
     def test_update_conflict_raises_conflict_error(self, engine):
