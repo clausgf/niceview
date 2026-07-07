@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from nicegui import ui
 from nicegui.events import Handler, ClickEventArguments, ValueChangeEventArguments, handle_event
 
-from niceview.dataadapter import CollectionAdapter, ListAdapter, JsonListAdapter, ReactiveAdapter
+from niceview.dataadapter import CollectionAdapter, ConflictError, ListAdapter, JsonListAdapter, ReactiveAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 
@@ -110,6 +110,7 @@ class ModelGrid:
         self._data = adapter
         self._selection_handlers = []
         self._auto_update_registered = False
+        self._rows = []
         self.widget = None
         self._theme = kwargs.pop('theme', '')
         self._auto_size_columns = kwargs.pop('auto_size_columns', None)
@@ -206,7 +207,6 @@ class ModelGrid:
     def render(self) -> Self:
         """Render the ag-Grid widget into the current NiceGUI context."""
         cols = _collect_aggrid_cols(self._fields)
-        self._rows = []
         self.update_rows()
 
         aggrid_kwargs: dict[str, Any] = {}
@@ -317,7 +317,17 @@ class ModelGridInlineEdit(ModelGrid):
 
         if not errors:
             setattr(item, field_name, new_value)
-            self._data.update(item)
+            try:
+                self._data.update(item)
+            except ConflictError:
+                ui.notify('This item was changed by another user. The list has been refreshed — please edit again.', color='negative')
+                self.update_rows()
+                return
+            except Exception as e:
+                log.error(f'Error persisting cell edit for row {row_key}: {e}')
+                ui.notify(f'Error saving change: {e}', color='negative')
+                self.update_rows()
+                return
         else:
             ui.notify(f"Invalid value {new_value!r}: {errors}", color='negative')
             self.update_rows()

@@ -762,6 +762,13 @@ class TestModelGridUpdateRows:
         grid.update_rows()
         assert '__ui_row_key' in grid._rows[0]
 
+    def test_update_rows_works_before_render(self):
+        # Regression: _rows was only initialized in render(), so calling
+        # update_rows() first raised AttributeError.
+        grid = ModelGrid.from_list(Item, [Item(name='early', value=1)])
+        grid.update_rows()
+        assert [r['name'] for r in grid._rows] == ['early']
+
 
 # ---------------------------------------------------------------------------
 # ModelGridInlineEdit initialization

@@ -272,10 +272,7 @@ class ModelForm():
 
         try:
             updated = self._item_adapter.save(self.item)
-        except ConflictError as e:
-            ui.notify(str(e), color='negative')
-            return
-        except StorageError as e:
+        except (ConflictError, StorageError) as e:
             ui.notify(str(e), color='negative')
             return
         if updated is not None and updated is not self._validated_item:
@@ -317,7 +314,7 @@ class ModelForm():
         Returns self for chaining.
         """
         if not isinstance(repositories, dict):
-            raise TypeError(f"repositories must be a dictionary, got {type(dict)}")
+            raise TypeError(f"repositories must be a dictionary, got {type(repositories)}")
         self._model_repositories = repositories
         return self
 
