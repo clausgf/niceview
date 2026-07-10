@@ -140,6 +140,21 @@ class _FieldInfoResolver:
             log.debug(f"_field_info_from_pydantic: {field_name=} unrecognised type {field_type}, defaulting widget_type=ui.input")
 
     def _infer_list_widget_type(self, field_name: str, field_type: type, nv_field_info: FieldInfo) -> None:
+        args = typing.get_args(field_type)
+
+        # list[Literal[...]] -> multi-select. The list item is a Literal, so the
+        # allowed values become the select options and multiple is enabled.
+        if len(args) == 1 and typing.get_origin(args[0]) is typing.Literal:
+            literal_args = list(typing.get_args(args[0]))
+            nv_field_info.widget_type = 'ui.select'
+            nv_field_info.multiple = True
+            if nv_field_info.literal_options is None:
+                nv_field_info.literal_options = literal_args
+            if nv_field_info.select_options is None:
+                nv_field_info.select_options = literal_args
+            log.debug(f"_field_info_from_pydantic: {field_name=} list[Literal] -> ui.select multiple options={literal_args}")
+            return
+
         if nv_field_info.item_type is None:
             for arg in typing.get_args(field_type):
                 if isinstance(arg, type) and (

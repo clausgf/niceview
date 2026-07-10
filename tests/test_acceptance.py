@@ -673,6 +673,109 @@ class _AppointmentModel(pydantic.BaseModel):
     alarm: Optional[datetime.time] = pydantic.Field(default=None, title='Alarm')
 
 
+class _PermsModel(pydantic.BaseModel):
+    perms: list[Literal['read', 'write', 'admin']] = []
+
+
+class _OptPermsModel(pydantic.BaseModel):
+    perms: Optional[list[Literal['read', 'write', 'admin']]] = None
+
+
+class TestModelFormMultiSelectWidget:
+    async def test_multiple_flag_on_widget(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_PermsModel())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        assert captured[0].widgets['perms'].props.get('multiple') is not None
+
+    async def test_options_available(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_PermsModel())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        assert captured[0].widgets['perms'].options == ['read', 'write', 'admin']
+
+    async def test_initial_list_value_loads(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_PermsModel(perms=['read', 'admin']))
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        assert captured[0].widgets['perms'].value == ['read', 'admin']
+
+    async def test_selection_written_to_model(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_PermsModel())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        form = captured[0]
+        form.widgets['perms'].value = ['write', 'admin']
+        form._from_widget_value_to_current_item('perms')
+        assert form._current_item.perms == ['write', 'admin']
+
+    async def test_none_loads_as_empty_list(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_OptPermsModel())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        assert captured[0].widgets['perms'].value == []
+
+    async def test_empty_selection_sets_none_on_optional_model(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_OptPermsModel(perms=['read']))
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        form = captured[0]
+        form.widgets['perms'].value = []
+        form._from_widget_value_to_current_item('perms')
+        assert form._current_item.perms is None
+
+    async def test_empty_selection_stays_list_on_required_model(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_PermsModel(perms=['read']))
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        form = captured[0]
+        form.widgets['perms'].value = []
+        form._from_widget_value_to_current_item('perms')
+        assert form._current_item.perms == []
+
+
 class TestModelFormDatetimeWidget:
     async def test_datetime_microseconds_truncated_in_widget(self, user: User) -> None:
         captured = []

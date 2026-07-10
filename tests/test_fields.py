@@ -37,6 +37,11 @@ class ListModel(pydantic.BaseModel):
     items: list[SubItem] = []
 
 
+class MultiSelectModel(pydantic.BaseModel):
+    perms: list[Literal['read', 'write', 'admin']] = []
+    opt_perms: list[Literal['read', 'write', 'admin']] | None = None
+
+
 class TitledModel(pydantic.BaseModel):
     first_name: str = pydantic.Field(default='', title='First Name', description='Your first name')
     age: int = pydantic.Field(default=0, ge=0, le=150)
@@ -116,6 +121,30 @@ class TestWidgetTypeInference:
     def test_list_basemodel_item_type(self):
         fields = Fields(ListModel)
         assert fields['items'].item_type is SubItem
+
+    def test_list_literal_to_select(self):
+        fields = Fields(MultiSelectModel)
+        assert fields['perms'].widget_type == 'ui.select'
+
+    def test_list_literal_multiple(self):
+        fields = Fields(MultiSelectModel)
+        assert fields['perms'].multiple is True
+
+    def test_list_literal_options(self):
+        fields = Fields(MultiSelectModel)
+        assert fields['perms'].select_options == ['read', 'write', 'admin']
+
+    def test_optional_list_literal_to_select(self):
+        fields = Fields(MultiSelectModel)
+        assert fields['opt_perms'].widget_type == 'ui.select'
+
+    def test_optional_list_literal_multiple(self):
+        fields = Fields(MultiSelectModel)
+        assert fields['opt_perms'].multiple is True
+
+    def test_optional_list_literal_options(self):
+        fields = Fields(MultiSelectModel)
+        assert fields['opt_perms'].select_options == ['read', 'write', 'admin']
 
 
 # ---------------------------------------------------------------------------

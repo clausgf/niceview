@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import datetime
 import logging
+import types
 from typing import Any, Self, TypeVar, Unpack
 import typing
 from pathlib import Path
@@ -679,11 +680,23 @@ class ModelForm():
 
     # --- value conversion --------------------------------------------------
 
+    @staticmethod
+    def _field_allows_none(field_type: Any) -> bool:
+        """True if field_type is Optional / a Union that includes None."""
+        if typing.get_origin(field_type) is typing.Union or isinstance(field_type, types.UnionType):
+            return type(None) in typing.get_args(field_type)
+        return False
+
     def _from_current_item_to_widget_value(self, field_name: str, widget_type: str, widget: Any) -> None:
         """Push the current item's field value into the widget."""
         value = getattr(self._current_item, field_name)
 
-        if widget_type == 'modelselect':
+        if widget_type == 'ui.select' and self._fields[field_name].multiple:
+            # A multi-select widget expects a list; map a None model value to [].
+            if value is None:
+                value = []
+
+        elif widget_type == 'modelselect':
             item_type = self._fields[field_name].item_type
             assert item_type is not None, f"item_type for field '{field_name}' must not be None"
             repository = self._model_repositories[item_type]
@@ -722,7 +735,13 @@ class ModelForm():
         field_type = self._fields[field_name].field_type
         value = widget.value  # type: ignore[attr-defined]
 
-        if widget_type == 'ui.input' and typing.get_origin(field_type) == list:
+        if widget_type == 'ui.select' and self._fields[field_name].multiple:
+            # Map an empty multi-select back to None when the field is Optional,
+            # so Optional[list[...]] round-trips without special-casing elsewhere.
+            if not value and self._field_allows_none(field_type):
+                value = None
+
+        elif widget_type == 'ui.input' and typing.get_origin(field_type) == list:
             value = [item.strip() for item in value.split(',')]
             item_type = self._fields[field_name].item_type
             if item_type in (int, float, bool, str):

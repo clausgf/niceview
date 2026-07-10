@@ -497,12 +497,17 @@ NiceView automatically selects a widget based on the Python type annotation:
 | `datetime.datetime` | HTML datetime-local input |
 | `datetime.timedelta` | `ui.input` (ISO 8601 duration) |
 | `Literal['a', 'b', ...]` | `ui.select` |
+| `list[Literal['a', 'b', ...]]` | `ui.select` (multi-select; options from the `Literal`) |
 | `Enum` subclass | `ui.select` (keys = enum members, labels = member names) |
 | `list[str]` | `ui.input_chips` |
 | `list[BaseModel]` | Inline `EditGridWrapper` |
 | `Optional[T]` | Unwrapped to `T`, then same as above |
 | SQLModel relationship (single) | `modelselect` (select backed by model repository) |
 | SQLModel relationship (list) | Inline `EditGridWrapper` |
+
+For `list[Literal[...]]` the widget is a multi-select (`multiple=True`) whose options are the
+`Literal` values. With `Optional[list[Literal[...]]]`, a `None` model value shows as an empty
+selection, and clearing the selection writes `None` back — so `None` and `[]` are interchangeable.
 
 Additional widgets can be selected explicitly via `niceview.Field(widget_type='...')`:
 
@@ -656,7 +661,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 562 tests
+uv run pytest          # 575 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 
