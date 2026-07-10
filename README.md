@@ -340,13 +340,44 @@ or let the `from_*` factory methods create them transparently.
 | Adapter | Backs | Description |
 |---|---|---|
 | `ListAdapter(Type, list)` | Grid | In-memory list |
-| `JsonAdapter(Type, path)` | Form | Single object in a JSON file; supports `lock_field=`, `created_field=` |
-| `JsonListAdapter(Type, path)` | Grid | List of objects in a JSON file; supports `created_field=` |
+| `JsonAdapter(Type, path)` | Form | Single object in a JSON file; supports `lock_field=`, `created_field=`, `strict=` |
+| `JsonListAdapter(Type, path)` | Grid | List of objects in a JSON file; supports `created_field=`, `strict=` |
 | `SqlModelAdapter(Type, engine)` | Grid, Form | SQLModel / SQLAlchemy table *(optional)* |
 
 All JSON adapters write atomically (`.tmp` → rename).
 `JsonListAdapter` and `SqlModelAdapter` both implement `ReloadableAdapter`: `reload()` re-reads
 from disk (JSON) or fires a grid-refresh notification (SQL, where every `read()` is already live).
+
+**Lenient loading (default) vs strict loading:** `JsonAdapter` and `JsonListAdapter` default to
+`strict=False`, which means a hand-edited or partially-migrated file does not crash the
+application:
+
+- **Malformed JSON** or a non-object/non-array root → `log.error`, return a default instance / empty list.
+- **Unknown field** → `log.error`, field ignored.
+- **Field with invalid value** → `log.error`, field dropped and replaced by its model default.
+- **Required field absent (no default)** → `log.error`, item/load fails and raises (last resort).
+- **`OSError` reading the file** (`JsonAdapter` only) → `log.error`, return `Type()` with all defaults.
+
+Set `strict=True` to restore the original behaviour where any read error raises immediately.
+The `StorageError` raised by `JsonAdapter.save()` during an optimistic-locking check is only
+possible in strict mode (in lenient mode a corrupted file returns `None` lock values, so the
+check is skipped).
+
+The helper functions `lenient_model_load` and `lenient_list_load` are also importable from
+`niceview.dataadapter` for use outside the built-in adapters.
+
+> **Breaking change (since lenient default):** code that relied on `JsonAdapter.read()` or
+> `JsonListAdapter` raising on a malformed file must pass `strict=True` explicitly.
+
+```python
+from niceview.dataadapter import lenient_model_load, lenient_list_load
+
+# Load a single model from a JSON string, tolerating bad fields:
+item = lenient_model_load(MyModel, json_text, context='myfile.json')
+
+# Load a list, skipping unrecoverable items:
+items = lenient_list_load(MyModel, json_text, context='myfile.json')
+```
 
 **Optimistic locking:** When `lock_field=` is set, `save()` compares the stored timestamp against
 the one in memory before writing. The check only fires when *both* sides have a non-`None` value —
@@ -625,7 +656,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 521 tests
+uv run pytest          # 562 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 

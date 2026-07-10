@@ -293,14 +293,14 @@ class TestJsonAdapter:
 
     def test_read_missing_file_raises(self, tmp_path):
         path = tmp_path / 'data.json'
-        adapter = JsonAdapter(Item, path, create_if_not_exist=False)
+        adapter = JsonAdapter(Item, path, create_if_not_exist=False, strict=True)
         with pytest.raises(FileNotFoundError):
             adapter.read()
 
     def test_read_invalid_json_raises(self, tmp_path):
         path = tmp_path / 'data.json'
         path.write_text('not valid json', encoding='utf-8')
-        adapter = JsonAdapter(Item, path, create_if_not_exist=False)
+        adapter = JsonAdapter(Item, path, create_if_not_exist=False, strict=True)
         with pytest.raises(Exception):
             adapter.read()
 
@@ -373,7 +373,7 @@ class TestJsonAdapterLockField:
     def test_corrupted_file_raises_storage_error(self, tmp_path):
         from niceview.dataadapter import StorageError
         path = tmp_path / 'data.json'
-        adapter = JsonAdapter(TimestampedItem, path, lock_field='created_at')
+        adapter = JsonAdapter(TimestampedItem, path, lock_field='created_at', strict=True)
         path.write_text('not valid json', encoding='utf-8')
         item = TimestampedItem()
         with pytest.raises(StorageError):

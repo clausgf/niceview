@@ -26,6 +26,118 @@ class StorageError(Exception):
 
 T = TypeVar('T', bound=pydantic.BaseModel)
 
+__all__ = [
+    'ConflictError',
+    'StorageError',
+    'ItemAdapter',
+    'ReloadableAdapter',
+    'ReactiveAdapter',
+    'CollectionAdapter',
+    'BoundItem',
+    'ListAdapter',
+    'FilteredAdapter',
+    'JsonAdapter',
+    'JsonListAdapter',
+    'lenient_model_load',
+    'lenient_list_load',
+]
+
+
+def _lenient_validate(model_type: type[T], data: dict[str, Any], context: str) -> T:
+    """Validate *data* against *model_type*, removing invalid fields iteratively.
+
+    Unknown keys are logged and removed. Fields with bad values are logged and
+    dropped so the model default fills the gap. Raises if a required field has
+    no default and is absent (unrecoverable).
+    """
+    ctx = f' [{context}]' if context else ''
+    data = dict(data)
+
+    known = set(model_type.model_fields.keys())
+    for key in list(data):
+        if key not in known:
+            log.error(f'Unknown field {key!r} ignored in {model_type.__name__}{ctx}')
+            del data[key]
+
+    removed: set[str] = set()
+    while True:
+        try:
+            return model_type.model_validate(data)
+        except pydantic.ValidationError as exc:
+            new_bad: set[str] = set()
+            for err in exc.errors():
+                if not err['loc'] or err.get('type') == 'missing':
+                    continue
+                field = str(err['loc'][0])
+                if field not in removed:
+                    new_bad.add(field)
+            if not new_bad:
+                for err in exc.errors():
+                    if err['loc']:
+                        log.error(
+                            f'Field {str(err["loc"][0])!r} error in {model_type.__name__}{ctx}: {err["msg"]}'
+                        )
+                raise
+            for field in new_bad:
+                log.error(f'Invalid value for field {field!r} in {model_type.__name__}{ctx} — using default')
+                data.pop(field, None)
+                removed.add(field)
+
+
+def lenient_model_load(model_type: type[T], json_text: str, context: str = '') -> T:
+    """Load a single Pydantic model from *json_text* with best-effort error recovery.
+
+    - Malformed JSON or a non-object root → log.error, return ``model_type()``.
+    - Unknown fields → logged, ignored.
+    - Fields with invalid values → logged, dropped; the model default fills the gap.
+    - Required field absent with no default → log.error, raise (last resort).
+
+    *context* is a human-readable label (typically a file path) included in every
+    log message to help identify the source of the problem.
+    """
+    ctx = f' [{context}]' if context else ''
+    try:
+        data = json.loads(json_text)
+    except json.JSONDecodeError as exc:
+        log.error(f'JSON parse error{ctx}: {exc}')
+        return model_type()
+    if not isinstance(data, dict):
+        log.error(f'Expected JSON object, got {type(data).__name__}{ctx}')
+        return model_type()
+    return _lenient_validate(model_type, data, context)
+
+
+def lenient_list_load(item_type: type[T], json_text: str, context: str = '') -> list[T]:
+    """Load a list of Pydantic models from *json_text* with best-effort error recovery.
+
+    - Malformed JSON or non-array root → log.error, return ``[]``.
+    - Items with invalid fields → loaded leniently (bad fields get defaults).
+    - Items that cannot be recovered (e.g. missing required field) → skipped with log.error.
+
+    *context* is a human-readable label included in every log message.
+    """
+    ctx = f' [{context}]' if context else ''
+    try:
+        data = json.loads(json_text)
+    except json.JSONDecodeError as exc:
+        log.error(f'JSON parse error{ctx}: {exc}')
+        return []
+    if not isinstance(data, list):
+        log.error(f'Expected JSON array, got {type(data).__name__}{ctx}')
+        return []
+    result: list[T] = []
+    for i, item_data in enumerate(data):
+        item_context = f'{context}[{i}]' if context else f'[{i}]'
+        item_ctx = f' [{item_context}]'
+        if not isinstance(item_data, dict):
+            log.error(f'Item {i} is not a JSON object{item_ctx} — skipped')
+            continue
+        try:
+            result.append(_lenient_validate(item_type, item_data, item_context))
+        except Exception as exc:
+            log.error(f'Skipping item {i}{item_ctx}: {exc}')
+    return result
+
 
 @runtime_checkable
 class ItemAdapter(Generic[T], Protocol):
@@ -323,6 +435,7 @@ class JsonAdapter(Generic[T]):
         create_if_not_exist: bool = True,
         lock_field: str | None = None,
         created_field: str | None = None,
+        strict: bool = False,
     ) -> None:
         if not isinstance(item_type, type) or not issubclass(item_type, pydantic.BaseModel):
             raise TypeError(f"item_type must be a subclass of pydantic.BaseModel, got {item_type}")
@@ -336,12 +449,20 @@ class JsonAdapter(Generic[T]):
         self._path_name = path_name
         self._lock_field = lock_field
         self._created_field = created_field
+        self._strict = strict
         if create_if_not_exist and not path_name.exists():
             self.save(self._item_type())
 
     def read(self) -> T:
-        json_data = self._path_name.read_text(encoding='utf-8')
-        return self._item_type.model_validate_json(json_data)
+        if self._strict:
+            json_data = self._path_name.read_text(encoding='utf-8')
+            return self._item_type.model_validate_json(json_data)
+        try:
+            json_text = self._path_name.read_text(encoding='utf-8')
+        except OSError as exc:
+            log.error(f'Cannot read {self._path_name}: {exc}')
+            return self._item_type()
+        return lenient_model_load(self._item_type, json_text, str(self._path_name))
 
     def save(self, item: T) -> T:
         if self._lock_field:
@@ -392,17 +513,29 @@ class JsonListAdapter(ListAdapter[T], ReloadableAdapter):
     deletions within a session but reassigned after reload().
     """
 
-    def __init__(self, item_type: type[T], path_name: Path, create_if_not_exist: bool = True, created_field: str | None = None) -> None:
+    def __init__(
+        self,
+        item_type: type[T],
+        path_name: Path,
+        create_if_not_exist: bool = True,
+        created_field: str | None = None,
+        strict: bool = False,
+    ) -> None:
         if not isinstance(item_type, type) or not issubclass(item_type, pydantic.BaseModel):
             raise TypeError(f"item_type must be a subclass of pydantic.BaseModel, got {item_type}")
         if path_name.exists() and not path_name.is_file():
             raise ValueError(f"Path {path_name} exists but is not a file.")
 
         self._path_name = path_name
+        self._strict = strict
 
         if path_name.exists():
-            raw = json.loads(path_name.read_text(encoding='utf-8'))
-            items: list[T] = [item_type.model_validate(d) for d in raw]
+            raw_text = path_name.read_text(encoding='utf-8')
+            if strict:
+                raw = json.loads(raw_text)
+                items: list[T] = [item_type.model_validate(d) for d in raw]
+            else:
+                items = lenient_list_load(item_type, raw_text, str(path_name))
         elif create_if_not_exist:
             items = []
         else:
@@ -427,8 +560,12 @@ class JsonListAdapter(ListAdapter[T], ReloadableAdapter):
         holding a previous key is invalidated. Registered on_change() handlers
         (including ModelGrid) are notified automatically.
         """
-        raw = json.loads(self._path_name.read_text(encoding='utf-8'))
-        new_items = [self._item_type.model_validate(d) for d in raw]
+        raw_text = self._path_name.read_text(encoding='utf-8')
+        if self._strict:
+            raw = json.loads(raw_text)
+            new_items = [self._item_type.model_validate(d) for d in raw]
+        else:
+            new_items = lenient_list_load(self._item_type, raw_text, str(self._path_name))
         self._in_mutation = True
         try:
             self._items.clear()

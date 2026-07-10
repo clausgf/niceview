@@ -260,10 +260,10 @@ class TestFromJson:
         form = ModelForm.from_json(User, path, create_if_not_exist=False)
         assert form.item.name == 'Carol'
 
-    def test_create_if_not_exist_false_missing_file_raises(self, tmp_path):
+    def test_create_if_not_exist_false_missing_file_returns_defaults(self, tmp_path):
         path = tmp_path / 'user.json'
-        with pytest.raises(FileNotFoundError):
-            ModelForm.from_json(User, path, create_if_not_exist=False)
+        form = ModelForm.from_json(User, path, create_if_not_exist=False)
+        assert form.item == User()
 
     def test_save_writes_to_file(self, tmp_path):
         path = tmp_path / 'user.json'
