@@ -45,15 +45,15 @@ class CheckboxGroup:
     composes plain ui.checkbox elements and exposes the .value / on_value_change() surface that
     ModelForm's value-conversion and event-wiring code expects from a widget.
 
-    `checkboxes` (options -> ui.checkbox) and `container` (the ui.row/ui.column holding them)
+    `checkboxes` (options -> ui.checkbox) and `widget` (the ui.row/ui.column holding them)
     are public so callers can style individual checkboxes or the container after rendering,
     e.g. `form.w('perms', CheckboxGroup).checkboxes['admin'].classes('text-negative')`.
     """
 
-    def __init__(self, options: list[Any], checkboxes: dict[Any, ui.checkbox], container: ui.element) -> None:
+    def __init__(self, options: list[Any], checkboxes: dict[Any, ui.checkbox], widget: ui.element) -> None:
         self.options = options
         self.checkboxes = checkboxes
-        self.container = container
+        self.widget = widget
 
     @property
     def value(self) -> list[Any]:
@@ -68,11 +68,11 @@ class CheckboxGroup:
     @property
     def parent_slot(self) -> Any:
         # nicegui.events.handle_event() needs this to run the handler in the right UI context.
-        return self.container.parent_slot
+        return self.widget.parent_slot
 
     @property
     def client(self) -> Any:
-        return self.container.client
+        return self.widget.client
 
     def on_value_change(self, handler: Handler[ValueChangeEventArguments]) -> None:
         def relay(e: ValueChangeEventArguments) -> None:

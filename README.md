@@ -603,14 +603,14 @@ multi-select `ui.select`.
 `'checkbox_group'` fields render as `niceview.form.CheckboxGroup` — not a `ui.element` subclass
 (there is no native NiceGUI/Quasar equivalent), but public and importable like `ModelGrid` /
 `EditGridWrapper` for the same reason: `form.widgets[field_name]` and `form.w(field_name, ...)`
-return it directly. Its `checkboxes` (`dict[option, ui.checkbox]`) and `container`
+return it directly. Its `checkboxes` (`dict[option, ui.checkbox]`) and `widget`
 (the `ui.row`/`ui.column`) attributes are public for styling:
 ```python
 from niceview.form import CheckboxGroup
 
 group = form.w('perms', CheckboxGroup)     # typed narrowing, raises TypeError if not a CheckboxGroup
 group.checkboxes['admin'].classes('text-negative')
-group.container.classes('gap-x-8')
+group.widget.classes('gap-x-8')
 ```
 
 

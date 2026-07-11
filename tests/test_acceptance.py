@@ -891,7 +891,7 @@ class TestModelFormCheckboxGroupWidget:
             captured.append(form)
 
         await user.open('/')
-        assert isinstance(captured[0].widgets['perms'].container, ui.column)
+        assert isinstance(captured[0].widgets['perms'].widget, ui.column)
 
     async def test_inline_prop_gives_row_layout(self, user: User) -> None:
         captured = []
@@ -903,7 +903,7 @@ class TestModelFormCheckboxGroupWidget:
             captured.append(form)
 
         await user.open('/')
-        assert isinstance(captured[0].widgets['perms'].container, ui.row)
+        assert isinstance(captured[0].widgets['perms'].widget, ui.row)
 
     async def test_initial_list_value_checks_boxes(self, user: User) -> None:
         captured = []
