@@ -34,6 +34,50 @@ class FieldChangeEventArguments(UiEventArguments):
     value: Any
 
 
+class _CheckboxGroup:
+    """
+    Composite widget for list[Literal[...]] fields rendered as a row/column of ui.checkbox
+    elements. There is no built-in NiceGUI/Quasar multi-select checkbox-group widget, so this
+    composes plain ui.checkbox elements and exposes the .value / on_value_change() surface that
+    ModelForm's value-conversion and event-wiring code expects from a widget.
+    """
+
+    def __init__(self, options: list[Any], checkboxes: dict[Any, ui.checkbox], container: ui.element) -> None:
+        self.options = options
+        self._checkboxes = checkboxes
+        self._container = container
+
+    @property
+    def value(self) -> list[Any]:
+        return [opt for opt in self.options if self._checkboxes[opt].value]
+
+    @value.setter
+    def value(self, new_value: list[Any] | None) -> None:
+        selected = set(new_value or [])
+        for opt, checkbox in self._checkboxes.items():
+            checkbox.value = opt in selected
+
+    @property
+    def parent_slot(self) -> Any:
+        # nicegui.events.handle_event() needs this to run the handler in the right UI context.
+        return self._container.parent_slot
+
+    @property
+    def client(self) -> Any:
+        return self._container.client
+
+    def on_value_change(self, handler: Handler[ValueChangeEventArguments]) -> None:
+        def relay(e: ValueChangeEventArguments) -> None:
+            vce = ValueChangeEventArguments(sender=self, client=e.client, value=self.value, previous_value=None)  # type: ignore[arg-type]
+            handle_event(handler, vce)
+        for checkbox in self._checkboxes.values():
+            checkbox.on_value_change(relay)
+
+    def disable(self) -> None:
+        for checkbox in self._checkboxes.values():
+            checkbox.disable()
+
+
 class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
     """
     Kwarg Options for the ModelForm class.
@@ -401,6 +445,31 @@ class ModelForm():
         self._wire_immediate(widget, field_name)
         return widget
 
+    def _render_checkbox_group_widget(self, field_name: str, field_info: FieldInfo) -> _CheckboxGroup:
+        """
+        Render a row/column of ui.checkbox elements for a list[Literal[...]] field.
+        Options come from checkbox_options or literal_options on field_info.
+        Layout is vertical by default; pass props='inline' (same convention as ui.radio) for a
+        horizontal row.
+        """
+        raw_options = self._resolve_options(field_name, field_info, 'checkbox_options', 'literal_options')
+        items = list(raw_options.items()) if isinstance(raw_options, dict) else [(opt, opt) for opt in raw_options]
+
+        inline = field_info.props is not None and 'inline' in field_info.props.split()
+        container = ui.row if inline else ui.column
+
+        checkboxes: dict[Any, ui.checkbox] = {}
+        with container().classes('gap-x-4 gap-y-1') as container_element:
+            for opt, label in items:
+                checkboxes[opt] = ui.checkbox(text=str(label))
+
+        widget = _CheckboxGroup(list(checkboxes.keys()), checkboxes, container_element)
+        if not field_info.editable:
+            widget.disable()
+        self._from_current_item_to_widget_value(field_name, 'ui.checkbox_group', widget)
+        self._wire_immediate(widget, field_name)
+        return widget
+
     def _render_modelselect_widget(self, field_name: str, field_info: FieldInfo, kwargs: dict[str, Any]) -> ui.select:
         """Render a model-backed select widget using a CollectionAdapter from with_repositories()."""
         if not field_info.item_type:
@@ -546,6 +615,10 @@ class ModelForm():
 
         elif widget_type == 'ui.toggle':
             widget = self._render_toggle_widget(field_name, field_info)
+
+        elif widget_type == 'ui.checkbox_group':
+            widget = self._render_checkbox_group_widget(field_name, field_info)
+            is_native_widget = False
 
         elif widget_type == 'ui.color_input':
             widget = ui.color_input(**_pick_attrs(field_info, ['label', 'placeholder']), preview=field_info.color_preview)
@@ -696,6 +769,11 @@ class ModelForm():
             if value is None:
                 value = []
 
+        elif widget_type == 'ui.checkbox_group':
+            # Always multi-valued by construction; map a None model value to [].
+            if value is None:
+                value = []
+
         elif widget_type == 'modelselect':
             item_type = self._fields[field_name].item_type
             assert item_type is not None, f"item_type for field '{field_name}' must not be None"
@@ -738,6 +816,11 @@ class ModelForm():
         if widget_type == 'ui.select' and self._fields[field_name].multiple:
             # Map an empty multi-select back to None when the field is Optional,
             # so Optional[list[...]] round-trips without special-casing elsewhere.
+            if not value and self._field_allows_none(field_type):
+                value = None
+
+        elif widget_type == 'ui.checkbox_group':
+            # Same None <-> [] interchangeability as the ui.select multi-select case.
             if not value and self._field_allows_none(field_type):
                 value = None
 

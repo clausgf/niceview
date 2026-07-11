@@ -42,6 +42,12 @@ class MultiSelectModel(pydantic.BaseModel):
     opt_perms: list[Literal['read', 'write', 'admin']] | None = None
 
 
+class CheckboxGroupModel(pydantic.BaseModel):
+    perms: Annotated[list[Literal['read', 'write', 'admin']], niceview.Field(widget_type='ui.checkbox_group')] = []
+    opt_perms: Annotated[list[Literal['read', 'write', 'admin']] | None, niceview.Field(widget_type='ui.checkbox_group')] = None
+    perms_inline: Annotated[list[Literal['read', 'write', 'admin']], niceview.Field(widget_type='ui.checkbox_group', props='inline')] = []
+
+
 class ConstrainedListModel(pydantic.BaseModel):
     tags: list[Annotated[str, pydantic.Field(pattern=r'^[a-z]+$', min_length=2, max_length=10)]] = []
     scores: list[Annotated[int, pydantic.Field(ge=0, le=100)]] = []
@@ -155,6 +161,26 @@ class TestWidgetTypeInference:
     def test_list_annotated_int_item_type(self):
         fields = Fields(ConstrainedListModel)
         assert fields['scores'].item_type is int
+
+    def test_list_literal_checkbox_group_widget_type_preserved(self):
+        # widget_type='ui.checkbox_group' is an explicit override; must not be clobbered
+        # by list[Literal] auto-inference (which would otherwise pick 'ui.select').
+        fields = Fields(CheckboxGroupModel)
+        assert fields['perms'].widget_type == 'ui.checkbox_group'
+
+    def test_list_literal_checkbox_group_literal_options_populated(self):
+        # literal_options must be extracted even though widget_type was pre-set, so
+        # _infer_list_widget_type (which normally does this) never runs.
+        fields = Fields(CheckboxGroupModel)
+        assert fields['perms'].literal_options == ['read', 'write', 'admin']
+
+    def test_optional_list_literal_checkbox_group_literal_options_populated(self):
+        fields = Fields(CheckboxGroupModel)
+        assert fields['opt_perms'].literal_options == ['read', 'write', 'admin']
+
+    def test_checkbox_group_inline_prop_preserved(self):
+        fields = Fields(CheckboxGroupModel)
+        assert fields['perms_inline'].props == 'inline'
 
     def test_optional_list_literal_to_select(self):
         fields = Fields(MultiSelectModel)

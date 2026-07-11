@@ -54,9 +54,13 @@ class _FieldInfoResolver:
 
         nv_field_info.field_type = field_type
 
-        if typing.get_origin(field_type) == typing.Literal:
-            nv_field_info.literal_options = list(typing.get_args(field_type))
-            log.debug(f"_field_info_from_pydantic: {field_name=} Literal options: {nv_field_info.literal_options}")
+        # Extract Literal options for both Literal[...] and list[Literal[...]] (Optional-unwrapped)
+        # unconditionally, so they are available even if widget_type was explicitly overridden
+        # (e.g. widget_type='ui.radio' or 'ui.checkbox_group') and _infer_widget_type is skipped below.
+        if nv_field_info.literal_options is None:
+            nv_field_info.literal_options = self._extract_literal_options(field_type)
+            if nv_field_info.literal_options is not None:
+                log.debug(f"_field_info_from_pydantic: {field_name=} Literal options: {nv_field_info.literal_options}")
 
         if nv_field_info.widget_type is None:
             self._infer_widget_type(field_name, field_type, nv_field_info)
@@ -110,6 +114,24 @@ class _FieldInfoResolver:
 
     def _label_from_name(self, name: str) -> str:
         return name.replace('_', ' ').capitalize()
+
+    @staticmethod
+    def _extract_literal_options(field_type: type) -> list | None:
+        """Literal options for a Literal[...] field, or for a list[Literal[...]] field. Optional is unwrapped first."""
+        if typing.get_origin(field_type) is typing.Union or isinstance(field_type, types.UnionType):
+            non_none = [t for t in typing.get_args(field_type) if t is not type(None)]
+            if len(non_none) == 1:
+                field_type = non_none[0]
+
+        if typing.get_origin(field_type) == typing.Literal:
+            return list(typing.get_args(field_type))
+
+        if typing.get_origin(field_type) == list:
+            args = typing.get_args(field_type)
+            if len(args) == 1 and typing.get_origin(args[0]) is typing.Literal:
+                return list(typing.get_args(args[0]))
+
+        return None
 
     def _infer_widget_type(self, field_name: str, field_type: type, nv_field_info: FieldInfo) -> None:
         if typing.get_origin(field_type) is typing.Union or isinstance(field_type, types.UnionType):

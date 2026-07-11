@@ -524,9 +524,17 @@ Additional widgets can be selected explicitly via `niceview.Field(widget_type='.
 | `'ui.checkbox'` | `ui.checkbox` | Boolean (alternative to `ui.switch`) |
 | `'ui.radio'` | `ui.radio` | `Literal` / enum with radio buttons |
 | `'ui.toggle'` | `ui.toggle` | `Literal` / enum with toggle buttons |
+| `'ui.checkbox_group'` | Row/column of `ui.checkbox` | `list[Literal[...]]` / `Optional[list[Literal[...]]]` as checkboxes instead of a multi-select |
 | `'ui.color_input'` | `ui.color_input` | Hex color picker |
 | `'slider'` | `ui.slider` | `int`/`float` with a visual range slider; `min`/`max` from `ge`/`le` constraints |
 | `'rating'` | `ui.rating` | `int` 1–N star rating; `max` from `le` constraint (default 5) |
+
+`'ui.radio'` and `'ui.checkbox_group'` render vertically by default; pass `props='inline'` for a
+horizontal row (`niceview.Field(widget_type='ui.radio', props='inline')`). For `'ui.checkbox_group'`,
+options come from `checkbox_options` or (like `'ui.radio'`/`'ui.toggle'`) fall back to `literal_options`,
+which NiceView extracts automatically from `Literal[...]` — including inside `list[Literal[...]]` and
+`Optional[list[Literal[...]]]`, even when `widget_type` is overridden. `None` and `[]` are
+interchangeable for `Optional[list[Literal[...]]]`, same as with the multi-select `ui.select`.
 
 
 Field Customization
@@ -668,7 +676,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 592 tests
+uv run pytest          # 605 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 

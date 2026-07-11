@@ -11,6 +11,7 @@ from nicegui.elements.mixins.validation_element import ValidationFunction, Valid
 
 WidgetType = Literal[
     'ui.input', 'ui.number', 'ui.textarea', 'ui.checkbox', 'ui.switch', 'ui.select', 'ui.radio', 'ui.toggle', 'ui.color_input', 'ui.input_chips',
+    'ui.checkbox_group',
     'datetime', 'date', 'time', 'timedelta',
     'slider', 'rating',
     'editgrid', 'modelselect',
@@ -63,6 +64,9 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
 
     # additional options when field is rendered as ui.toggle
     toggle_options: Union[List, Dict, Callable[[], list]]
+
+    # additional options when field is rendered as ui.checkbox_group
+    checkbox_options: Union[List, Dict, Callable[[], list]]
 
     # additional options when field is rendered as ui.color_input
     color_preview: bool
@@ -144,6 +148,10 @@ class FieldInfo():
 
     # additional options when field is rendered as ui.toggle
     toggle_options: Union[None, List, Dict, Callable[[], list]] = None
+
+    # additional options when field is rendered as ui.checkbox_group (list[Literal[...]] as a
+    # row/column of checkboxes). Horizontal layout: props='inline' (same convention as ui.radio).
+    checkbox_options: Union[None, List, Dict, Callable[[], list]] = None
 
     # additional options when field is rendered as ui.color_input
     color_preview: bool = False

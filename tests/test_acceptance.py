@@ -251,6 +251,7 @@ class Choice(pydantic.BaseModel):
     # Literal auto-infers select_options; widget_type override picks them up as radio/toggle options
     color: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.radio')] = 'green'
     color_toggle: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.toggle')] = 'green'
+    color_inline: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.radio', props='inline')] = 'green'
 
 
 class ColorItem(pydantic.BaseModel):
@@ -288,6 +289,18 @@ class TestModelFormRadioWidget:
         await user.open('/')
         user.find('red').click()
         assert item.color == 'red'
+
+    async def test_radio_inline_prop_sets_horizontal_layout(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(Choice())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        assert captured[0].widgets['color_inline'].props.get('inline') is not None
 
 
 class TestModelFormColorInputWidget:
@@ -685,6 +698,24 @@ class _ConstrainedTagsModel(pydantic.BaseModel):
     tags: list[Annotated[str, pydantic.Field(pattern=r'^[a-z]+$', min_length=2, max_length=10)]] = []
 
 
+class _CheckboxPermsModel(pydantic.BaseModel):
+    perms: Annotated[list[Literal['read', 'write', 'admin']], niceview.Field(widget_type='ui.checkbox_group')] = []
+
+
+class _CheckboxPermsInlineModel(pydantic.BaseModel):
+    perms: Annotated[
+        list[Literal['read', 'write', 'admin']],
+        niceview.Field(widget_type='ui.checkbox_group', props='inline'),
+    ] = []
+
+
+class _OptCheckboxPermsModel(pydantic.BaseModel):
+    perms: Annotated[
+        Optional[list[Literal['read', 'write', 'admin']]],
+        niceview.Field(widget_type='ui.checkbox_group'),
+    ] = None
+
+
 class TestModelFormMultiSelectWidget:
     async def test_multiple_flag_on_widget(self, user: User) -> None:
         captured = []
@@ -837,6 +868,99 @@ class TestModelFormConstrainedChipsWidget:
         form._from_widget_value_to_current_item('tags')
         form._validate()
         assert 'tags' in form.validation_errors
+
+
+class TestModelFormCheckboxGroupWidget:
+    async def test_renders_a_checkbox_per_option(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(_CheckboxPermsModel()).render()
+
+        await user.open('/')
+        await user.should_see('read')
+        await user.should_see('write')
+        await user.should_see('admin')
+
+    async def test_default_layout_is_column(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_CheckboxPermsModel())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        assert isinstance(captured[0].widgets['perms']._container, ui.column)
+
+    async def test_inline_prop_gives_row_layout(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_CheckboxPermsInlineModel())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        assert isinstance(captured[0].widgets['perms']._container, ui.row)
+
+    async def test_initial_list_value_checks_boxes(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_CheckboxPermsModel(perms=['read', 'admin']))
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        assert captured[0].widgets['perms'].value == ['read', 'admin']
+
+    async def test_checking_a_box_updates_model(self, user: User) -> None:
+        item = _CheckboxPermsModel()
+
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(item).render()
+
+        await user.open('/')
+        user.find('write').click()
+        assert item.perms == ['write']
+
+    async def test_unchecking_a_box_updates_model(self, user: User) -> None:
+        item = _CheckboxPermsModel(perms=['read', 'write'])
+
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(item).render()
+
+        await user.open('/')
+        user.find('write').click()
+        assert item.perms == ['read']
+
+    async def test_none_loads_as_empty_selection(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_OptCheckboxPermsModel())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        assert captured[0].widgets['perms'].value == []
+
+    async def test_unchecking_last_box_sets_none_on_optional_model(self, user: User) -> None:
+        item = _OptCheckboxPermsModel(perms=['read'])
+
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(item).render()
+
+        await user.open('/')
+        user.find('read').click()
+        assert item.perms is None
 
 
 class TestModelFormDatetimeWidget:
