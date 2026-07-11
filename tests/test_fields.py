@@ -47,6 +47,14 @@ class ConstrainedListModel(pydantic.BaseModel):
     scores: list[Annotated[int, pydantic.Field(ge=0, le=100)]] = []
 
 
+class ConstrainedListAndItemsModel(pydantic.BaseModel):
+    # constraints on both the list itself (min/max_length) and its items (pattern, min/max_length)
+    tags: Annotated[
+        list[Annotated[str, pydantic.Field(pattern=r'^[a-z]+$', min_length=2, max_length=10)]],
+        pydantic.Field(min_length=1, max_length=3),
+    ] = []
+
+
 class TitledModel(pydantic.BaseModel):
     first_name: str = pydantic.Field(default='', title='First Name', description='Your first name')
     age: int = pydantic.Field(default=0, ge=0, le=150)
@@ -483,6 +491,46 @@ class TestConstrainedListValidation:
         fields = Fields(ConstrainedListModel)
         field_errors, _ = fields.validation_errors({'tags': [], 'scores': [200]})
         assert 'scores' in field_errors
+
+
+# ---------------------------------------------------------------------------
+# Regression: constraints on the list itself (Annotated[list[...], Field(...)])
+# combine correctly with constraints on its items (list[Annotated[...]])
+# ---------------------------------------------------------------------------
+
+class TestConstrainedListAndItemsValidation:
+    def test_widget_type_still_input_chips(self):
+        fields = Fields(ConstrainedListAndItemsModel)
+        assert fields['tags'].widget_type == 'ui.input_chips'
+        assert fields['tags'].item_type is str
+
+    def test_valid_no_errors(self):
+        fields = Fields(ConstrainedListAndItemsModel)
+        field_errors, _ = fields.validation_errors({'tags': ['ab', 'cd']})
+        assert field_errors == {}
+
+    def test_too_few_items_violates_list_min_length(self):
+        fields = Fields(ConstrainedListAndItemsModel)
+        field_errors, _ = fields.validation_errors({'tags': []})
+        assert 'tags' in field_errors
+
+    def test_too_many_items_violates_list_max_length(self):
+        fields = Fields(ConstrainedListAndItemsModel)
+        field_errors, _ = fields.validation_errors({'tags': ['ab', 'cd', 'ef', 'gh']})
+        assert 'tags' in field_errors
+
+    def test_item_pattern_violation_within_valid_list_length(self):
+        fields = Fields(ConstrainedListAndItemsModel)
+        field_errors, _ = fields.validation_errors({'tags': ['ok', 'BAD1']})
+        assert 'tags' in field_errors
+
+    def test_multiple_item_errors_are_combined_on_same_field(self):
+        fields = Fields(ConstrainedListAndItemsModel)
+        field_errors, _ = fields.validation_errors({'tags': ['BAD1', 'x']})
+        assert 'tags' in field_errors
+        # both the pattern violation (BAD1) and the min_length violation (x) are reported
+        assert 'pattern' in field_errors['tags']
+        assert 'at least 2 characters' in field_errors['tags']
 
 
 # ---------------------------------------------------------------------------
