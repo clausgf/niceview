@@ -18,11 +18,15 @@ One form showing all field types supported by NiceView:
 | `Literal[...]` | `ui.select`, `ui.radio`, or `ui.toggle` (via `widget_type` override) |
 | `Literal[...]` with `with_input=True` | `ui.select` (searchable) |
 | `list[str]` with `select_options` + `multiple=True` | `ui.select` (multi-select) |
+| `list[Literal[...]]` | `ui.select` (multi-select; options from the `Literal`, no `select_options` needed) |
+| `list[Literal[...]]` with `props='use-chips'` | `ui.select` (multi-select, selections shown as removable chips) |
+| `list[Literal[...]]` with `widget_type='checkbox_group'` | Row/column of `ui.checkbox` (alternative to the multi-select) |
 | `str` (color) | `ui.color_input` (via `widget_type` override) |
 | `list[str]` | `ui.input_chips` |
+| `list[Annotated[str, Field(pattern=...)]]` | `ui.input_chips` (item constraints enforced by validation, not the widget) |
 | `list[int]`, `list[float]`, `list[bool]` | `ui.input` (comma-separated) |
-| `int` with `ge`/`le` + `widget_type='slider'` | `ui.slider` |
-| `int` with `le` + `widget_type='rating'` | `ui.rating` |
+| `int` with `ge`/`le` + `widget_type='ui.slider'` | `ui.slider` |
+| `int` with `le` + `widget_type='ui.rating'` | `ui.rating` |
 | `list[BaseModel]` | Inline `EditGridWrapper` |
 
 This example also demonstrates how to customize the widgets, layout and style via `niceview.Field` metadata, ui.grid() and `ElementFilter`.
@@ -71,12 +75,19 @@ class AllTypes(pydantic.BaseModel):
     choice: Literal['red', 'green', 'blue'] = 'green' # label and widget are auto-detected from the Literal type
     choice_search: Annotated[Literal['apple', 'banana', 'cherry', 'date', 'elderberry'], niceview.Field(widget_type='ui.select', with_input=True, label='Fruit (searchable select)')] = 'apple'
     choice_multi: Annotated[list[str], niceview.Field(widget_type='ui.select', select_options=['red', 'green', 'blue'], multiple=True, clearable=True)] = pydantic.Field(default_factory=lambda: ['red', 'blue'], title='Colors (multi-select)')
+    perms_multiselect: list[Literal['read', 'write', 'admin']] = pydantic.Field(default_factory=lambda: ['read'], title='Permissions (list[Literal], auto multi-select)')  # type: ignore[arg-type]
+    perms_chips: Annotated[list[Literal['read', 'write', 'admin']], niceview.Field(props='use-chips', label='Permissions (multi-select with use-chips)')] = pydantic.Field(default_factory=lambda: ['read'])  # type: ignore[arg-type]
+    perms_checkboxes: Annotated[list[Literal['read', 'write', 'admin']], niceview.Field(widget_type='checkbox_group', props='inline', label='Permissions (checkbox_group)')] = pydantic.Field(default_factory=lambda: ['read'])  # type: ignore[arg-type]
     choice_radio: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.radio', props='inline')] = 'green'
     choice_toggle: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.toggle')] = 'green'
     color: Annotated[str, niceview.Field(widget_type='ui.color_input', label='Color', color_preview=True)] = '#4a90e2'
-    volume: Annotated[int, pydantic.Field(ge=0, le=100, title='Volume'), niceview.Field(widget_type='slider', step=1)] = 50
-    priority: Annotated[int, pydantic.Field(ge=1, le=5, title='Priority'), niceview.Field(widget_type='rating')] = 3
+    volume: Annotated[int, pydantic.Field(ge=0, le=100, title='Volume'), niceview.Field(widget_type='ui.slider', step=1)] = 50
+    priority: Annotated[int, pydantic.Field(ge=1, le=5, title='Priority'), niceview.Field(widget_type='ui.rating')] = 3
     chips: list[str] = pydantic.Field(default_factory=lambda: ['foo', 'bar'], title='Chips (list[str])')
+    chips_constrained: list[Annotated[str, pydantic.Field(pattern=r'^[a-z]+$', min_length=2, max_length=10)]] = pydantic.Field(
+        default_factory=lambda: ['ok', 'go'],
+        title='Chips (constrained items: lowercase, 2-10 chars)',
+    )
     nums: list[int] = pydantic.Field(default_factory=lambda: [1, 2, 3], title='Numbers (list[int], comma-separated)')
     tags: list[Tag] = pydantic.Field(
         default_factory=lambda: [Tag(label='important')],
