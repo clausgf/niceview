@@ -43,9 +43,9 @@ class MultiSelectModel(pydantic.BaseModel):
 
 
 class CheckboxGroupModel(pydantic.BaseModel):
-    perms: Annotated[list[Literal['read', 'write', 'admin']], niceview.Field(widget_type='ui.checkbox_group')] = []
-    opt_perms: Annotated[list[Literal['read', 'write', 'admin']] | None, niceview.Field(widget_type='ui.checkbox_group')] = None
-    perms_inline: Annotated[list[Literal['read', 'write', 'admin']], niceview.Field(widget_type='ui.checkbox_group', props='inline')] = []
+    perms: Annotated[list[Literal['read', 'write', 'admin']], niceview.Field(widget_type='checkbox_group')] = []
+    opt_perms: Annotated[list[Literal['read', 'write', 'admin']] | None, niceview.Field(widget_type='checkbox_group')] = None
+    perms_inline: Annotated[list[Literal['read', 'write', 'admin']], niceview.Field(widget_type='checkbox_group', props='inline')] = []
 
 
 class ConstrainedListModel(pydantic.BaseModel):
@@ -163,10 +163,10 @@ class TestWidgetTypeInference:
         assert fields['scores'].item_type is int
 
     def test_list_literal_checkbox_group_widget_type_preserved(self):
-        # widget_type='ui.checkbox_group' is an explicit override; must not be clobbered
+        # widget_type='checkbox_group' is an explicit override; must not be clobbered
         # by list[Literal] auto-inference (which would otherwise pick 'ui.select').
         fields = Fields(CheckboxGroupModel)
-        assert fields['perms'].widget_type == 'ui.checkbox_group'
+        assert fields['perms'].widget_type == 'checkbox_group'
 
     def test_list_literal_checkbox_group_literal_options_populated(self):
         # literal_options must be extracted even though widget_type was pre-set, so

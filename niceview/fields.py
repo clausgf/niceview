@@ -56,7 +56,7 @@ class _FieldInfoResolver:
 
         # Extract Literal options for both Literal[...] and list[Literal[...]] (Optional-unwrapped)
         # unconditionally, so they are available even if widget_type was explicitly overridden
-        # (e.g. widget_type='ui.radio' or 'ui.checkbox_group') and _infer_widget_type is skipped below.
+        # (e.g. widget_type='ui.radio' or 'checkbox_group') and _infer_widget_type is skipped below.
         if nv_field_info.literal_options is None:
             nv_field_info.literal_options = self._extract_literal_options(field_type)
             if nv_field_info.literal_options is not None:

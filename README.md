@@ -563,6 +563,11 @@ For `list[Literal[...]]` the widget is a multi-select (`multiple=True`) whose op
 `Literal` values. With `Optional[list[Literal[...]]]`, a `None` model value shows as an empty
 selection, and clearing the selection writes `None` back — so `None` and `[]` are interchangeable.
 
+To show selected values as removable chips instead of comma-separated text, pass Quasar's
+`use-chips` prop (same generic `props=` passthrough as `'ui.radio'`'s `inline`):
+`niceview.Field(multiple=True, props='use-chips')`. No NiceView-specific support needed —
+`ui.select` is a native widget, so `props` is applied directly to the underlying `QSelect`.
+
 `list[Annotated[T, Field(...)]]` items are unwrapped to their base type (`str`, `int`, `float`,
 `bool`, ...) for widget selection, so e.g. `list[Annotated[str, Field(pattern=r'^[a-z]+$',
 min_length=2, max_length=10)]]` still renders as `ui.input_chips`. The `Field(...)` constraints
@@ -577,17 +582,36 @@ Additional widgets can be selected explicitly via `niceview.Field(widget_type='.
 | `'ui.checkbox'` | `ui.checkbox` | Boolean (alternative to `ui.switch`) |
 | `'ui.radio'` | `ui.radio` | `Literal` / enum with radio buttons |
 | `'ui.toggle'` | `ui.toggle` | `Literal` / enum with toggle buttons |
-| `'ui.checkbox_group'` | Row/column of `ui.checkbox` | `list[Literal[...]]` / `Optional[list[Literal[...]]]` as checkboxes instead of a multi-select |
+| `'checkbox_group'` | Row/column of `ui.checkbox` | `list[Literal[...]]` / `Optional[list[Literal[...]]]` as checkboxes instead of a multi-select |
 | `'ui.color_input'` | `ui.color_input` | Hex color picker |
-| `'slider'` | `ui.slider` | `int`/`float` with a visual range slider; `min`/`max` from `ge`/`le` constraints |
-| `'rating'` | `ui.rating` | `int` 1–N star rating; `max` from `le` constraint (default 5) |
+| `'ui.slider'` | `ui.slider` | `int`/`float` with a visual range slider; `min`/`max` from `ge`/`le` constraints |
+| `'ui.rating'` | `ui.rating` | `int` 1–N star rating; `max` from `le` constraint (default 5) |
 
-`'ui.radio'` and `'ui.checkbox_group'` render vertically by default; pass `props='inline'` for a
-horizontal row (`niceview.Field(widget_type='ui.radio', props='inline')`). For `'ui.checkbox_group'`,
-options come from `checkbox_options` or (like `'ui.radio'`/`'ui.toggle'`) fall back to `literal_options`,
-which NiceView extracts automatically from `Literal[...]` — including inside `list[Literal[...]]` and
-`Optional[list[Literal[...]]]`, even when `widget_type` is overridden. `None` and `[]` are
-interchangeable for `Optional[list[Literal[...]]]`, same as with the multi-select `ui.select`.
+`widget_type` values that map directly to a native NiceGUI element are prefixed `'ui.*'`
+(`'ui.slider'` → `ui.slider`); niceview-specific widgets that aren't a single native element
+(e.g. `'checkbox_group'`, a composite of several `ui.checkbox`) are unprefixed — same as the
+type-based widgets `'datetime'`/`'date'`/`'time'`/`'timedelta'`/`'editgrid'`/`'modelselect'`.
+
+`'ui.radio'` and `'checkbox_group'` render vertically by default; pass `props='inline'` for a
+horizontal row (`niceview.Field(widget_type='ui.radio', props='inline')`). For `'checkbox_group'`,
+options come from `checkbox_group_options` or (like `'ui.radio'`/`'ui.toggle'`) fall back to
+`literal_options`, which NiceView extracts automatically from `Literal[...]` — including inside
+`list[Literal[...]]` and `Optional[list[Literal[...]]]`, even when `widget_type` is overridden.
+`None` and `[]` are interchangeable for `Optional[list[Literal[...]]]`, same as with the
+multi-select `ui.select`.
+
+`'checkbox_group'` fields render as `niceview.form.CheckboxGroup` — not a `ui.element` subclass
+(there is no native NiceGUI/Quasar equivalent), but public and importable like `ModelGrid` /
+`EditGridWrapper` for the same reason: `form.widgets[field_name]` and `form.w(field_name, ...)`
+return it directly. Its `checkboxes` (`dict[option, ui.checkbox]`) and `container`
+(the `ui.row`/`ui.column`) attributes are public for styling:
+```python
+from niceview.form import CheckboxGroup
+
+group = form.w('perms', CheckboxGroup)     # typed narrowing, raises TypeError if not a CheckboxGroup
+group.checkboxes['admin'].classes('text-negative')
+group.container.classes('gap-x-8')
+```
 
 
 Field Customization

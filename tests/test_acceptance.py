@@ -153,8 +153,8 @@ class TestModelFormInteraction:
 # ---------------------------------------------------------------------------
 
 class SliderItem(pydantic.BaseModel):
-    volume: Annotated[int, pydantic.Field(default=50, ge=0, le=100, title='Volume'), niceview.Field(widget_type='slider')]
-    priority: Annotated[int, pydantic.Field(default=3, ge=1, le=5, title='Priority'), niceview.Field(widget_type='rating')]
+    volume: Annotated[int, pydantic.Field(default=50, ge=0, le=100, title='Volume'), niceview.Field(widget_type='ui.slider')]
+    priority: Annotated[int, pydantic.Field(default=3, ge=1, le=5, title='Priority'), niceview.Field(widget_type='ui.rating')]
 
 
 class TestModelFormSliderWidget:
@@ -699,20 +699,20 @@ class _ConstrainedTagsModel(pydantic.BaseModel):
 
 
 class _CheckboxPermsModel(pydantic.BaseModel):
-    perms: Annotated[list[Literal['read', 'write', 'admin']], niceview.Field(widget_type='ui.checkbox_group')] = []
+    perms: Annotated[list[Literal['read', 'write', 'admin']], niceview.Field(widget_type='checkbox_group')] = []
 
 
 class _CheckboxPermsInlineModel(pydantic.BaseModel):
     perms: Annotated[
         list[Literal['read', 'write', 'admin']],
-        niceview.Field(widget_type='ui.checkbox_group', props='inline'),
+        niceview.Field(widget_type='checkbox_group', props='inline'),
     ] = []
 
 
 class _OptCheckboxPermsModel(pydantic.BaseModel):
     perms: Annotated[
         Optional[list[Literal['read', 'write', 'admin']]],
-        niceview.Field(widget_type='ui.checkbox_group'),
+        niceview.Field(widget_type='checkbox_group'),
     ] = None
 
 
@@ -891,7 +891,7 @@ class TestModelFormCheckboxGroupWidget:
             captured.append(form)
 
         await user.open('/')
-        assert isinstance(captured[0].widgets['perms']._container, ui.column)
+        assert isinstance(captured[0].widgets['perms'].container, ui.column)
 
     async def test_inline_prop_gives_row_layout(self, user: User) -> None:
         captured = []
@@ -903,7 +903,7 @@ class TestModelFormCheckboxGroupWidget:
             captured.append(form)
 
         await user.open('/')
-        assert isinstance(captured[0].widgets['perms']._container, ui.row)
+        assert isinstance(captured[0].widgets['perms'].container, ui.row)
 
     async def test_initial_list_value_checks_boxes(self, user: User) -> None:
         captured = []

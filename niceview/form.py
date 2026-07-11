@@ -16,9 +16,13 @@ from niceview.dataadapter import BoundItem, ConflictError, StorageError, JsonAda
 from niceview.fieldinfo import FieldInfo, _FieldInfoInputs, _merge_field_infos
 from niceview.fields import Fields
 
-log = logging.getLogger('niceview')
+if typing.TYPE_CHECKING:
+    # Only for the FormWidget type alias below; imported lazily elsewhere in this module
+    # to avoid a circular import (wrapper.py imports ModelForm from this module).
+    from niceview.grid import ModelGrid
+    from niceview.wrapper import EditGridWrapper
 
-W = TypeVar('W', bound=ui.element)
+log = logging.getLogger('niceview')
 
 
 def _pick_attrs(obj: Any, attrs: list[str]) -> dict[str, Any]:
@@ -34,48 +38,63 @@ class FieldChangeEventArguments(UiEventArguments):
     value: Any
 
 
-class _CheckboxGroup:
+class CheckboxGroup:
     """
     Composite widget for list[Literal[...]] fields rendered as a row/column of ui.checkbox
     elements. There is no built-in NiceGUI/Quasar multi-select checkbox-group widget, so this
     composes plain ui.checkbox elements and exposes the .value / on_value_change() surface that
     ModelForm's value-conversion and event-wiring code expects from a widget.
+
+    `checkboxes` (options -> ui.checkbox) and `container` (the ui.row/ui.column holding them)
+    are public so callers can style individual checkboxes or the container after rendering,
+    e.g. `form.w('perms', CheckboxGroup).checkboxes['admin'].classes('text-negative')`.
     """
 
     def __init__(self, options: list[Any], checkboxes: dict[Any, ui.checkbox], container: ui.element) -> None:
         self.options = options
-        self._checkboxes = checkboxes
-        self._container = container
+        self.checkboxes = checkboxes
+        self.container = container
 
     @property
     def value(self) -> list[Any]:
-        return [opt for opt in self.options if self._checkboxes[opt].value]
+        return [opt for opt in self.options if self.checkboxes[opt].value]
 
     @value.setter
     def value(self, new_value: list[Any] | None) -> None:
         selected = set(new_value or [])
-        for opt, checkbox in self._checkboxes.items():
+        for opt, checkbox in self.checkboxes.items():
             checkbox.value = opt in selected
 
     @property
     def parent_slot(self) -> Any:
         # nicegui.events.handle_event() needs this to run the handler in the right UI context.
-        return self._container.parent_slot
+        return self.container.parent_slot
 
     @property
     def client(self) -> Any:
-        return self._container.client
+        return self.container.client
 
     def on_value_change(self, handler: Handler[ValueChangeEventArguments]) -> None:
         def relay(e: ValueChangeEventArguments) -> None:
             vce = ValueChangeEventArguments(sender=self, client=e.client, value=self.value, previous_value=None)  # type: ignore[arg-type]
             handle_event(handler, vce)
-        for checkbox in self._checkboxes.values():
+        for checkbox in self.checkboxes.values():
             checkbox.on_value_change(relay)
 
     def disable(self) -> None:
-        for checkbox in self._checkboxes.values():
+        for checkbox in self.checkboxes.values():
             checkbox.disable()
+
+
+# Any type ModelForm.widgets[field_name] / w() may return: a native NiceGUI element for most
+# fields, or one of the composite widgets (ModelGrid, EditGridWrapper, CheckboxGroup) for
+# editgrid / checkbox_group fields — none of which are ui.element subclasses.
+if typing.TYPE_CHECKING:
+    FormWidget: typing.TypeAlias = ui.element | ModelGrid | EditGridWrapper | CheckboxGroup
+else:
+    FormWidget = object
+
+W = TypeVar('W', bound=FormWidget)
 
 
 class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
@@ -333,15 +352,17 @@ class ModelForm():
     # --- widget management -------------------------------------------------
 
     @typing.overload
-    def w(self, field_name: str) -> ui.element: ...
+    def w(self, field_name: str) -> FormWidget: ...
     @typing.overload
     def w(self, field_name: str, widget_type: type[W]) -> W: ...
-    def w(self, field_name: str, widget_type: 'type[W] | None' = None) -> 'ui.element | W':
+    def w(self, field_name: str, widget_type: 'type[W] | None' = None) -> 'FormWidget | W':
         """
         Return the rendered widget for a field, with optional type narrowing.
 
-          form.w('name')               # → ui.element
-          form.w('name', ui.input)     # → ui.input  (typed; raises TypeError if mismatch)
+          form.w('name')                   # → ui.element (or ModelGrid / EditGridWrapper /
+                                            #   CheckboxGroup for editgrid / checkbox_group fields)
+          form.w('name', ui.input)         # → ui.input        (typed; raises TypeError if mismatch)
+          form.w('perms', CheckboxGroup)   # → CheckboxGroup
 
         Raises KeyError if the field has no widget (e.g. not yet rendered or excluded).
         Raises TypeError if the widget exists but is not an instance of widget_type.
@@ -445,14 +466,14 @@ class ModelForm():
         self._wire_immediate(widget, field_name)
         return widget
 
-    def _render_checkbox_group_widget(self, field_name: str, field_info: FieldInfo) -> _CheckboxGroup:
+    def _render_checkbox_group_widget(self, field_name: str, field_info: FieldInfo) -> CheckboxGroup:
         """
         Render a row/column of ui.checkbox elements for a list[Literal[...]] field.
-        Options come from checkbox_options or literal_options on field_info.
+        Options come from checkbox_group_options or literal_options on field_info.
         Layout is vertical by default; pass props='inline' (same convention as ui.radio) for a
         horizontal row.
         """
-        raw_options = self._resolve_options(field_name, field_info, 'checkbox_options', 'literal_options')
+        raw_options = self._resolve_options(field_name, field_info, 'checkbox_group_options', 'literal_options')
         items = list(raw_options.items()) if isinstance(raw_options, dict) else [(opt, opt) for opt in raw_options]
 
         inline = field_info.props is not None and 'inline' in field_info.props.split()
@@ -463,10 +484,10 @@ class ModelForm():
             for opt, label in items:
                 checkboxes[opt] = ui.checkbox(text=str(label))
 
-        widget = _CheckboxGroup(list(checkboxes.keys()), checkboxes, container_element)
+        widget = CheckboxGroup(list(checkboxes.keys()), checkboxes, container_element)
         if not field_info.editable:
             widget.disable()
-        self._from_current_item_to_widget_value(field_name, 'ui.checkbox_group', widget)
+        self._from_current_item_to_widget_value(field_name, 'checkbox_group', widget)
         self._wire_immediate(widget, field_name)
         return widget
 
@@ -616,7 +637,7 @@ class ModelForm():
         elif widget_type == 'ui.toggle':
             widget = self._render_toggle_widget(field_name, field_info)
 
-        elif widget_type == 'ui.checkbox_group':
+        elif widget_type == 'checkbox_group':
             widget = self._render_checkbox_group_widget(field_name, field_info)
             is_native_widget = False
 
@@ -653,7 +674,7 @@ class ModelForm():
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
             self._wire_text_input(widget, field_name)
 
-        elif widget_type == 'slider':
+        elif widget_type == 'ui.slider':
             slider_min = field_info.min if field_info.min is not None else 0.0
             slider_max = field_info.max if field_info.max is not None else 100.0
             slider_kwargs: dict[str, Any] = {'min': slider_min, 'max': slider_max}
@@ -666,7 +687,7 @@ class ModelForm():
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
             self._wire_immediate(widget, field_name)
 
-        elif widget_type == 'rating':
+        elif widget_type == 'ui.rating':
             rating_max = int(field_info.max) if field_info.max is not None else 5
             with ui.column().classes('gap-1'):
                 if field_info.label:
@@ -769,7 +790,7 @@ class ModelForm():
             if value is None:
                 value = []
 
-        elif widget_type == 'ui.checkbox_group':
+        elif widget_type == 'checkbox_group':
             # Always multi-valued by construction; map a None model value to [].
             if value is None:
                 value = []
@@ -819,7 +840,7 @@ class ModelForm():
             if not value and self._field_allows_none(field_type):
                 value = None
 
-        elif widget_type == 'ui.checkbox_group':
+        elif widget_type == 'checkbox_group':
             # Same None <-> [] interchangeability as the ui.select multi-select case.
             if not value and self._field_allows_none(field_type):
                 value = None
@@ -838,7 +859,7 @@ class ModelForm():
             else:
                 value = float(value)
 
-        elif widget_type in ('slider', 'rating'):
+        elif widget_type in ('ui.slider', 'ui.rating'):
             if field_type == int:
                 value = int(value) if value is not None else 0
             else:
