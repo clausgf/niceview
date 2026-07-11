@@ -42,6 +42,11 @@ class MultiSelectModel(pydantic.BaseModel):
     opt_perms: list[Literal['read', 'write', 'admin']] | None = None
 
 
+class ConstrainedListModel(pydantic.BaseModel):
+    tags: list[Annotated[str, pydantic.Field(pattern=r'^[a-z]+$', min_length=2, max_length=10)]] = []
+    scores: list[Annotated[int, pydantic.Field(ge=0, le=100)]] = []
+
+
 class TitledModel(pydantic.BaseModel):
     first_name: str = pydantic.Field(default='', title='First Name', description='Your first name')
     age: int = pydantic.Field(default=0, ge=0, le=150)
@@ -133,6 +138,15 @@ class TestWidgetTypeInference:
     def test_list_literal_options(self):
         fields = Fields(MultiSelectModel)
         assert fields['perms'].select_options == ['read', 'write', 'admin']
+
+    def test_list_annotated_str_to_input_chips(self):
+        fields = Fields(ConstrainedListModel)
+        assert fields['tags'].widget_type == 'ui.input_chips'
+        assert fields['tags'].item_type is str
+
+    def test_list_annotated_int_item_type(self):
+        fields = Fields(ConstrainedListModel)
+        assert fields['scores'].item_type is int
 
     def test_optional_list_literal_to_select(self):
         fields = Fields(MultiSelectModel)
@@ -438,6 +452,37 @@ class TestValidation:
     def test_validation_error_list_empty_when_valid(self):
         fields = Fields(ValidatedModel)
         assert fields.validation_error_list({'name': 'Hi', 'age': 30}) == []
+
+
+# ---------------------------------------------------------------------------
+# Constrained list items: list[Annotated[str/int, Field(...)]]
+# ---------------------------------------------------------------------------
+
+class TestConstrainedListValidation:
+    def test_valid_items_no_errors(self):
+        fields = Fields(ConstrainedListModel)
+        field_errors, _ = fields.validation_errors({'tags': ['ok', 'go'], 'scores': [0, 50, 100]})
+        assert field_errors == {}
+
+    def test_pattern_violation_returns_field_error(self):
+        fields = Fields(ConstrainedListModel)
+        field_errors, _ = fields.validation_errors({'tags': ['ok', 'BAD1'], 'scores': []})
+        assert 'tags' in field_errors
+
+    def test_min_length_violation_returns_field_error(self):
+        fields = Fields(ConstrainedListModel)
+        field_errors, _ = fields.validation_errors({'tags': ['a'], 'scores': []})
+        assert 'tags' in field_errors
+
+    def test_max_length_violation_returns_field_error(self):
+        fields = Fields(ConstrainedListModel)
+        field_errors, _ = fields.validation_errors({'tags': ['waytoolongvalue'], 'scores': []})
+        assert 'tags' in field_errors
+
+    def test_numeric_range_violation_returns_field_error(self):
+        fields = Fields(ConstrainedListModel)
+        field_errors, _ = fields.validation_errors({'tags': [], 'scores': [200]})
+        assert 'scores' in field_errors
 
 
 # ---------------------------------------------------------------------------

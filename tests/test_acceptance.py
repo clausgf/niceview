@@ -681,6 +681,10 @@ class _OptPermsModel(pydantic.BaseModel):
     perms: Optional[list[Literal['read', 'write', 'admin']]] = None
 
 
+class _ConstrainedTagsModel(pydantic.BaseModel):
+    tags: list[Annotated[str, pydantic.Field(pattern=r'^[a-z]+$', min_length=2, max_length=10)]] = []
+
+
 class TestModelFormMultiSelectWidget:
     async def test_multiple_flag_on_widget(self, user: User) -> None:
         captured = []
@@ -774,6 +778,65 @@ class TestModelFormMultiSelectWidget:
         form.widgets['perms'].value = []
         form._from_widget_value_to_current_item('perms')
         assert form._current_item.perms == []
+
+
+class TestModelFormConstrainedChipsWidget:
+    async def test_renders_as_input_chips(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelForm.from_item(_ConstrainedTagsModel()).render()
+
+        await user.open('/')
+        await user.should_see(ui.input_chips)
+
+    async def test_valid_tags_no_error(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_ConstrainedTagsModel())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        form = captured[0]
+        form.widgets['tags'].value = ['ok', 'go']
+        form._from_widget_value_to_current_item('tags')
+        assert form._current_item.tags == ['ok', 'go']
+        form._validate()
+        assert not form.has_validation_errors
+
+    async def test_pattern_violation_sets_field_error(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_ConstrainedTagsModel())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        form = captured[0]
+        form.widgets['tags'].value = ['BAD1']
+        form._from_widget_value_to_current_item('tags')
+        form._validate()
+        assert 'tags' in form.validation_errors
+
+    async def test_min_length_violation_sets_field_error(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(_ConstrainedTagsModel())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        form = captured[0]
+        form.widgets['tags'].value = ['a']
+        form._from_widget_value_to_current_item('tags')
+        form._validate()
+        assert 'tags' in form.validation_errors
 
 
 class TestModelFormDatetimeWidget:

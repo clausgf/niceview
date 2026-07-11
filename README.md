@@ -500,6 +500,7 @@ NiceView automatically selects a widget based on the Python type annotation:
 | `list[Literal['a', 'b', ...]]` | `ui.select` (multi-select; options from the `Literal`) |
 | `Enum` subclass | `ui.select` (keys = enum members, labels = member names) |
 | `list[str]` | `ui.input_chips` |
+| `list[Annotated[str, Field(...)]]` | `ui.input_chips` (same as `list[str]`) |
 | `list[BaseModel]` | Inline `EditGridWrapper` |
 | `Optional[T]` | Unwrapped to `T`, then same as above |
 | SQLModel relationship (single) | `modelselect` (select backed by model repository) |
@@ -508,6 +509,12 @@ NiceView automatically selects a widget based on the Python type annotation:
 For `list[Literal[...]]` the widget is a multi-select (`multiple=True`) whose options are the
 `Literal` values. With `Optional[list[Literal[...]]]`, a `None` model value shows as an empty
 selection, and clearing the selection writes `None` back — so `None` and `[]` are interchangeable.
+
+`list[Annotated[T, Field(...)]]` items are unwrapped to their base type (`str`, `int`, `float`,
+`bool`, ...) for widget selection, so e.g. `list[Annotated[str, Field(pattern=r'^[a-z]+$',
+min_length=2, max_length=10)]]` still renders as `ui.input_chips`. The `Field(...)` constraints
+are not reinterpreted by NiceView — they stay part of the item's Pydantic annotation and are
+enforced by the model's own validation, surfacing as a normal field-level error on the list field.
 
 Additional widgets can be selected explicitly via `niceview.Field(widget_type='...')`:
 
@@ -661,7 +668,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 575 tests
+uv run pytest          # 586 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 

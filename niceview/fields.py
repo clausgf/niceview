@@ -157,6 +157,12 @@ class _FieldInfoResolver:
 
         if nv_field_info.item_type is None:
             for arg in typing.get_args(field_type):
+                # Unwrap Annotated[str, Field(pattern=..., min_length=..., ...)] to the
+                # underlying type. The constraints themselves don't need any special
+                # handling here: they stay part of the item's annotation and are enforced
+                # by pydantic's own model_validate(), which Fields.validation_errors() calls.
+                if typing.get_origin(arg) is typing.Annotated:
+                    arg = typing.get_args(arg)[0]
                 if isinstance(arg, type) and (
                     issubclass(arg, pydantic.BaseModel) or arg in (int, float, bool, str)
                 ):
