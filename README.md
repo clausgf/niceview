@@ -37,6 +37,7 @@ Contents
 - [ModelForm](#modelform)
 - [ModelGrid / ModelGridInlineEdit](#modelgrid--modelgridinlineedit)
 - [EditGridWrapper / EditFormWrapper](#editgridwrapper--editformwrapper)
+- [Card-Based List Editing](#card-based-list-editing)
 - [ModelList / DrillDownWrapper](#modellist--drilldownwrapper)
 - [Data Adapters](#data-adapters)
 - [Supported Field Types](#supported-field-types)
@@ -271,6 +272,58 @@ EditFormWrapper.from_item(user,
     on_change=my_callback,
 )
 ```
+
+
+Card-Based List Editing
+------------------------
+
+`ModelGrid`/`EditGridWrapper` render a list as a table with Add/Edit/Delete dialogs. For a
+mobile-friendly, inline-editable alternative — one card per item, each with its own layout and
+autosaving fields — compose `ModelForm.from_adapter()` with a `CollectionAdapter` and
+`ui.refreshable` yourself; there is no dedicated wrapper class for this because the layout is
+inherently application-specific:
+
+```python
+from nicegui import ui
+from niceview.dataadapter import JsonListAdapter
+from niceview.form import ModelForm
+
+adapter = JsonListAdapter(Forwarding, Path('forwardings.json'))
+
+@ui.refreshable
+def render_cards() -> None:
+    for key, item in adapter.items():
+        form = ModelForm.from_adapter(Forwarding, adapter, key, autosave=True)
+        with ui.card().classes('w-full'):
+            with ui.row().classes('w-full items-center'):
+                form.render_field('name').classes('grow')
+                ui.button(icon='delete').on_click(lambda _, it=item: delete_row(it))
+            with ui.row().classes('w-full'):
+                form.render_field('method').classes('w-1/4')
+                form.render_field('url').classes('grow')
+            form.render_nonfield_errors()
+
+def add_row() -> None:
+    adapter.create(Forwarding())
+    render_cards.refresh()
+
+def delete_row(item: Forwarding) -> None:
+    adapter.delete(adapter.key_from_item(item))
+    render_cards.refresh()
+
+render_cards()
+ui.button('Add', icon='add', on_click=add_row)
+```
+
+Each card is its own `ModelForm` bound to one item via `from_adapter(Type, adapter, key)`, so
+`autosave=True` persists every validated field change independently — no shared save button, no
+row selection. `render_field()` (see [Custom field layout](#modelform)) places fields freely
+within the card instead of the table-column layout `ModelGrid` would use. Add/Delete mutate the
+adapter directly and call `render_cards.refresh()` (NiceGUI's `@ui.refreshable`) to re-render the
+card list; use a `ReactiveAdapter`/`ObservableList`-backed adapter instead if you want the list to
+update automatically on mutation (see "Reactive updates" in [Data Adapters](#data-adapters)).
+
+See `examples/12_card_list.py` for a runnable version.
 
 
 ModelList / DrillDownWrapper
@@ -698,6 +751,7 @@ uv run python examples/01_form_basic.py
 | `09_drilldown.py` | `DrillDownWrapper` / `ModelList` |
 | `10_complex_form_navigation.py` | Split-panel navigation on desktop, full-page on mobile (pure NiceGUI) |
 | `11_tree_navigation.py` | Multi-level tree navigation — 4 levels, explicit back buttons, central URL factory |
+| `12_card_list.py` | Card-based list editing — one autosaving `ModelForm` per item, custom layout, `JsonListAdapter` |
 
 Unit tests cover data adapters, field resolution, validation logic, and pure CRUD operations.
 Acceptance tests (`tests/test_acceptance.py`) use the NiceGUI `User` fixture (headless, no browser)
