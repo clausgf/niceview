@@ -419,9 +419,10 @@ class TestDrillDownWrapperExposedElements:
         assert isinstance(wrapper.title, ui.label)
         assert wrapper.title.text == 'Contact List'
         assert isinstance(wrapper.add_button, ui.button)
-        assert wrapper.delete_button is None
-        assert wrapper.back_button is None
-        assert isinstance(wrapper.body, ui.column)
+        assert wrapper.add_button.visible
+        assert isinstance(wrapper.delete_button, ui.button)
+        assert not wrapper.delete_button.visible  # built (detail view needs it), hidden here
+        assert not wrapper.back_button.visible  # built (detail view needs it), hidden here (no on_back)
 
     async def test_detail_view_exposes_back_and_delete_button(self, user: User) -> None:
         contacts = [Contact(name='Alice')]
@@ -436,16 +437,43 @@ class TestDrillDownWrapperExposedElements:
 
         await user.open('/')
         wrapper = holder['wrapper']
-        assert isinstance(wrapper.back_button, ui.button)
-        assert isinstance(wrapper.delete_button, ui.button)
-        assert wrapper.add_button is None
+        assert wrapper.back_button.visible
+        assert wrapper.delete_button.visible
+        assert not wrapper.add_button.visible  # built (list view needs it), hidden here
         assert isinstance(wrapper.title, ui.label)
         assert wrapper.title.text == 'Alice'
 
-    async def test_title_row_and_body_animate_on_navigation(self, user: User) -> None:
-        # ui.refreshable_method.refresh() defers the actual re-render to a background
-        # task, so state-mutating calls need an await afterward (should_see's retry loop)
-        # before the newly-created elements are visible via the wrapper's attributes.
+    async def test_title_row_persists_across_navigation(self, user: User) -> None:
+        # title_row/its buttons are built once in render() and only updated (text/visibility)
+        # on navigation, not torn down and recreated -- so styling applied once survives.
+        contacts = [Contact(name='Alice')]
+        adapter = ListAdapter(Contact, contacts)
+        key = adapter.key_from_item(contacts[0])
+        holder = {}
+
+        @ui.page('/')
+        def page():
+            holder['wrapper'] = DrillDownWrapper.from_adapter(Contact, adapter).render()
+
+        await user.open('/')
+        wrapper = holder['wrapper']
+        wrapper.title_row.classes('my-custom-marker')
+        title_row_before, title_before = wrapper.title_row, wrapper.title
+
+        wrapper.open(key)
+        await user.should_see('Name')
+        assert wrapper.title_row is title_row_before
+        assert wrapper.title is title_before
+        assert 'my-custom-marker' in wrapper.title_row.classes
+        assert wrapper.title.text == 'Alice'
+
+        wrapper._back()
+        await user.should_not_see('Name')
+        assert wrapper.title_row is title_row_before
+        assert 'my-custom-marker' in wrapper.title_row.classes
+        assert wrapper.title.text == 'Contact List'
+
+    async def test_body_content_is_recreated_on_navigation(self, user: User) -> None:
         contacts = [Contact(name='Alice')]
         adapter = ListAdapter(Contact, contacts)
         key = adapter.key_from_item(contacts[0])
@@ -459,9 +487,8 @@ class TestDrillDownWrapperExposedElements:
         wrapper = holder['wrapper']
         wrapper.open(key)
         await user.should_see('Name')
-        assert 'niceview-slide-in-right' in wrapper.title_row.classes
-        assert 'niceview-slide-in-right' in wrapper.body.classes
-        wrapper._back()
-        await user.should_not_see('Name')
-        assert 'niceview-slide-in-left' in wrapper.title_row.classes
-        assert 'niceview-slide-in-left' in wrapper.body.classes
+        # the slide animation still lives on the (unexposed) body content
+        with user._client:
+            animated = [e for e in ui.context.client.layout.descendants()
+                        if 'niceview-slide-in-right' in e.classes]
+        assert len(animated) == 1

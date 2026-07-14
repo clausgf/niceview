@@ -247,13 +247,18 @@ class DrillDownWrapper:
     render_detail), or non-form content — e.g. rendering a nested
     DrillDownWrapper for a DirectoryAdapter's files. See README.
 
-    After render(), the NiceGUI elements are exposed for further styling:
+    After render(), the title row elements are exposed for further styling --
+    built once and updated (text/visibility only) rather than recreated on
+    every list<->detail navigation, so styling applied here is not lost:
         wrapper.title_row     → ui.row | None
         wrapper.title         → ui.label | None (list title, or the current item's title in detail view)
-        wrapper.back_button   → ui.button | None (detail view always; list view only if on_back= is set)
-        wrapper.add_button    → ui.button | None (list view only)
-        wrapper.delete_button → ui.button | None (detail view only)
-        wrapper.body          → ui.column | None (the swappable list/detail container)
+        wrapper.back_button   → ui.button | None (visible in detail always; in list only if on_back= is set)
+        wrapper.add_button    → ui.button | None (visible in list view; None entirely if add_button=None)
+        wrapper.delete_button → ui.button | None (visible in detail view; None entirely if delete_button=None)
+    The body (list/detail content) is not exposed: unlike the title row, it is genuinely
+    torn down and rebuilt on every navigation (list and detail are structurally different
+    content, and the swap is where the slide animation lives), so any styling applied to it
+    would be silently lost on the next navigation.
 
     Usage:
         wrapper = DrillDownWrapper.from_list(User, items, list_title='Users')
@@ -275,13 +280,14 @@ class DrillDownWrapper:
     _state: dict[str, Any]
     _auto_update_registered: bool
 
-    # Exposed NiceGUI elements (populated on each _title_row()/_body() refresh)
+    # Exposed NiceGUI elements: built once in render() and updated (not recreated) on every
+    # list<->detail navigation, so styling applied after render() stays put. The body itself
+    # (list/detail content) is not exposed -- see _body()'s docstring comment.
     title_row: ui.row | None
     title: ui.label | None
     back_button: ui.button | None
     add_button: ui.button | None
     delete_button: ui.button | None
-    body: ui.column | None
 
     def __init__(self, item_type: type[BaseModel], adapter: CollectionAdapter, **kwargs: Unpack[_DrillDownWrapperOptionInputs]) -> None:
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
@@ -307,7 +313,6 @@ class DrillDownWrapper:
         self.back_button = None
         self.add_button = None
         self.delete_button = None
-        self.body = None
 
         # Resolve the display title field once so the detail title row is consistent
         if self._item_title_field is None:
@@ -351,13 +356,13 @@ class DrillDownWrapper:
     def open(self, key: str) -> Self:
         """Navigate to the detail view for key — e.g. from a custom on_add handler."""
         self._state.update(view='detail', key=key, direction='right')
-        self._title_row.refresh()
+        self._update_title_row()
         self._body.refresh()
         return self
 
     def _back(self) -> None:
         self._state.update(view='list', key=None, direction='left')
-        self._title_row.refresh()
+        self._update_title_row()
         self._body.refresh()
 
     def _select(self, key: str) -> None:
@@ -383,30 +388,43 @@ class DrillDownWrapper:
         except (KeyError, ValueError):
             return key
 
-    @ui.refreshable_method
-    def _title_row(self) -> None:
-        self.title = None
-        self.back_button = None
-        self.add_button = None
-        self.delete_button = None
-        with ui.row().classes(f'w-full items-center gap-2 {_slide_class(self._state["direction"])}') as self.title_row:
-            if self._state['view'] == 'detail':
-                self.back_button = ui.button(icon='arrow_back').props('round dense flat').on_click(self._back)
-                self.title = ui.label(self._detail_title()).classes('text-h6 grow')
-                if self._delete_button is not None:
-                    self.delete_button = ui.button(self._delete_button, icon='delete').props('round dense flat color=negative').on_click(self._handle_delete)
-            else:
-                if self._on_back is not None:
-                    self.back_button = ui.button(icon='arrow_back').props('round dense flat').on_click(self._on_back)
-                self.title = ui.label(self._list_title).classes('text-h6 grow')
-                if self._add_button is not None:
-                    self.add_button = ui.button(self._add_button, icon='add').props('round dense flat color=primary').on_click(self._handle_add)
+    def _handle_back_click(self) -> None:
+        if self._state['view'] == 'detail':
+            self._back()
+        elif self._on_back is not None:
+            self._on_back()
+
+    def _build_title_row(self) -> None:
+        # Built once (unlike _body) and updated in place by _update_title_row(): its structure
+        # barely changes between list/detail -- just text and which buttons are visible -- so
+        # keeping it persistent lets callers style it once after render() instead of every
+        # element being wiped out on each list<->detail navigation.
+        with ui.row().classes('w-full items-center gap-2') as self.title_row:
+            self.back_button = ui.button(icon='arrow_back').props('round dense flat').on_click(self._handle_back_click)
+            self.title = ui.label('').classes('text-h6 grow')
+            if self._add_button is not None:
+                self.add_button = ui.button(self._add_button, icon='add').props('round dense flat color=primary').on_click(self._handle_add)
+            if self._delete_button is not None:
+                self.delete_button = ui.button(self._delete_button, icon='delete').props('round dense flat color=negative').on_click(self._handle_delete)
+
+    def _update_title_row(self) -> None:
+        assert self.back_button is not None and self.title is not None
+        is_detail = self._state['view'] == 'detail'
+        self.back_button.set_visibility(is_detail or self._on_back is not None)
+        self.title.set_text(self._detail_title() if is_detail else self._list_title)
+        if self.add_button is not None:
+            self.add_button.set_visibility(not is_detail)
+        if self.delete_button is not None:
+            self.delete_button.set_visibility(is_detail)
 
     # --- body ------------------------------------------------------------------
 
     @ui.refreshable_method
     def _body(self) -> None:
-        with ui.column().classes(f'w-full gap-2 {_slide_class(self._state["direction"])}') as self.body:
+        # Not exposed for styling: unlike title_row, this container is genuinely torn down
+        # and rebuilt on every navigation (list and detail are structurally different content),
+        # so any styling applied to it would be silently lost on the next swap.
+        with ui.column().classes(f'w-full gap-2 {_slide_class(self._state["direction"])}'):
             if self._state['view'] == 'detail' and self._state['key'] is not None:
                 self._render_detail_view(self._state['key'])
             else:
@@ -452,7 +470,7 @@ class DrillDownWrapper:
     def _set_detail_key(self, new_key: str) -> None:
         if new_key != self._state['key']:
             self._state['key'] = new_key
-            self._title_row.refresh()
+            self._update_title_row()
             self._body.refresh()
 
     def _render_detail_view(self, key: str) -> None:
@@ -492,7 +510,8 @@ class DrillDownWrapper:
 
     def render(self) -> Self:
         """Render the title row and list/detail body into the current NiceGUI context."""
-        self._title_row()
+        self._build_title_row()
+        self._update_title_row()
         self._body()
         if not self._auto_update_registered and isinstance(self._adapter, ReactiveAdapter):
             self._adapter.on_change(self._on_adapter_change)

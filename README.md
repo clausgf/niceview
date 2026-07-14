@@ -333,9 +333,11 @@ ModelList / DrillDownWrapper
 suited for mobile-first single-column navigation. `DrillDownWrapper` is an embeddable list
 <-> detail navigation widget built on top of it: a title row (Add in list view; Back + item
 title + Delete in detail view) plus a body that swaps between the list and a per-item detail
-view, with a slide animation on every swap. It owns no NiceGUI page/route of its own —
-`render()` draws into whatever context it's called in, same as any other niceview widget, so
-it can sit inside a `ui.card()`, a tab panel, or a bigger page layout without taking it over.
+view, with a slide animation on every swap. The title row is built once and only updated in
+place on navigation (not the body — see "Styling after render()" below); it owns no NiceGUI
+page/route of its own — `render()` draws into whatever context it's called in, same as any
+other niceview widget, so it can sit inside a `ui.card()`, a tab panel, or a bigger page layout
+without taking it over.
 
 ```python
 from niceview.modellist import ModelList, DrillDownWrapper
@@ -384,11 +386,17 @@ no upfront dialog, matching the autosave-first pattern used throughout niceview.
 navigates to a detail view programmatically, e.g. from a custom `on_add`.
 
 **Styling after render():** like `EditGridWrapper`/`EditFormWrapper`, `DrillDownWrapper` exposes
-its rendered elements — `wrapper.title_row`, `wrapper.title`, `wrapper.back_button`,
-`wrapper.add_button`, `wrapper.delete_button`, `wrapper.body` — all `| None` and repopulated on
-every list<->detail swap (they're recreated each time, so re-apply styling via `on_change`/after
-`open()`/`_back()` rather than caching a reference). `ModelList` exposes only `.widget` (the
-`ui.list`) — it has no title row of its own, so there's nothing else to expose.
+its title row elements — `wrapper.title_row`, `wrapper.title`, `wrapper.back_button`,
+`wrapper.add_button`, `wrapper.delete_button` (all `| None`; the two buttons are `None` only if
+disabled entirely via `add_button=None`/`delete_button=None`, never just because they're hidden
+in the current view). Unlike a naive refreshable, the title row is built exactly once in
+`render()` and only *updated* (text, visibility) on every list<->detail navigation, so styling
+applied once (`wrapper.title.classes(...)`) survives navigation instead of being wiped on the
+next swap. The body (list/detail content) is deliberately **not** exposed: it's genuinely torn
+down and rebuilt on every navigation — that's also where the slide animation lives — so any
+styling applied to it would be silently lost on the next swap; offering it would be misleading.
+`ModelList` exposes only `.widget` (the `ui.list`) — it has no title row of its own, so there's
+nothing else to expose.
 
 **Custom list rows and detail layout.** Both are escape hatches for the two cases the generic
 defaults can't handle: hand-placed field layout, and heterogeneous item types.
@@ -820,7 +828,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 644 tests
+uv run pytest          # 645 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 
@@ -857,6 +865,7 @@ Design decisions and Accepted Technical Debt
 - **`DrillDownWrapper` is embeddable, not page-owning (no `.register(base_path)`, no `@ui.page` of its own)**: An earlier version registered two NiceGUI pages (list + `{key}` detail) with a CSS-only desktop split-panel. In practice this was rarely useful on its own — real editors need custom detail layout and often heterogeneous item types in one collection, which a single auto-rendered `EditFormWrapper` per item can't express, and most call sites wanted the widget embedded inside an existing page/card rather than owning a URL. It was replaced by a `ui.refreshable_method`-driven list/detail body with a slide animation (same technique as manual multi-page-in-one-page navigation elsewhere) plus `render_list_item`/`render_detail` override hooks, dropping the split-panel layout and page registration entirely.
 - **`render_detail`'s `set_key` callback instead of a return value**: The first design had `render_detail` return the new key after a rename. That only works for synchronous renames — a "Name" input's `blur` handler fires well after `render_detail` has already returned, so the wrapper would never learn about the change. `set_key(new_key)`, callable at any time, fixes this at the cost of one extra parameter.
 - **`DrillDownWrapper`/`ModelList` still take `item_type` explicitly alongside `adapter`**, even though concrete adapters (`ListAdapter`, `JsonListAdapter`, ...) already know their item type internally. Kept for consistency with `ModelForm.from_adapter`, `ModelGrid.from_adapter`, and `EditFormWrapper.from_adapter`, which all take the same `(item_type, adapter, ...)` shape — and because `CollectionAdapter` doesn't guarantee item-type introspection (`DirectoryAdapter`'s items are always `FileEntry`, `FilteredAdapter` just wraps another adapter). Deriving it from the adapter would need a new required Protocol member across every adapter implementation (including the optional `SqlModelAdapter`) for a parameter that's one extra argument, not a real pain point.
+- **`DrillDownWrapper`'s title row is built once, not recreated on every navigation like the body**: the first version applied the same "tear down and rebuild" `ui.refreshable_method` treatment to both, which gave the title row a matching slide-in animation but meant any styling applied to `wrapper.title`/`wrapper.add_button`/etc. was silently wiped on the very next list<->detail swap. Since the title row's structure barely changes between views (same slots, just text and visibility), it's now built once in `render()` and updated in place (`.set_text()`/`.set_visibility()`), at the cost of dropping its own slide animation — the body still animates, since its content is genuinely rebuilt every time regardless.
 - **Multi-level tree navigation**: `DrillDownWrapper` covers the common 2-level (list → detail) case per instance, though nesting one inside another's `render_detail` (see `examples/13_directory_drilldown.py`'s directory-of-files → per-file editor pattern) composes further levels. For URL-addressable deep trees (card grid → edit form → sub-list → sub-detail, etc.) the recommended pattern is still explicit `@ui.page` routes with a central URL factory class (`R`) and a shared `page_header(title, back_url)` helper — see `examples/11_tree_navigation.py`. This keeps each page self-contained, makes URL changes a one-place edit, and ensures the back button is always explicit and visible (not relying on browser history).
 - **Form navigation / dirty state**: No detection when the user leaves an unsaved form. Options: (a) track dirty state via `on_change` and expose `is_dirty` property; (b) use a JS `beforeunload` guard (requires NiceGUI `ui.run_javascript`). Neither covers in-app navigation — NiceGUI has no built-in route guard.
 - **NiceGUI element lifecycle**: When are elements instantiated, active, deleted? `render()` must be called inside a NiceGUI page context; elements created outside a client context silently fail. No lifecycle hooks for cleanup.
