@@ -4,13 +4,15 @@ ModelList and DrillDownWrapper for mobile-friendly drill-down navigation.
 ModelList renders a Pydantic model collection as a Quasar list (ui.list / ui.item),
 suitable for touch-based single-column navigation.
 
-DrillDownWrapper registers two NiceGUI pages — a list page and a per-item detail page —
-and wires up the navigation between them.
+DrillDownWrapper is an embeddable (not page-owning) list <-> detail navigation
+widget: a title row plus a ui.refreshable body that swaps between a list view
+and a per-item detail view. Call render() inside your own ui.page / ui.card /
+ui.column, same as any other niceview widget.
 """
 from dataclasses import dataclass
 import logging
 from pathlib import Path
-from typing import Any, Self, TypeVar, Unpack
+from typing import Any, Callable, Self, TypeVar, Unpack
 import typing_extensions
 from pydantic import BaseModel
 from nicegui import ui
@@ -20,12 +22,36 @@ from niceview.dataadapter import CollectionAdapter, ListAdapter, JsonListAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 from niceview.form import ModelForm
-from niceview.wrapper import EditFormWrapper
-from niceview.util import submit_dialog
+from niceview.util import confirm_dialog
 
 log = logging.getLogger('niceview')
 
 T = TypeVar('T', bound=BaseModel)
+
+DetailRenderer = Callable[[CollectionAdapter, str, Callable[[str], None]], None]
+"""(adapter, key, set_key) -> render the detail body for the item at key. Call
+set_key(new_key) whenever the key changes -- e.g. from a "Name" input's blur
+handler that calls adapter.rename() -- to keep the wrapper's navigation state
+in sync; set_key can be called any time, not just synchronously while
+render_detail runs. Build your own ModelForm.from_adapter(...) here for full
+control over layout — including resolving a concrete pydantic type per item
+for heterogeneous collections."""
+
+ListItemRenderer = Callable[[str, Any, Callable[[], None]], None]
+"""(key, item, select) -> render one row of the list view. Call select() from
+a click handler to navigate to the detail view for this item."""
+
+_SLIDE_CSS = '''
+    @keyframes niceview-slide-in-right { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes niceview-slide-in-left  { from { transform: translateX(-100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    .niceview-slide-in-right { animation: niceview-slide-in-right 0.2s ease-out; }
+    .niceview-slide-in-left  { animation: niceview-slide-in-left  0.2s ease-out; }
+'''
+ui.add_css(_SLIDE_CSS, shared=True)
+
+
+def _slide_class(direction: str) -> str:
+    return 'niceview-slide-in-left' if direction == 'left' else 'niceview-slide-in-right'
 
 
 @dataclass(kw_only=True, slots=True)
@@ -180,29 +206,39 @@ class ModelList:
 
 class DrillDownWrapper:
     """
-    Registers two NiceGUI pages for mobile-friendly drill-down navigation:
-      - List page  (base_path)        : ModelList with Add button in the header
-      - Detail page (base_path/{key}) : ModelForm with Back and Delete buttons in the header
+    Embeddable list <-> detail navigation. render() draws a title row (Add in
+    list view; Back + item title + Delete in detail view) plus a body that
+    swaps between a list view and a per-item detail view, with a slide
+    animation on every swap. No NiceGUI page/route of its own — call it inside
+    your own ui.page / ui.card / ui.column, same as any other niceview widget.
 
-    Call register(base_path) during app setup — before ui.run() — to wire up the pages.
+    Default rendering (both overridable):
+      - list view:   ModelList-style rows (title/subtitle from field values)
+      - detail view: an autosaving ModelForm.from_adapter(item_type, adapter, key)
+
+    Override render_list_item / render_detail for custom layout, heterogeneous
+    item types (resolve the concrete pydantic type per item inside
+    render_detail), or non-form content — e.g. rendering a nested
+    DrillDownWrapper for a DirectoryAdapter's files. See README.
 
     Usage:
         wrapper = DrillDownWrapper.from_list(User, items, title='Users')
-        wrapper.register('/users')
-        ui.run()
-
-    On desktop the same pages work with a split-panel layout if desired; the page structure
-    is intentionally separate from the rendering so a future responsive layout can be dropped
-    in without changing the public API.
+        wrapper.render()
     """
     _item_type: type[BaseModel]
     _adapter: CollectionAdapter
     _title: str
     _title_field: str | None
     _subtitle_fields: list[str] | None
+    _render_list_item: ListItemRenderer | None
+    _render_detail: DetailRenderer | None
+    _on_add: Callable[[], None] | None
+    _on_back: Callable[[], None] | None
     _add_button: str | None
     _delete_button: str | None
     _list_kwargs: dict[str, Any]
+    _state: dict[str, Any]
+    _auto_update_registered: bool
 
     def __init__(self, item_type: type[BaseModel], adapter: CollectionAdapter, **kwargs: Any) -> None:
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
@@ -212,11 +248,17 @@ class DrillDownWrapper:
         self._title = kwargs.pop('title', item_type.__name__ + ' List')
         self._title_field = kwargs.pop('title_field', None)
         self._subtitle_fields = kwargs.pop('subtitle_fields', None)
+        self._render_list_item = kwargs.pop('render_list_item', None)
+        self._render_detail = kwargs.pop('render_detail', None)
+        self._on_add = kwargs.pop('on_add', None)
+        self._on_back = kwargs.pop('on_back', None)
         self._add_button = kwargs.pop('add_button', '')
         self._delete_button = kwargs.pop('delete_button', '')
-        self._list_kwargs = kwargs  # remainder forwarded to ModelList (include, exclude, ...)
+        self._list_kwargs = kwargs  # remainder forwarded to ModelList (include, exclude, ...) when render_list_item is unset
+        self._state = {'view': 'list', 'key': None, 'direction': 'right'}
+        self._auto_update_registered = False
 
-        # Resolve the display title field once so the detail page header is consistent
+        # Resolve the display title field once so the detail title row is consistent
         if self._title_field is None:
             fields = Fields(
                 item_type,
@@ -248,145 +290,148 @@ class DrillDownWrapper:
         adapter = JsonListAdapter(item_type, path_name, create_if_not_exist=create_if_not_exist)
         return cls(item_type, adapter, **kwargs)
 
-    # --- page registration -------------------------------------------------
+    @property
+    def adapter(self) -> CollectionAdapter:
+        """The backing data adapter."""
+        return self._adapter
 
-    def register(self, base_path: str) -> Self:
-        """
-        Register list and detail NiceGUI pages at base_path and base_path/{key}.
-        Must be called before ui.run(). Multiple wrappers can be registered at different paths.
-        """
-        wrapper = self
+    # --- navigation ----------------------------------------------------------
 
-        @ui.page(base_path)
-        def list_page():
-            wrapper._render_list_page(base_path)
-
-        @ui.page(f'{base_path}/{{key}}')
-        def detail_page(key: str):
-            wrapper._render_detail_page(base_path, key)
-
+    def open(self, key: str) -> Self:
+        """Navigate to the detail view for key — e.g. from a custom on_add handler."""
+        self._state.update(view='detail', key=key, direction='right')
+        self._title_row.refresh()
+        self._body.refresh()
         return self
 
-    # --- page rendering ----------------------------------------------------
+    def _back(self) -> None:
+        self._state.update(view='list', key=None, direction='left')
+        self._title_row.refresh()
+        self._body.refresh()
+
+    def _select(self, key: str) -> None:
+        self.open(key)
+
+    def _make_select(self, key: str) -> Callable[[], None]:
+        return lambda: self._select(key)
+
+    def _on_adapter_change(self) -> None:
+        self._body.refresh()
+
+    # --- title row -----------------------------------------------------------
 
     def _item_title(self, item: Any) -> str:
         return str(getattr(item, self._title_field, '')) if self._title_field else str(item)
 
-    def _render_list_page(self, base_path: str) -> None:
-        async def on_add_clicked(_: Any) -> None:
-            await self._open_create_dialog(base_path)
-
-        with ui.header().classes('items-center'):
-            ui.label(self._title).classes('text-h6 grow')
-            if self._add_button is not None:
-                ui.button(self._add_button, icon='add').props('flat color=white').on_click(on_add_clicked)
-
-        with ui.row().classes('w-full flex-wrap'):
-            # List panel: full width on mobile, left third on desktop
-            with ui.column().classes('col-12 col-md-4 q-pa-none'):
-                model_list = ModelList(
-                    self._item_type, self._adapter,
-                    title_field=self._title_field,
-                    subtitle_fields=self._subtitle_fields,
-                    **self._list_kwargs,
-                )
-                model_list.on_select(lambda e: ui.navigate.to(f'{base_path}/{e.row_key}'))
-                model_list.render()
-            # Placeholder panel: shown on desktop only, right two thirds
-            with ui.column().classes('col-8 gt-sm items-center justify-center q-pa-xl'):
-                ui.icon('touch_app').classes('text-grey-4 text-h2')
-                ui.label('Select an item to view details').classes('text-grey q-mt-sm')
-
-    def _render_detail_page(self, base_path: str, key: str) -> None:
+    def _detail_title(self) -> str:
+        key = self._state['key']
+        if key is None:
+            return ''
         try:
-            item = self._adapter.read(key)
+            return self._item_title(self._adapter.read(key))
         except (KeyError, ValueError):
-            with ui.header().classes('items-center'):
-                ui.button(icon='arrow_back').props('flat color=white').on_click(lambda _: ui.navigate.back())
-                ui.label('Not Found').classes('text-h6')
-            ui.label(f'Item {key!r} not found').classes('text-negative q-pa-md')
+            return key
+
+    @ui.refreshable_method
+    def _title_row(self) -> None:
+        with ui.row().classes('w-full items-center gap-2'):
+            if self._state['view'] == 'detail':
+                ui.button(icon='arrow_back').props('round dense flat').on_click(self._back)
+                ui.label(self._detail_title()).classes('text-h6 grow')
+                if self._delete_button is not None:
+                    ui.button(self._delete_button, icon='delete').props('round dense flat color=negative').on_click(self._handle_delete)
+            else:
+                if self._on_back is not None:
+                    ui.button(icon='arrow_back').props('round dense flat').on_click(self._on_back)
+                ui.label(self._title).classes('text-h6 grow')
+                if self._add_button is not None:
+                    ui.button(self._add_button, icon='add').props('round dense flat color=primary').on_click(self._handle_add)
+
+    # --- body ------------------------------------------------------------------
+
+    @ui.refreshable_method
+    def _body(self) -> None:
+        with ui.column().classes(f'w-full gap-2 {_slide_class(self._state["direction"])}'):
+            if self._state['view'] == 'detail' and self._state['key'] is not None:
+                self._render_detail_view(self._state['key'])
+            else:
+                self._render_list_view()
+
+    def _render_list_view(self) -> None:
+        if self._render_list_item is not None:
+            items = list(self._adapter.items())
+            if not items:
+                ui.label('No items yet.').classes('italic')
+                return
+            for key, item in items:
+                self._render_list_item(key, item, self._make_select(key))
             return
+        model_list = ModelList(
+            self._item_type, self._adapter,
+            title_field=self._title_field,
+            subtitle_fields=self._subtitle_fields,
+            **self._list_kwargs,
+        )
+        # _render_list_view() runs again on every DrillDownWrapper._body refresh, creating a
+        # fresh ModelList each time. Skip ModelList's own reactive on_change registration --
+        # our own registration in render() already re-renders the whole body on adapter changes,
+        # and letting each throwaway ModelList instance register too would leak a growing chain
+        # of on_change handlers pointing at stale, already-deleted widgets.
+        model_list._auto_update_registered = True
+        model_list.on_select(lambda e: self.open(e.row_key))
+        model_list.render()
 
-        async def on_delete_clicked(_: Any) -> None:
-            await self._delete_item(base_path, key)
+    def _default_render_detail(self, adapter: CollectionAdapter, key: str, set_key: Callable[[str], None]) -> None:
+        form = ModelForm.from_adapter(self._item_type, adapter, key, autosave=True)
+        form.render()
+        form.render_nonfield_errors()
 
-        with ui.header().classes('items-center'):
-            # Back button visible on mobile only; desktop shows the list panel next to the form
-            ui.button(icon='arrow_back').props('flat color=white').classes('lt-md').on_click(lambda _: ui.navigate.back())
-            ui.label(self._item_title(item)).classes('text-h6 grow')
-            if self._delete_button is not None:
-                ui.button(self._delete_button, icon='delete').props('flat color=white').on_click(on_delete_clicked)
+    def _set_detail_key(self, new_key: str) -> None:
+        if new_key != self._state['key']:
+            self._state['key'] = new_key
+            self._title_row.refresh()
+            self._body.refresh()
 
-        with ui.row().classes('w-full flex-wrap'):
-            # List panel: shown on desktop only, left third
-            with ui.column().classes('col-4 gt-sm q-pa-none'):
-                model_list = ModelList(
-                    self._item_type, self._adapter,
-                    title_field=self._title_field,
-                    subtitle_fields=self._subtitle_fields,
-                    **self._list_kwargs,
-                )
-                model_list.on_select(lambda e: ui.navigate.to(f'{base_path}/{e.row_key}'))
-                model_list.render()
-            # Form panel: fills remaining space (100% on mobile when list hidden, ~67% on desktop)
-            with ui.column().classes('col'):
-                with ui.card().classes('w-full'):
-                    EditFormWrapper.from_adapter(self._item_type, self._adapter, key)
+    def _render_detail_view(self, key: str) -> None:
+        try:
+            self._adapter.read(key)
+        except (KeyError, ValueError):
+            ui.label(f'Item {key!r} not found.').classes('text-negative')
+            return
+        renderer = self._render_detail or self._default_render_detail
+        renderer(self._adapter, key, self._set_detail_key)
 
     # --- CRUD actions ------------------------------------------------------
 
-    async def _open_create_dialog(self, base_path: str) -> None:
-        """Open a modal dialog to create a new item; navigate to the list on success."""
-        item = self._item_type()
-        form = ModelForm.from_item(item)
+    def _handle_add(self) -> None:
+        if self._on_add is not None:
+            self._on_add()
+            return
+        item = self._adapter.create(self._item_type())
+        self.open(self._adapter.key_from_item(item))
 
-        def confirm() -> None:
-            if form.has_validation_errors:
-                ui.notify('Cannot save: validation errors present', color='negative')
-                return
-            # Flush any pending widget values into the validated item (guards against
-            # the blur/click race where a field's blur event hasn't arrived yet).
-            if form._current_item is not None and form._validated_item is not None:
-                for field_name in form._fields:
-                    fi = form._fields[field_name]
-                    if not fi or fi.widget_type in ('editgrid', None):
-                        continue
-                    if form._validation_error_messages.get(field_name):
-                        continue
-                    cur = getattr(form._current_item, field_name)
-                    if cur != getattr(form._validated_item, field_name):
-                        setattr(form._validated_item, field_name, cur)
-            dialog.submit('confirm')
-
-        with ui.dialog().props(':maximized="$q.screen.lt.md" transition-show="slide-up" transition-hide="slide-down"').style('width: 400px') as dialog:
-            with ui.card().classes('w-full'):
-                form.render()
-                with ui.card_section():
-                    with ui.row():
-                        ui.space()
-                        ui.button('Cancel', on_click=lambda: dialog.submit('cancel'))
-                        ui.button('Create', on_click=confirm)
-
-        if 'confirm' == await dialog:
-            try:
-                self._adapter.create(item)
-                ui.notify('Item created', color='positive')
-                ui.navigate.to(base_path)
-            except Exception as e:
-                log.error(f'Error creating item: {e}')
-                ui.notify(f'Error creating item: {e}', color='negative')
-        dialog.clear()
-
-    async def _delete_item(self, base_path: str, key: str) -> None:
-        """Ask for confirmation and delete the item; navigate to the list on success."""
-        dialog = submit_dialog('Confirm Deletion', 'Delete this item?')
-        result = await dialog
-        if result != 'OK':
+    async def _handle_delete(self) -> None:
+        key = self._state['key']
+        if key is None:
+            return
+        if not await confirm_dialog('Delete', 'Delete this item? This cannot be undone.', ok_label='Delete', ok_color='negative'):
             return
         try:
             self._adapter.delete(key)
-            ui.notify('Item deleted', color='positive')
-            ui.navigate.to(base_path)
         except Exception as e:
-            log.error(f'Error deleting item {key}: {e}')
+            log.error(f'Error deleting item {key!r}: {e}')
             ui.notify(f'Error deleting item: {e}', color='negative')
+            return
+        ui.notify('Item deleted', color='positive')
+        self._back()
+
+    # --- render --------------------------------------------------------------
+
+    def render(self) -> Self:
+        """Render the title row and list/detail body into the current NiceGUI context."""
+        self._title_row()
+        self._body()
+        if not self._auto_update_registered and isinstance(self._adapter, ReactiveAdapter):
+            self._adapter.on_change(self._on_adapter_change)
+            self._auto_update_registered = True
+        return self

@@ -330,12 +330,12 @@ ModelList / DrillDownWrapper
 ----------------------------
 
 `ModelList` renders a collection as a Quasar list — tappable rows with a title and subtitle,
-suited for mobile-first single-column navigation. `DrillDownWrapper` registers two NiceGUI pages
-(list + per-item detail) and wires up navigation between them.
-
-**Responsive layout** is built in — no API changes needed:
-- Mobile (< 1024 px): separate list and detail pages with drill-down navigation
-- Desktop (≥ 1024 px): split-panel — list on the left, form on the right, side by side
+suited for mobile-first single-column navigation. `DrillDownWrapper` is an embeddable list
+<-> detail navigation widget built on top of it: a title row (Add in list view; Back + item
+title + Delete in detail view) plus a body that swaps between the list and a per-item detail
+view, with a slide animation on every swap. It owns no NiceGUI page/route of its own —
+`render()` draws into whatever context it's called in, same as any other niceview widget, so
+it can sit inside a `ui.card()`, a tab panel, or a bigger page layout without taking it over.
 
 ```python
 from niceview.modellist import ModelList, DrillDownWrapper
@@ -348,40 +348,72 @@ list_view = ModelList.from_list(User, users,
 list_view.on_select(lambda e: print(e.row_key, e.item))
 list_view.render()
 
-# Drill-down: register list + detail pages, then ui.run()
-DrillDownWrapper.from_list(User, users,
-    title='Users',
-    title_field='name',
-    subtitle_fields=['email', 'active'],
-).register('/users')
+# Drill-down: embed inside your own page/card, then render()
+with ui.card().classes('w-full'):
+    DrillDownWrapper.from_list(User, users,
+        title='Users',
+        title_field='name',
+        subtitle_fields=['email', 'active'],
+    ).render()
 
 # Works with any adapter
-DrillDownWrapper.from_json(User, Path('users.json'), title='Users').register('/users')
-DrillDownWrapper.from_adapter(User, adapter, title='Users').register('/users')
+DrillDownWrapper.from_json(User, Path('users.json'), title='Users').render()
+DrillDownWrapper.from_adapter(User, adapter, title='Users').render()
 ```
-
-**Page structure** after `register(base_path)`:
-
-| Page | URL | Chrome |
-|---|---|---|
-| List | `base_path` | Header with title + Add button |
-| Detail | `base_path/{key}` | Header with Back + item title + Delete button; form with Save/Refresh |
-
-`register()` must be called before `ui.run()`. Multiple wrappers can be registered at different base paths.
 
 **`DrillDownWrapper` options:**
 ```python
 DrillDownWrapper.from_list(User, users,
-    title='Users',           # list page header title
-    title_field='name',      # field shown as item title (auto-detected if omitted)
+    title='Users',              # list view title
+    title_field='name',         # field shown as detail title (auto-detected if omitted)
     subtitle_fields=['email'],  # fields shown as subtitle (next two visible fields if omitted)
-    add_button='',           # '' = icon only; None = hidden
-    delete_button='',        # same
-    # ModelList options forwarded:
+    add_button='',              # '' = icon only; None = hidden
+    delete_button='',           # same
+    on_add=None,                # override the Add click handler entirely (see below)
+    on_back=None,                # if set, shows a Back button in the list view too (for nesting)
+    render_list_item=None,      # override list row rendering (see below)
+    render_detail=None,         # override detail rendering (see below)
+    # ModelList options forwarded when render_list_item is not set:
     include=['name', 'email'],
     exclude=['secret'],
 )
 ```
+By default, Add creates `item_type()` and navigates straight to its detail view for editing —
+no upfront dialog, matching the autosave-first pattern used throughout niceview. `wrapper.open(key)`
+navigates to a detail view programmatically, e.g. from a custom `on_add`.
+
+**Custom list rows and detail layout.** Both are escape hatches for the two cases the generic
+defaults can't handle: hand-placed field layout, and heterogeneous item types.
+```python
+def render_list_item(key: str, item: Widget, select: Callable[[], None]) -> None:
+    with ui.row().classes('items-center gap-2').on('click', lambda: select()):
+        ui.icon(WIDGET_ICONS[item.widget_type])
+        ui.label(str(item))
+
+def render_detail(adapter: CollectionAdapter, key: str, set_key: Callable[[str], None]) -> None:
+    item = adapter.read(key)
+    model_cls = WIDGET_MODELS[item.widget_type]           # resolve the concrete type per item
+    form = ModelForm.from_adapter(model_cls, adapter, key, autosave=True)
+    form.render_field('position_x').classes('w-1/2')
+    form.render_field('position_y').classes('w-1/2')
+    # ... hand-placed fields per widget type ...
+
+DrillDownWrapper.from_adapter(WidgetModel, widgets_adapter,
+    render_list_item=render_list_item, render_detail=render_detail, add_button=None,
+).render()
+```
+`render_detail`'s `set_key` callback is for renaming: call it whenever the item's key changes
+(e.g. a "Name" input's `blur` handler that calls `adapter.rename(...)`) to keep the wrapper's
+navigation state in sync — it can be called any time, not just synchronously while
+`render_detail` runs. There's no dedicated rename feature on the wrapper; a "Name" widget in
+`render_detail` wired to `DirectoryAdapter.rename()` (see below) is all it takes.
+
+**Two first-class backends**, both driven entirely through the hooks above:
+- **A JSON list in one file** (`JsonListAdapter`, or `ListAdapter` over a nested list field) —
+  homogeneous or heterogeneous items, no rename (items aren't named). See `examples/09_drilldown.py`.
+- **One file per item in a directory** (`DirectoryAdapter`, below) — items are just filename
+  metadata; rename is a "Name" field in `render_detail`, wired to `DirectoryAdapter.rename()`.
+  See `examples/13_directory_drilldown.py`.
 
 
 Data Adapters
@@ -396,10 +428,19 @@ or let the `from_*` factory methods create them transparently.
 | `JsonAdapter(Type, path)` | Form | Single object in a JSON file; supports `lock_field=`, `created_field=`, `strict=` |
 | `JsonListAdapter(Type, path)` | Grid | List of objects in a JSON file; supports `created_field=`, `strict=` |
 | `SqlModelAdapter(Type, engine)` | Grid, Form | SQLModel / SQLAlchemy table *(optional)* |
+| `DirectoryAdapter(dir_path)` | `DrillDownWrapper` | One file per item in a directory; items are filename metadata (`FileEntry`), not parsed content — supports `rename()` |
 
 All JSON adapters write atomically (`.tmp` → rename).
 `JsonListAdapter` and `SqlModelAdapter` both implement `ReloadableAdapter`: `reload()` re-reads
 from disk (JSON) or fires a grid-refresh notification (SQL, where every `read()` is already live).
+
+**`DirectoryAdapter`** models "files in a directory" for `DrillDownWrapper`'s file-per-item use
+case. `items()`/`read()` return `FileEntry(name, mtime, size)` — metadata only, never the parsed
+file content; open the file's own `JsonAdapter`/`JsonListAdapter` for that (typically inside
+`render_detail`). `create(item=None)` picks a free `'untitled-01'`, `'untitled-02'`, ... name and
+writes `default_content`; `rename(key, new_key)` renames the file on disk. Both are meant to be
+called directly by application code (an "Add" handler, a "Name" widget's `blur` handler), not
+through `DrillDownWrapper`'s generic `item_type()`-based Add flow — see `examples/13_directory_drilldown.py`.
 
 **Lenient loading (default) vs strict loading:** `JsonAdapter` and `JsonListAdapter` default to
 `strict=False`, which means a hand-edited or partially-migrated file does not crash the
@@ -753,7 +794,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 605 tests
+uv run pytest          # 637 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 
@@ -772,10 +813,11 @@ uv run python examples/01_form_basic.py
 | `06_edit_wrapper.py` | `EditGridWrapper` / `EditFormWrapper` |
 | `07_sqlmodel.py` | `SqlModelAdapter` |
 | `08_reactive_grid.py` | Reactive grid — auto-update via `ObservableList` |
-| `09_drilldown.py` | `DrillDownWrapper` / `ModelList` |
+| `09_drilldown.py` | `DrillDownWrapper` / `ModelList` — embeddable list <-> detail navigation |
 | `10_complex_form_navigation.py` | Split-panel navigation on desktop, full-page on mobile (pure NiceGUI) |
 | `11_tree_navigation.py` | Multi-level tree navigation — 4 levels, explicit back buttons, central URL factory |
 | `12_card_list.py` | Card-based list editing — one autosaving `ModelForm` per item, custom layout, `JsonListAdapter` |
+| `13_directory_drilldown.py` | `DrillDownWrapper` over `DirectoryAdapter` — one file per item, rename via a "Name" field |
 
 Unit tests cover data adapters, field resolution, validation logic, and pure CRUD operations.
 Acceptance tests (`tests/test_acceptance.py`) use the NiceGUI `User` fixture (headless, no browser)
@@ -785,9 +827,10 @@ not inspectable via the `User` fixture; row data is covered by unit tests instea
 
 Design decisions and Accepted Technical Debt
 --------------------------------------------
-- **Mobile navigation: `ModelList` + `DrillDownWrapper` as separate components**: A new `ModelList` (Quasar list) and `DrillDownWrapper` (two registered NiceGUI pages) are added alongside `ModelGrid` / `EditGridWrapper` rather than making the existing desktop components responsive. Motivation: the UX patterns are fundamentally different — card list with drill-down vs data table with dialogs — and a single component handling both would need too many conditional paths. The state-sharing problem between pages is solved by the `DrillDownWrapper` instance holding the adapter (shared per Python process, which is the normal NiceGUI single-user model).
-- **Multi-level tree navigation**: `DrillDownWrapper` covers the common 2-level (list → detail) case. For deeper trees (card grid → edit form → sub-list → sub-detail, etc.) the recommended pattern is explicit `@ui.page` routes with a central URL factory class (`R`) and a shared `page_header(title, back_url)` helper — see `examples/11_tree_navigation.py`. This keeps each page self-contained, makes URL changes a one-place edit, and ensures the back button is always explicit and visible (not relying on browser history).
-- **`DrillDownWrapper` split-panel layout**: Implemented as pure CSS using Quasar breakpoint utility classes (`gt-sm`, `lt-md`, `col-4`, `col-md-8`). No API changes, no JavaScript, no conditional Python logic. The list panel on the detail page is rendered unconditionally but hidden on mobile via `gt-sm`. This means on desktop, clicking a list item in the side panel navigates to a new URL (`base_path/{key}`) which re-renders the same split-panel layout with the new item selected.
+- **Mobile navigation: `ModelList` + `DrillDownWrapper` as separate components**: A new `ModelList` (Quasar list) and `DrillDownWrapper` are added alongside `ModelGrid` / `EditGridWrapper` rather than making the existing desktop components responsive. Motivation: the UX patterns are fundamentally different — card list with drill-down vs data table with dialogs — and a single component handling both would need too many conditional paths.
+- **`DrillDownWrapper` is embeddable, not page-owning (no `.register(base_path)`, no `@ui.page` of its own)**: An earlier version registered two NiceGUI pages (list + `{key}` detail) with a CSS-only desktop split-panel. In practice this was rarely useful on its own — real editors need custom detail layout and often heterogeneous item types in one collection, which a single auto-rendered `EditFormWrapper` per item can't express, and most call sites wanted the widget embedded inside an existing page/card rather than owning a URL. It was replaced by a `ui.refreshable_method`-driven list/detail body with a slide animation (same technique as manual multi-page-in-one-page navigation elsewhere) plus `render_list_item`/`render_detail` override hooks, dropping the split-panel layout and page registration entirely.
+- **`render_detail`'s `set_key` callback instead of a return value**: The first design had `render_detail` return the new key after a rename. That only works for synchronous renames — a "Name" input's `blur` handler fires well after `render_detail` has already returned, so the wrapper would never learn about the change. `set_key(new_key)`, callable at any time, fixes this at the cost of one extra parameter.
+- **Multi-level tree navigation**: `DrillDownWrapper` covers the common 2-level (list → detail) case per instance, though nesting one inside another's `render_detail` (see `examples/13_directory_drilldown.py`'s directory-of-files → per-file editor pattern) composes further levels. For URL-addressable deep trees (card grid → edit form → sub-list → sub-detail, etc.) the recommended pattern is still explicit `@ui.page` routes with a central URL factory class (`R`) and a shared `page_header(title, back_url)` helper — see `examples/11_tree_navigation.py`. This keeps each page self-contained, makes URL changes a one-place edit, and ensures the back button is always explicit and visible (not relying on browser history).
 - **Form navigation / dirty state**: No detection when the user leaves an unsaved form. Options: (a) track dirty state via `on_change` and expose `is_dirty` property; (b) use a JS `beforeunload` guard (requires NiceGUI `ui.run_javascript`). Neither covers in-app navigation — NiceGUI has no built-in route guard.
 - **NiceGUI element lifecycle**: When are elements instantiated, active, deleted? `render()` must be called inside a NiceGUI page context; elements created outside a client context silently fail. No lifecycle hooks for cleanup.
 - **Tests for async dialog flows**: `create_item` / `update_item` / `delete_item` open a NiceGUI dialog (`await dialog`) and cannot be tested without a browser. The CRUD data operations are covered via `_apply_create`, `_apply_update`, `_apply_delete` (unit tests) and the render/button presence via acceptance tests. Full dialog flow testing would require the `Screen` fixture (Playwright-based).

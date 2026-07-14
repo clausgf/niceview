@@ -5,7 +5,7 @@ import pydantic
 from pathlib import Path
 from typing import Annotated
 
-from niceview.dataadapter import ConflictError, ListAdapter, JsonAdapter, JsonListAdapter
+from niceview.dataadapter import ConflictError, ListAdapter, JsonAdapter, JsonListAdapter, DirectoryAdapter, FileEntry
 from niceview.grid import ModelGrid, ModelGridInlineEdit
 
 
@@ -625,6 +625,179 @@ class TestJsonListAdapterCreatedField:
         reloaded = list(adapter2)[0]
         assert reloaded.created_at is not None
         assert reloaded.created_at.replace(tzinfo=datetime.timezone.utc) == original_ts.replace(tzinfo=datetime.timezone.utc)
+
+
+# ---------------------------------------------------------------------------
+# DirectoryAdapter
+# ---------------------------------------------------------------------------
+
+class TestDirectoryAdapterInit:
+    def test_path_not_a_directory_raises(self, tmp_path):
+        not_a_dir = tmp_path / 'file.txt'
+        not_a_dir.write_text('x')
+        with pytest.raises(ValueError):
+            DirectoryAdapter(not_a_dir)
+
+    def test_empty_directory_iterates_empty(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        assert list(adapter) == []
+
+
+class TestDirectoryAdapterCreate:
+    def test_create_without_item_generates_untitled_name(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        entry = adapter.create()
+        assert entry.name == 'untitled-01'
+        assert (tmp_path / 'untitled-01.json').exists()
+
+    def test_create_generates_zero_padded_incrementing_names(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        names = [adapter.create().name for _ in range(3)]
+        assert names == ['untitled-01', 'untitled-02', 'untitled-03']
+
+    def test_create_skips_existing_untitled_names(self, tmp_path):
+        (tmp_path / 'untitled-01.json').write_text('{}')
+        adapter = DirectoryAdapter(tmp_path)
+        entry = adapter.create()
+        assert entry.name == 'untitled-02'
+
+    def test_create_writes_default_content(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path, default_content='[]')
+        entry = adapter.create()
+        assert (tmp_path / f'{entry.name}.json').read_text(encoding='utf-8') == '[]'
+
+    def test_create_default_content_callable(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path, default_content=lambda: '{"a": 1}')
+        entry = adapter.create()
+        assert (tmp_path / f'{entry.name}.json').read_text(encoding='utf-8') == '{"a": 1}'
+
+    def test_create_with_explicit_name(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        entry = adapter.create(FileEntry(name='screen1', mtime=datetime.datetime.now(datetime.timezone.utc), size=0))
+        assert entry.name == 'screen1'
+        assert (tmp_path / 'screen1.json').exists()
+
+    def test_create_existing_name_raises(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        adapter.create(FileEntry(name='dup', mtime=datetime.datetime.now(datetime.timezone.utc), size=0))
+        with pytest.raises(ValueError):
+            adapter.create(FileEntry(name='dup', mtime=datetime.datetime.now(datetime.timezone.utc), size=0))
+
+    def test_create_notifies_on_change(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        called: list[bool] = []
+        adapter.on_change(lambda: called.append(True))
+        adapter.create()
+        assert called == [True]
+
+    def test_suffix_is_configurable(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path, suffix='.txt')
+        entry = adapter.create()
+        assert (tmp_path / f'{entry.name}.txt').exists()
+
+
+class TestDirectoryAdapterRead:
+    def test_read_returns_metadata(self, tmp_path):
+        (tmp_path / 'a.json').write_text('hello')
+        adapter = DirectoryAdapter(tmp_path)
+        entry = adapter.read('a')
+        assert entry.name == 'a'
+        assert entry.size == len('hello')
+
+    def test_read_missing_raises_keyerror(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        with pytest.raises(KeyError):
+            adapter.read('missing')
+
+    def test_key_from_item(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        entry = adapter.create()
+        assert adapter.key_from_item(entry) == entry.name
+
+
+class TestDirectoryAdapterDelete:
+    def test_delete_removes_file(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        entry = adapter.create()
+        adapter.delete(entry.name)
+        assert not (tmp_path / f'{entry.name}.json').exists()
+
+    def test_delete_missing_raises_keyerror(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        with pytest.raises(KeyError):
+            adapter.delete('missing')
+
+    def test_delete_notifies_on_change(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        entry = adapter.create()
+        called: list[bool] = []
+        adapter.on_change(lambda: called.append(True))
+        adapter.delete(entry.name)
+        assert called == [True]
+
+
+class TestDirectoryAdapterRename:
+    def test_rename_renames_file(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        entry = adapter.create()
+        new_key = adapter.rename(entry.name, 'renamed')
+        assert new_key == 'renamed'
+        assert not (tmp_path / f'{entry.name}.json').exists()
+        assert (tmp_path / 'renamed.json').exists()
+
+    def test_rename_preserves_content(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path, default_content='payload')
+        entry = adapter.create()
+        adapter.rename(entry.name, 'renamed')
+        assert (tmp_path / 'renamed.json').read_text(encoding='utf-8') == 'payload'
+
+    def test_rename_missing_raises_keyerror(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        with pytest.raises(KeyError):
+            adapter.rename('missing', 'new')
+
+    def test_rename_to_existing_name_raises(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        a = adapter.create()
+        b = adapter.create()
+        with pytest.raises(ValueError):
+            adapter.rename(a.name, b.name)
+
+    def test_rename_notifies_on_change(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        entry = adapter.create()
+        called: list[bool] = []
+        adapter.on_change(lambda: called.append(True))
+        adapter.rename(entry.name, 'renamed')
+        assert called == [True]
+
+
+class TestDirectoryAdapterKeyValidation:
+    def test_path_separator_in_key_raises(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        with pytest.raises(ValueError):
+            adapter.read('../secret')
+
+    def test_empty_key_raises(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        with pytest.raises(ValueError):
+            adapter.read('')
+
+
+class TestDirectoryAdapterItems:
+    def test_items_sorted_by_name(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        adapter.create(FileEntry(name='b', mtime=datetime.datetime.now(datetime.timezone.utc), size=0))
+        adapter.create(FileEntry(name='a', mtime=datetime.datetime.now(datetime.timezone.utc), size=0))
+        names = [entry.name for entry in adapter]
+        assert names == ['a', 'b']
+
+    def test_only_matching_suffix_listed(self, tmp_path):
+        (tmp_path / 'other.txt').write_text('x')
+        adapter = DirectoryAdapter(tmp_path)
+        adapter.create()
+        names = [entry.name for entry in adapter]
+        assert names == ['untitled-01']
 
 
 # ---------------------------------------------------------------------------

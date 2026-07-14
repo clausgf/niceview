@@ -1,19 +1,12 @@
 """
 # DrillDownWrapper / ModelList
 
-Responsive drill-down navigation: a contact list that opens a detail form per item.
+Embeddable list <-> detail navigation: a contact list that opens a detail form per item.
 
-- **/contacts** — list page: all contacts as a tappable list, Add button in the header
-- **/contacts/{key}** — detail page: full form with Save, Refresh, Back, and Delete
-
-Both pages are registered by `DrillDownWrapper.register('/contacts')` before `ui.run()`.
-The root `/` redirects to `/contacts`.
-
-**Responsive split-panel layout:**
-- On mobile (< 1024 px): list page and detail page navigate separately (drill-down style)
-- On desktop (≥ 1024 px): list appears on the left, detail form on the right (side by side)
-
-No API changes — the responsive behaviour is built in via Quasar breakpoint CSS classes.
+`DrillDownWrapper` renders a title row (Add in list view; Back + item title + Delete in
+detail view) plus a body that swaps between the list and a per-item form, with a slide
+animation on every swap. It owns no NiceGUI page/route of its own — render() draws into
+whatever context it's called in, here a single `@ui.page('/')`.
 """
 # Allows running without prior install. With uv: `uv run python examples/<file>.py`.
 import sys
@@ -39,17 +32,15 @@ contacts = [
 ]
 
 
-DrillDownWrapper.from_list(
-    Contact, contacts,
-    title='Contacts',
-    title_field='name',
-    subtitle_fields=['email', 'phone'],
-).register('/contacts')
-
-
 @ui.page('/')
-def index():
-    ui.navigate.to('/contacts')
+def page():
+    with ui.card().classes('w-full max-w-2xl mx-auto'):
+        DrillDownWrapper.from_list(
+            Contact, contacts,
+            title='Contacts',
+            title_field='name',
+            subtitle_fields=['email', 'phone'],
+        ).render()
 
 
 ui.run(title='09 — Drill-Down Navigation')

@@ -1,18 +1,16 @@
 """
 Acceptance tests for ModelList and DrillDownWrapper.
 
-The NiceGUI testing framework resets routes between tests, so DrillDownWrapper
-pages cannot be registered at module level. Instead, DrillDownWrapper rendering
-is tested by calling _render_list_page / _render_detail_page directly inside
-@ui.page('/') — this exercises the rendering logic without coupling to URL routing,
-which is NiceGUI/FastAPI's responsibility.
+DrillDownWrapper is embeddable (render() draws into the current NiceGUI
+context, no page/route of its own), so its tests wrap render() in a plain
+@ui.page like any other niceview widget.
 """
 import pydantic
 import pytest
 from nicegui import ui
 from nicegui.testing import User
 
-from niceview.dataadapter import ListAdapter
+from niceview.dataadapter import ListAdapter, DirectoryAdapter, FileEntry
 from niceview.modellist import ModelList, DrillDownWrapper
 
 
@@ -92,27 +90,24 @@ class TestModelListRender:
 
 
 # ---------------------------------------------------------------------------
-# DrillDownWrapper — list page rendering
+# DrillDownWrapper — list view
 # ---------------------------------------------------------------------------
 
-class TestDrillDownWrapperListPage:
-    async def test_title_in_header(self, user: User) -> None:
-        wrapper = DrillDownWrapper.from_list(Contact, [Contact(name='Alice')], title='My Contacts')
-
+class TestDrillDownWrapperListView:
+    async def test_title_visible(self, user: User) -> None:
         @ui.page('/')
         def page():
-            wrapper._render_list_page('/contacts')
+            DrillDownWrapper.from_list(Contact, [Contact(name='Alice')], title='My Contacts').render()
 
         await user.open('/')
         await user.should_see('My Contacts')
 
     async def test_item_names_visible(self, user: User) -> None:
         contacts = [Contact(name='Alice Müller'), Contact(name='Bob Schmidt')]
-        wrapper = DrillDownWrapper.from_list(Contact, contacts, title='Contacts')
 
         @ui.page('/')
         def page():
-            wrapper._render_list_page('/contacts')
+            DrillDownWrapper.from_list(Contact, contacts, title='Contacts').render()
 
         await user.open('/')
         await user.should_see('Alice Müller')
@@ -120,148 +115,244 @@ class TestDrillDownWrapperListPage:
 
     async def test_subtitle_visible(self, user: User) -> None:
         contacts = [Contact(name='Alice', email='alice@example.com')]
-        wrapper = DrillDownWrapper.from_list(Contact, contacts)
 
         @ui.page('/')
         def page():
-            wrapper._render_list_page('/contacts')
+            DrillDownWrapper.from_list(Contact, contacts).render()
 
         await user.open('/')
         await user.should_see('alice@example.com')
 
     async def test_add_button_visible_by_default(self, user: User) -> None:
-        wrapper = DrillDownWrapper.from_list(Contact, [], title='Contacts')
-
         @ui.page('/')
         def page():
-            wrapper._render_list_page('/contacts')
+            DrillDownWrapper.from_list(Contact, [], title='Contacts').render()
 
         await user.open('/')
         await user.should_see(ui.button)
 
     async def test_add_button_hidden_when_none(self, user: User) -> None:
-        wrapper = DrillDownWrapper.from_list(Contact, [], title='Contacts', add_button=None)
-
         @ui.page('/')
         def page():
-            wrapper._render_list_page('/contacts')
+            DrillDownWrapper.from_list(Contact, [], title='Contacts', add_button=None).render()
 
         await user.open('/')
         await user.should_not_see(ui.button)
 
+    async def test_render_list_item_overrides_default_rows(self, user: User) -> None:
+        contacts = [Contact(name='Alice')]
+
+        def custom_row(key, item, select):
+            ui.label(f'Custom: {item.name}')
+
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_list(Contact, contacts, render_list_item=custom_row).render()
+
+        await user.open('/')
+        await user.should_see('Custom: Alice')
+
+    async def test_on_back_shows_back_button_in_list_view(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_list(Contact, [], on_back=lambda: None).render()
+
+        await user.open('/')
+        await user.should_see(ui.button)
+
 
 # ---------------------------------------------------------------------------
-# DrillDownWrapper — detail page rendering
+# DrillDownWrapper — navigating to the detail view
 # ---------------------------------------------------------------------------
 
-class TestDrillDownWrapperDetailPage:
-    async def test_form_fields_visible(self, user: User) -> None:
+class TestDrillDownWrapperDetailView:
+    async def test_open_shows_form_fields(self, user: User) -> None:
         contacts = [Contact(name='Alice', email='alice@example.com')]
         adapter = ListAdapter(Contact, contacts)
-        wrapper = DrillDownWrapper.from_adapter(Contact, adapter)
         key = adapter.key_from_item(contacts[0])
 
         @ui.page('/')
         def page():
-            wrapper._render_detail_page('/contacts', key)
+            DrillDownWrapper.from_adapter(Contact, adapter).render().open(key)
 
         await user.open('/')
         await user.should_see('Name')
         await user.should_see('Email')
 
-    async def test_item_title_in_header(self, user: User) -> None:
+    async def test_open_shows_item_title(self, user: User) -> None:
         contacts = [Contact(name='Alice Müller', email='alice@example.com')]
         adapter = ListAdapter(Contact, contacts)
-        wrapper = DrillDownWrapper.from_adapter(Contact, adapter, title_field='name')
         key = adapter.key_from_item(contacts[0])
 
         @ui.page('/')
         def page():
-            wrapper._render_detail_page('/contacts', key)
+            DrillDownWrapper.from_adapter(Contact, adapter, title_field='name').render().open(key)
 
         await user.open('/')
         await user.should_see('Alice Müller')
 
-    async def test_back_button_present(self, user: User) -> None:
-        contacts = [Contact(name='Alice')]
-        adapter = ListAdapter(Contact, contacts)
-        wrapper = DrillDownWrapper.from_adapter(Contact, adapter)
-        key = adapter.key_from_item(contacts[0])
-
-        @ui.page('/')
-        def page():
-            wrapper._render_detail_page('/contacts', key)
-
-        await user.open('/')
-        await user.should_see(ui.button)
-
     async def test_delete_button_visible_by_default(self, user: User) -> None:
         contacts = [Contact(name='Alice')]
         adapter = ListAdapter(Contact, contacts)
-        wrapper = DrillDownWrapper.from_adapter(Contact, adapter)
         key = adapter.key_from_item(contacts[0])
 
         @ui.page('/')
         def page():
-            wrapper._render_detail_page('/contacts', key)
+            DrillDownWrapper.from_adapter(Contact, adapter).render().open(key)
 
         await user.open('/')
         await user.should_see(ui.button)
 
+    async def test_delete_button_hidden_when_none(self, user: User) -> None:
+        contacts = [Contact(name='Alice')]
+        adapter = ListAdapter(Contact, contacts)
+        key = adapter.key_from_item(contacts[0])
+
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_adapter(Contact, adapter, delete_button=None).render().open(key)
+
+        await user.open('/')
+        await user.should_see('Name')  # detail view rendered
+        with pytest.raises(AssertionError):
+            user.find(content='delete')
+
     async def test_invalid_key_shows_not_found(self, user: User) -> None:
         adapter = ListAdapter(Contact, [])
-        wrapper = DrillDownWrapper.from_adapter(Contact, adapter)
 
         @ui.page('/')
         def page():
-            wrapper._render_detail_page('/contacts', 'nonexistent-key')
+            DrillDownWrapper.from_adapter(Contact, adapter).render().open('nonexistent-key')
 
         await user.open('/')
-        await user.should_see('Not Found')
+        await user.should_see("not found")
 
-
-# ---------------------------------------------------------------------------
-# DrillDownWrapper — split-panel layout
-# ---------------------------------------------------------------------------
-
-class TestDrillDownWrapperSplitPanel:
-    async def test_list_page_renders_list_widget(self, user: User) -> None:
-        contacts = [Contact(name='Alice'), Contact(name='Bob')]
-        wrapper = DrillDownWrapper.from_list(Contact, contacts, title='Contacts')
-
-        @ui.page('/')
-        def page():
-            wrapper._render_list_page('/contacts')
-
-        await user.open('/')
-        await user.should_see(ui.list)
-
-    async def test_detail_page_renders_list_for_side_panel(self, user: User) -> None:
-        contacts = [Contact(name='Alice'), Contact(name='Bob')]
+    async def test_back_returns_to_list_view(self, user: User) -> None:
+        contacts = [Contact(name='Alice')]
         adapter = ListAdapter(Contact, contacts)
-        wrapper = DrillDownWrapper.from_adapter(Contact, adapter)
         key = adapter.key_from_item(contacts[0])
+        holder = {}
 
         @ui.page('/')
         def page():
-            wrapper._render_detail_page('/contacts', key)
+            holder['wrapper'] = DrillDownWrapper.from_adapter(Contact, adapter).render().open(key)
 
         await user.open('/')
-        # The detail page renders a list for the desktop side panel
-        await user.should_see(ui.list)
-
-    async def test_detail_page_renders_form_and_list(self, user: User) -> None:
-        contacts = [Contact(name='Alice', email='alice@example.com'), Contact(name='Bob')]
-        adapter = ListAdapter(Contact, contacts)
-        wrapper = DrillDownWrapper.from_adapter(Contact, adapter)
-        key = adapter.key_from_item(contacts[0])
-
-        @ui.page('/')
-        def page():
-            wrapper._render_detail_page('/contacts', key)
-
-        await user.open('/')
-        # Form fields rendered
         await user.should_see('Name')
-        # Side panel list also rendered (desktop split-panel)
-        await user.should_see('Bob')
+        holder['wrapper']._back()
+        await user.should_not_see('Name')
+
+    async def test_render_detail_overrides_default_form(self, user: User) -> None:
+        contacts = [Contact(name='Alice')]
+        adapter = ListAdapter(Contact, contacts)
+        key = adapter.key_from_item(contacts[0])
+
+        def custom_detail(adapter, key, set_key):
+            ui.label('Custom detail body')
+
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_adapter(Contact, adapter, render_detail=custom_detail).render().open(key)
+
+        await user.open('/')
+        await user.should_see('Custom detail body')
+        await user.should_not_see('Name')
+
+    async def test_render_detail_set_key_updates_state_after_rename(self, user: User, tmp_path) -> None:
+        # Realistic use case: a DirectoryAdapter's rename() fires from a "Name"
+        # widget inside render_detail, well after the initial render.
+        adapter = DirectoryAdapter(tmp_path)
+        key = adapter.create().name
+        holder = {}
+
+        def custom_detail(adapter, key, set_key):
+            ui.label(f'Editing {key}')
+
+            def do_rename():
+                set_key(adapter.rename(key, 'renamed-key'))
+            ui.button('Rename', on_click=lambda: do_rename())
+
+        @ui.page('/')
+        def page():
+            holder['wrapper'] = DrillDownWrapper.from_adapter(FileEntry, adapter, render_detail=custom_detail).render()
+            holder['wrapper'].open(key)
+
+        await user.open('/')
+        await user.should_see(f'Editing {key}')
+        user.find('Rename').click()
+        await user.should_see('Editing renamed-key')
+        assert holder['wrapper']._state['key'] == 'renamed-key'
+
+
+# ---------------------------------------------------------------------------
+# DrillDownWrapper — add / delete actions
+# ---------------------------------------------------------------------------
+
+class TestDrillDownWrapperActions:
+    async def test_add_button_creates_item_and_opens_detail(self, user: User) -> None:
+        adapter = ListAdapter(Contact, [])
+
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_adapter(Contact, adapter).render()
+
+        await user.open('/')
+        user.find(content='add').click()
+        await user.should_see('Name')
+        assert len(list(adapter)) == 1
+
+    async def test_on_add_overrides_default_create(self, user: User) -> None:
+        adapter = ListAdapter(Contact, [])
+        called: list[bool] = []
+
+        def custom_add():
+            called.append(True)
+
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_adapter(Contact, adapter, on_add=custom_add).render()
+
+        await user.open('/')
+        user.find(content='add').click()
+        await user.should_see('Contact List')  # title still visible, still in list view
+        assert called == [True]
+        assert len(list(adapter)) == 0
+
+    async def test_open_public_method_navigates(self, user: User) -> None:
+        contacts = [Contact(name='Alice')]
+        adapter = ListAdapter(Contact, contacts)
+        key = adapter.key_from_item(contacts[0])
+
+        @ui.page('/')
+        def page():
+            wrapper = DrillDownWrapper.from_adapter(Contact, adapter)
+            wrapper.render()
+            wrapper.open(key)
+
+        await user.open('/')
+        await user.should_see('Name')
+
+    async def test_repeated_list_renders_do_not_leak_change_handlers(self, user: User) -> None:
+        # _render_list_view() (the default, ModelList-backed branch) runs again on every
+        # navigation back to the list -- each run used to create a fresh ModelList that
+        # registered its own on_change handler on the adapter, since ModelList.render()
+        # auto-registers reactive updates. That accumulated a growing chain of handlers
+        # pointing at stale, already-deleted list widgets. DrillDownWrapper's own single
+        # on_change registration (which re-renders the whole body) already covers this,
+        # so ModelList's per-instance registration must be suppressed internally.
+        contacts = [Contact(name='Alice')]
+        adapter = ListAdapter(Contact, contacts)
+        key = adapter.key_from_item(contacts[0])
+        holder = {}
+
+        @ui.page('/')
+        def page():
+            holder['wrapper'] = DrillDownWrapper.from_adapter(Contact, adapter)
+            holder['wrapper'].render()
+
+        await user.open('/')
+        wrapper = holder['wrapper']
+        for _ in range(5):
+            wrapper.open(key)
+            wrapper._back()
+        assert len(adapter._change_handlers) == 1

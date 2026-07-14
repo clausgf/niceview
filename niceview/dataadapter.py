@@ -38,6 +38,8 @@ __all__ = [
     'FilteredAdapter',
     'JsonAdapter',
     'JsonListAdapter',
+    'FileEntry',
+    'DirectoryAdapter',
     'lenient_model_load',
     'lenient_list_load',
 ]
@@ -591,6 +593,111 @@ class JsonListAdapter(ListAdapter[T], ReloadableAdapter):
     def delete(self, key: str) -> None:
         super().delete(key)
         self._persist()
+
+
+class FileEntry(pydantic.BaseModel):
+    """
+    Metadata for one file in a DirectoryAdapter — NOT the file's parsed content.
+    Open the file's own adapter (JsonAdapter/JsonListAdapter) for that, typically
+    inside a DrillDownWrapper render_detail callback.
+    """
+    name: str
+    mtime: datetime.datetime
+    size: int
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class DirectoryAdapter(_ChangeNotifier, CollectionAdapter[FileEntry]):
+    """
+    A CollectionAdapter over files in a directory: one item (FileEntry) per file,
+    keyed by filename stem (without suffix). Items carry only metadata
+    (name/mtime/size), not parsed file content — open the file's own adapter
+    (JsonAdapter/JsonListAdapter) for that.
+
+    create() picks a free 'untitled-NN' name and writes default_content;
+    rename() renames the file on disk. Both are meant to be driven directly by
+    application code (e.g. a "Name" input in a detail view wired to rename()),
+    not through generic CollectionAdapter callers — see DrillDownWrapper's
+    render_detail hook.
+    """
+
+    def __init__(self, dir_path: Path, suffix: str = '.json', default_content: str | Callable[[], str] = '') -> None:
+        if not dir_path.is_dir():
+            raise ValueError(f"{dir_path} is not a directory")
+        self._dir_path = dir_path
+        self._suffix = suffix
+        self._default_content = default_content
+        self._init_notifier()
+
+    def _validate_key(self, key: str) -> None:
+        if not key or key in ('.', '..') or '/' in key or '\\' in key:
+            raise ValueError(f"Invalid file name: {key!r}")
+
+    def _path(self, key: str) -> Path:
+        self._validate_key(key)
+        return self._dir_path / f'{key}{self._suffix}'
+
+    def _entry(self, key: str) -> FileEntry:
+        stat = self._path(key).stat()
+        return FileEntry(
+            name=key,
+            mtime=datetime.datetime.fromtimestamp(stat.st_mtime, tz=datetime.timezone.utc),
+            size=stat.st_size,
+        )
+
+    def __iter__(self) -> Iterator[FileEntry]:
+        for path in sorted(self._dir_path.glob(f'*{self._suffix}')):
+            yield self._entry(path.name[:-len(self._suffix)])
+
+    def key_from_item(self, item: FileEntry) -> str:
+        return item.name
+
+    def read(self, key: str) -> FileEntry:
+        if not self._path(key).is_file():
+            raise KeyError(f"File not found: {key!r}")
+        return self._entry(key)
+
+    def _free_name(self) -> str:
+        existing = {p.name[:-len(self._suffix)] for p in self._dir_path.glob(f'*{self._suffix}')}
+        i = 1
+        while f'untitled-{i:02d}' in existing:
+            i += 1
+        return f'untitled-{i:02d}'
+
+    def create(self, item: FileEntry | None = None) -> FileEntry:
+        key = item.name if item is not None else self._free_name()
+        path = self._path(key)
+        if path.exists():
+            raise ValueError(f"File already exists: {key!r}")
+        content = self._default_content() if callable(self._default_content) else self._default_content
+        path.write_text(content, encoding='utf-8')
+        self._notify()
+        return self._entry(key)
+
+    def update(self, item: FileEntry) -> FileEntry:
+        # File content is owned by the file's own adapter (JsonAdapter/JsonListAdapter),
+        # not this one — update() only re-reads current metadata, for protocol conformance.
+        return self.read(item.name)
+
+    def delete(self, key: str) -> None:
+        path = self._path(key)
+        if not path.is_file():
+            raise KeyError(f"File not found: {key!r}")
+        path.unlink()
+        self._notify()
+
+    def rename(self, key: str, new_key: str) -> str:
+        old_path = self._path(key)
+        new_path = self._path(new_key)
+        if not old_path.is_file():
+            raise KeyError(f"File not found: {key!r}")
+        if new_path.exists():
+            raise ValueError(f"File already exists: {new_key!r}")
+        old_path.rename(new_path)
+        self._notify()
+        return new_key
 
 
 def __getattr__(name: str):
