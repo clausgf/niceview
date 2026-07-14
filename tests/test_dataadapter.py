@@ -695,6 +695,13 @@ class TestDirectoryAdapterCreate:
         entry = adapter.create()
         assert (tmp_path / f'{entry.name}.txt').exists()
 
+    def test_create_strips_user_typed_suffix(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        entry = adapter.create(FileEntry(name='note.json', mtime=datetime.datetime.now(datetime.timezone.utc), size=0))
+        assert entry.name == 'note'
+        assert (tmp_path / 'note.json').exists()
+        assert not (tmp_path / 'note.json.json').exists()
+
 
 class TestDirectoryAdapterRead:
     def test_read_returns_metadata(self, tmp_path):
@@ -762,6 +769,14 @@ class TestDirectoryAdapterRename:
         b = adapter.create()
         with pytest.raises(ValueError):
             adapter.rename(a.name, b.name)
+
+    def test_rename_strips_user_typed_suffix(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        entry = adapter.create()
+        new_key = adapter.rename(entry.name, 'note.json')
+        assert new_key == 'note'
+        assert (tmp_path / 'note.json').exists()
+        assert not (tmp_path / 'note.json.json').exists()
 
     def test_rename_notifies_on_change(self, tmp_path):
         adapter = DirectoryAdapter(tmp_path)

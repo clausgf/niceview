@@ -635,6 +635,15 @@ class DirectoryAdapter(_ChangeNotifier, CollectionAdapter[FileEntry]):
         if not key or key in ('.', '..') or '/' in key or '\\' in key:
             raise ValueError(f"Invalid file name: {key!r}")
 
+    def _strip_suffix(self, key: str) -> str:
+        # Names come from user-facing "Name" widgets that never show the suffix (see
+        # DrillDownWrapper's render_detail hook) -- but users familiar with file browsers
+        # sometimes type it anyway. Stripping it here (in create()/rename(), where a key
+        # arrives from such a widget) avoids a silently-doubled suffix like "note.json.json".
+        if key.endswith(self._suffix) and len(key) > len(self._suffix):
+            return key[:-len(self._suffix)]
+        return key
+
     def _path(self, key: str) -> Path:
         self._validate_key(key)
         return self._dir_path / f'{key}{self._suffix}'
@@ -667,7 +676,7 @@ class DirectoryAdapter(_ChangeNotifier, CollectionAdapter[FileEntry]):
         return f'untitled-{i:02d}'
 
     def create(self, item: FileEntry | None = None) -> FileEntry:
-        key = item.name if item is not None else self._free_name()
+        key = self._strip_suffix(item.name) if item is not None else self._free_name()
         path = self._path(key)
         if path.exists():
             raise ValueError(f"File already exists: {key!r}")
@@ -689,6 +698,7 @@ class DirectoryAdapter(_ChangeNotifier, CollectionAdapter[FileEntry]):
         self._notify()
 
     def rename(self, key: str, new_key: str) -> str:
+        new_key = self._strip_suffix(new_key)
         old_path = self._path(key)
         new_path = self._path(new_key)
         if not old_path.is_file():

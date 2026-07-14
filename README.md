@@ -437,10 +437,14 @@ from disk (JSON) or fires a grid-refresh notification (SQL, where every `read()`
 **`DirectoryAdapter`** models "files in a directory" for `DrillDownWrapper`'s file-per-item use
 case. `items()`/`read()` return `FileEntry(name, mtime, size)` — metadata only, never the parsed
 file content; open the file's own `JsonAdapter`/`JsonListAdapter` for that (typically inside
-`render_detail`). `create(item=None)` picks a free `'untitled-01'`, `'untitled-02'`, ... name and
-writes `default_content`; `rename(key, new_key)` renames the file on disk. Both are meant to be
-called directly by application code (an "Add" handler, a "Name" widget's `blur` handler), not
-through `DrillDownWrapper`'s generic `item_type()`-based Add flow — see `examples/13_directory_drilldown.py`.
+`render_detail`). Keys never carry the file suffix — `name` is always the bare filename stem, so
+a "Name" widget in `render_detail` never has to show or strip `.json` itself; if a user types the
+suffix anyway, `create()`/`rename()` strip a trailing match rather than doubling it up
+(`"note.json"` → `note`, file `note.json`). `create(item=None)` picks a free `'untitled-01'`,
+`'untitled-02'`, ... name and writes `default_content`; `rename(key, new_key)` renames the file
+on disk. Both are meant to be called directly by application code (an "Add" handler, a "Name"
+widget's `blur` handler), not through `DrillDownWrapper`'s generic `item_type()`-based Add flow
+— see `examples/13_directory_drilldown.py`.
 
 **Lenient loading (default) vs strict loading:** `JsonAdapter` and `JsonListAdapter` default to
 `strict=False`, which means a hand-edited or partially-migrated file does not crash the
@@ -794,7 +798,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 637 tests
+uv run pytest          # 639 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 
