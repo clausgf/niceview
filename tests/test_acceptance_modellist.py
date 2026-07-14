@@ -97,7 +97,7 @@ class TestDrillDownWrapperListView:
     async def test_title_visible(self, user: User) -> None:
         @ui.page('/')
         def page():
-            DrillDownWrapper.from_list(Contact, [Contact(name='Alice')], title='My Contacts').render()
+            DrillDownWrapper.from_list(Contact, [Contact(name='Alice')], list_title='My Contacts').render()
 
         await user.open('/')
         await user.should_see('My Contacts')
@@ -107,7 +107,7 @@ class TestDrillDownWrapperListView:
 
         @ui.page('/')
         def page():
-            DrillDownWrapper.from_list(Contact, contacts, title='Contacts').render()
+            DrillDownWrapper.from_list(Contact, contacts, list_title='Contacts').render()
 
         await user.open('/')
         await user.should_see('Alice Müller')
@@ -126,7 +126,7 @@ class TestDrillDownWrapperListView:
     async def test_add_button_visible_by_default(self, user: User) -> None:
         @ui.page('/')
         def page():
-            DrillDownWrapper.from_list(Contact, [], title='Contacts').render()
+            DrillDownWrapper.from_list(Contact, [], list_title='Contacts').render()
 
         await user.open('/')
         await user.should_see(ui.button)
@@ -134,7 +134,7 @@ class TestDrillDownWrapperListView:
     async def test_add_button_hidden_when_none(self, user: User) -> None:
         @ui.page('/')
         def page():
-            DrillDownWrapper.from_list(Contact, [], title='Contacts', add_button=None).render()
+            DrillDownWrapper.from_list(Contact, [], list_title='Contacts', add_button=None).render()
 
         await user.open('/')
         await user.should_not_see(ui.button)
@@ -228,7 +228,7 @@ class TestDrillDownWrapperDetailView:
 
         @ui.page('/')
         def page():
-            DrillDownWrapper.from_adapter(Contact, adapter, title_field='name').render().open(key)
+            DrillDownWrapper.from_adapter(Contact, adapter, item_title_field='name').render().open(key)
 
         await user.open('/')
         await user.should_see('Alice Müller')
@@ -398,3 +398,70 @@ class TestDrillDownWrapperActions:
             wrapper.open(key)
             wrapper._back()
         assert len(adapter._change_handlers) == 1
+
+
+# ---------------------------------------------------------------------------
+# DrillDownWrapper — exposed elements for styling
+# ---------------------------------------------------------------------------
+
+class TestDrillDownWrapperExposedElements:
+    async def test_list_view_exposes_title_row_and_add_button(self, user: User) -> None:
+        contacts = [Contact(name='Alice')]
+        holder = {}
+
+        @ui.page('/')
+        def page():
+            holder['wrapper'] = DrillDownWrapper.from_list(Contact, contacts).render()
+
+        await user.open('/')
+        wrapper = holder['wrapper']
+        assert isinstance(wrapper.title_row, ui.row)
+        assert isinstance(wrapper.title, ui.label)
+        assert wrapper.title.text == 'Contact List'
+        assert isinstance(wrapper.add_button, ui.button)
+        assert wrapper.delete_button is None
+        assert wrapper.back_button is None
+        assert isinstance(wrapper.body, ui.column)
+
+    async def test_detail_view_exposes_back_and_delete_button(self, user: User) -> None:
+        contacts = [Contact(name='Alice')]
+        adapter = ListAdapter(Contact, contacts)
+        key = adapter.key_from_item(contacts[0])
+        holder = {}
+
+        @ui.page('/')
+        def page():
+            holder['wrapper'] = DrillDownWrapper.from_adapter(Contact, adapter).render()
+            holder['wrapper'].open(key)
+
+        await user.open('/')
+        wrapper = holder['wrapper']
+        assert isinstance(wrapper.back_button, ui.button)
+        assert isinstance(wrapper.delete_button, ui.button)
+        assert wrapper.add_button is None
+        assert isinstance(wrapper.title, ui.label)
+        assert wrapper.title.text == 'Alice'
+
+    async def test_title_row_and_body_animate_on_navigation(self, user: User) -> None:
+        # ui.refreshable_method.refresh() defers the actual re-render to a background
+        # task, so state-mutating calls need an await afterward (should_see's retry loop)
+        # before the newly-created elements are visible via the wrapper's attributes.
+        contacts = [Contact(name='Alice')]
+        adapter = ListAdapter(Contact, contacts)
+        key = adapter.key_from_item(contacts[0])
+        holder = {}
+
+        @ui.page('/')
+        def page():
+            holder['wrapper'] = DrillDownWrapper.from_adapter(Contact, adapter).render()
+
+        await user.open('/')
+        wrapper = holder['wrapper']
+        wrapper.open(key)
+        await user.should_see('Name')
+        assert 'niceview-slide-in-right' in wrapper.title_row.classes
+        assert 'niceview-slide-in-right' in wrapper.body.classes
+        wrapper._back()
+        await user.should_not_see('Name')
+        assert 'niceview-slide-in-left' in wrapper.title_row.classes
+        assert 'niceview-slide-in-left' in wrapper.body.classes

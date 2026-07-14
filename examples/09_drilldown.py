@@ -37,9 +37,9 @@ def page():
     with ui.card().classes('w-full max-w-2xl mx-auto'):
         DrillDownWrapper.from_list(
             Contact, contacts,
-            title='Contacts',
-            title_field='name',
-            subtitle_fields=['email', 'phone'],
+            list_title='Contacts',
+            item_title_field='name',
+            item_subtitle_fields=['email', 'phone'],
         ).render()
 
 

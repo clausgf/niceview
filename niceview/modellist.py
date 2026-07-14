@@ -211,6 +211,25 @@ class ModelList:
         return self
 
 
+class _DrillDownWrapperOptionInputs(typing_extensions.TypedDict, total=False):
+    """Keyword options for DrillDownWrapper and its factory methods."""
+    list_title: str
+    item_title_field: str | None
+    item_subtitle_fields: list[str] | None
+    add_button: str | None
+    delete_button: str | None
+    on_add: Callable[[], None] | None
+    on_back: Callable[[], None] | None
+    render_list_item: ListItemRenderer | None
+    render_list_container: ListContainerRenderer | None
+    render_detail: DetailRenderer | None
+    # ModelList options forwarded when render_list_item is not set:
+    include: list[str] | str
+    exclude: list[str] | str
+    field_infos: dict[str, FieldInfo]
+    profile: str | None
+
+
 class DrillDownWrapper:
     """
     Embeddable list <-> detail navigation. render() draws a title row (Add in
@@ -228,15 +247,23 @@ class DrillDownWrapper:
     render_detail), or non-form content — e.g. rendering a nested
     DrillDownWrapper for a DirectoryAdapter's files. See README.
 
+    After render(), the NiceGUI elements are exposed for further styling:
+        wrapper.title_row     → ui.row | None
+        wrapper.title         → ui.label | None (list title, or the current item's title in detail view)
+        wrapper.back_button   → ui.button | None (detail view always; list view only if on_back= is set)
+        wrapper.add_button    → ui.button | None (list view only)
+        wrapper.delete_button → ui.button | None (detail view only)
+        wrapper.body          → ui.column | None (the swappable list/detail container)
+
     Usage:
-        wrapper = DrillDownWrapper.from_list(User, items, title='Users')
+        wrapper = DrillDownWrapper.from_list(User, items, list_title='Users')
         wrapper.render()
     """
     _item_type: type[BaseModel]
     _adapter: CollectionAdapter
-    _title: str
-    _title_field: str | None
-    _subtitle_fields: list[str] | None
+    _list_title: str
+    _item_title_field: str | None
+    _item_subtitle_fields: list[str] | None
     _render_list_item: ListItemRenderer | None
     _render_list_container: ListContainerRenderer | None
     _render_detail: DetailRenderer | None
@@ -248,14 +275,22 @@ class DrillDownWrapper:
     _state: dict[str, Any]
     _auto_update_registered: bool
 
-    def __init__(self, item_type: type[BaseModel], adapter: CollectionAdapter, **kwargs: Any) -> None:
+    # Exposed NiceGUI elements (populated on each _title_row()/_body() refresh)
+    title_row: ui.row | None
+    title: ui.label | None
+    back_button: ui.button | None
+    add_button: ui.button | None
+    delete_button: ui.button | None
+    body: ui.column | None
+
+    def __init__(self, item_type: type[BaseModel], adapter: CollectionAdapter, **kwargs: Unpack[_DrillDownWrapperOptionInputs]) -> None:
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {type(item_type)}")
         self._item_type = item_type
         self._adapter = adapter
-        self._title = kwargs.pop('title', item_type.__name__ + ' List')
-        self._title_field = kwargs.pop('title_field', None)
-        self._subtitle_fields = kwargs.pop('subtitle_fields', None)
+        self._list_title = kwargs.pop('list_title', item_type.__name__ + ' List')
+        self._item_title_field = kwargs.pop('item_title_field', None)
+        self._item_subtitle_fields = kwargs.pop('item_subtitle_fields', None)
         self._render_list_item = kwargs.pop('render_list_item', None)
         self._render_list_container = kwargs.pop('render_list_container', None)
         self._render_detail = kwargs.pop('render_detail', None)
@@ -263,12 +298,19 @@ class DrillDownWrapper:
         self._on_back = kwargs.pop('on_back', None)
         self._add_button = kwargs.pop('add_button', '')
         self._delete_button = kwargs.pop('delete_button', '')
-        self._list_kwargs = kwargs  # remainder forwarded to ModelList (include, exclude, ...) when render_list_item is unset
+        self._list_kwargs = dict(kwargs)  # remainder forwarded to ModelList (include, exclude, ...) when render_list_item is unset
         self._state = {'view': 'list', 'key': None, 'direction': 'right'}
         self._auto_update_registered = False
 
+        self.title_row = None
+        self.title = None
+        self.back_button = None
+        self.add_button = None
+        self.delete_button = None
+        self.body = None
+
         # Resolve the display title field once so the detail title row is consistent
-        if self._title_field is None:
+        if self._item_title_field is None:
             fields = Fields(
                 item_type,
                 self._list_kwargs.get('include', '__all__'),
@@ -278,26 +320,26 @@ class DrillDownWrapper:
             )
             for name in fields:
                 if not fields[name].hidden:
-                    self._title_field = name
+                    self._item_title_field = name
                     break
 
     # --- factory methods ---------------------------------------------------
 
     @classmethod
-    def from_list(cls, item_type: type[T], items: list[T], **kwargs: Any) -> Self:
+    def from_list(cls, item_type: type[T], items: list[T], **kwargs: Unpack[_DrillDownWrapperOptionInputs]) -> Self:
         """Create a DrillDownWrapper backed by an in-memory list."""
-        return cls(item_type, ListAdapter(item_type, items), **kwargs)
+        return cls(item_type, ListAdapter(item_type, items), **kwargs)  # type: ignore[arg-type]
 
     @classmethod
-    def from_adapter(cls, item_type: type[T], adapter: CollectionAdapter, **kwargs: Any) -> Self:
+    def from_adapter(cls, item_type: type[T], adapter: CollectionAdapter, **kwargs: Unpack[_DrillDownWrapperOptionInputs]) -> Self:
         """Create a DrillDownWrapper from any CollectionAdapter."""
-        return cls(item_type, adapter, **kwargs)
+        return cls(item_type, adapter, **kwargs)  # type: ignore[arg-type]
 
     @classmethod
-    def from_json(cls, item_type: type[T], path_name: Path, create_if_not_exist: bool = True, **kwargs: Any) -> Self:
+    def from_json(cls, item_type: type[T], path_name: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_DrillDownWrapperOptionInputs]) -> Self:
         """Create a DrillDownWrapper backed by a JSON file."""
         adapter = JsonListAdapter(item_type, path_name, create_if_not_exist=create_if_not_exist)
-        return cls(item_type, adapter, **kwargs)
+        return cls(item_type, adapter, **kwargs)  # type: ignore[arg-type]
 
     @property
     def adapter(self) -> CollectionAdapter:
@@ -330,7 +372,7 @@ class DrillDownWrapper:
     # --- title row -----------------------------------------------------------
 
     def _item_title(self, item: Any) -> str:
-        return str(getattr(item, self._title_field, '')) if self._title_field else str(item)
+        return str(getattr(item, self._item_title_field, '')) if self._item_title_field else str(item)
 
     def _detail_title(self) -> str:
         key = self._state['key']
@@ -343,24 +385,28 @@ class DrillDownWrapper:
 
     @ui.refreshable_method
     def _title_row(self) -> None:
-        with ui.row().classes('w-full items-center gap-2'):
+        self.title = None
+        self.back_button = None
+        self.add_button = None
+        self.delete_button = None
+        with ui.row().classes(f'w-full items-center gap-2 {_slide_class(self._state["direction"])}') as self.title_row:
             if self._state['view'] == 'detail':
-                ui.button(icon='arrow_back').props('round dense flat').on_click(self._back)
-                ui.label(self._detail_title()).classes('text-h6 grow')
+                self.back_button = ui.button(icon='arrow_back').props('round dense flat').on_click(self._back)
+                self.title = ui.label(self._detail_title()).classes('text-h6 grow')
                 if self._delete_button is not None:
-                    ui.button(self._delete_button, icon='delete').props('round dense flat color=negative').on_click(self._handle_delete)
+                    self.delete_button = ui.button(self._delete_button, icon='delete').props('round dense flat color=negative').on_click(self._handle_delete)
             else:
                 if self._on_back is not None:
-                    ui.button(icon='arrow_back').props('round dense flat').on_click(self._on_back)
-                ui.label(self._title).classes('text-h6 grow')
+                    self.back_button = ui.button(icon='arrow_back').props('round dense flat').on_click(self._on_back)
+                self.title = ui.label(self._list_title).classes('text-h6 grow')
                 if self._add_button is not None:
-                    ui.button(self._add_button, icon='add').props('round dense flat color=primary').on_click(self._handle_add)
+                    self.add_button = ui.button(self._add_button, icon='add').props('round dense flat color=primary').on_click(self._handle_add)
 
     # --- body ------------------------------------------------------------------
 
     @ui.refreshable_method
     def _body(self) -> None:
-        with ui.column().classes(f'w-full gap-2 {_slide_class(self._state["direction"])}'):
+        with ui.column().classes(f'w-full gap-2 {_slide_class(self._state["direction"])}') as self.body:
             if self._state['view'] == 'detail' and self._state['key'] is not None:
                 self._render_detail_view(self._state['key'])
             else:
@@ -385,8 +431,8 @@ class DrillDownWrapper:
             return
         model_list = ModelList(
             self._item_type, self._adapter,
-            title_field=self._title_field,
-            subtitle_fields=self._subtitle_fields,
+            title_field=self._item_title_field,
+            subtitle_fields=self._item_subtitle_fields,
             **self._list_kwargs,
         )
         # _render_list_view() runs again on every DrillDownWrapper._body refresh, creating a
