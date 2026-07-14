@@ -152,6 +152,48 @@ class TestDrillDownWrapperListView:
         await user.open('/')
         await user.should_see('Custom: Alice')
 
+    async def test_render_list_container_wraps_rows(self, user: User) -> None:
+        contacts = [Contact(name='Alice'), Contact(name='Bob')]
+
+        def custom_row(key, item, select):
+            ui.label(item.name)
+
+        def custom_container(render_rows):
+            with ui.column().classes('my-custom-container') as container:
+                render_rows()
+            container.classes('extra-marker')
+
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_list(
+                Contact, contacts, render_list_item=custom_row, render_list_container=custom_container,
+            ).render()
+
+        await user.open('/')
+        await user.should_see('Alice')
+        await user.should_see('Bob')
+        with user._client:
+            containers = [e for e in ui.context.client.layout.descendants()
+                          if 'my-custom-container' in e.classes and 'extra-marker' in e.classes]
+        assert len(containers) == 1
+        assert {'Alice', 'Bob'} <= {c.text for c in containers[0].descendants() if isinstance(c, ui.label)}
+
+    async def test_render_list_container_not_used_for_default_rows(self, user: User) -> None:
+        contacts = [Contact(name='Alice')]
+        called: list[bool] = []
+
+        def custom_container(render_rows):
+            called.append(True)
+            render_rows()
+
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_list(Contact, contacts, render_list_container=custom_container).render()
+
+        await user.open('/')
+        await user.should_see('Alice')
+        assert called == []
+
     async def test_on_back_shows_back_button_in_list_view(self, user: User) -> None:
         @ui.page('/')
         def page():

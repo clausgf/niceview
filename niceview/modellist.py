@@ -41,6 +41,13 @@ ListItemRenderer = Callable[[str, Any, Callable[[], None]], None]
 """(key, item, select) -> render one row of the list view. Call select() from
 a click handler to navigate to the detail view for this item."""
 
+ListContainerRenderer = Callable[[Callable[[], None]], None]
+"""(render_rows) -> create the container element (e.g. ui.column()) and call
+render_rows() inside it. Keep the container via `as container:` to apply
+container-level behavior afterward, e.g. container.make_sortable(...). Only
+used when render_list_item is also set -- the default ModelList-backed list
+view has its own container (a ui.list)."""
+
 _SLIDE_CSS = '''
     @keyframes niceview-slide-in-right { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     @keyframes niceview-slide-in-left  { from { transform: translateX(-100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
@@ -231,6 +238,7 @@ class DrillDownWrapper:
     _title_field: str | None
     _subtitle_fields: list[str] | None
     _render_list_item: ListItemRenderer | None
+    _render_list_container: ListContainerRenderer | None
     _render_detail: DetailRenderer | None
     _on_add: Callable[[], None] | None
     _on_back: Callable[[], None] | None
@@ -249,6 +257,7 @@ class DrillDownWrapper:
         self._title_field = kwargs.pop('title_field', None)
         self._subtitle_fields = kwargs.pop('subtitle_fields', None)
         self._render_list_item = kwargs.pop('render_list_item', None)
+        self._render_list_container = kwargs.pop('render_list_container', None)
         self._render_detail = kwargs.pop('render_detail', None)
         self._on_add = kwargs.pop('on_add', None)
         self._on_back = kwargs.pop('on_back', None)
@@ -363,8 +372,16 @@ class DrillDownWrapper:
             if not items:
                 ui.label('No items yet.').classes('italic')
                 return
-            for key, item in items:
-                self._render_list_item(key, item, self._make_select(key))
+            render_list_item = self._render_list_item
+
+            def render_rows() -> None:
+                for key, item in items:
+                    render_list_item(key, item, self._make_select(key))
+
+            if self._render_list_container is not None:
+                self._render_list_container(render_rows)
+            else:
+                render_rows()
             return
         model_list = ModelList(
             self._item_type, self._adapter,

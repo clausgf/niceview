@@ -372,6 +372,7 @@ DrillDownWrapper.from_list(User, users,
     on_add=None,                # override the Add click handler entirely (see below)
     on_back=None,                # if set, shows a Back button in the list view too (for nesting)
     render_list_item=None,      # override list row rendering (see below)
+    render_list_container=None,  # wrap the rendered rows, e.g. for make_sortable (see below)
     render_detail=None,         # override detail rendering (see below)
     # ModelList options forwarded when render_list_item is not set:
     include=['name', 'email'],
@@ -402,6 +403,20 @@ DrillDownWrapper.from_adapter(WidgetModel, widgets_adapter,
     render_list_item=render_list_item, render_detail=render_detail, add_button=None,
 ).render()
 ```
+
+**Wrapping the rows** (e.g. drag-to-reorder via `make_sortable`) needs the *container*, not each row, and needs to be re-applied every time the list re-renders — that's what `render_list_container` is for (only used together with `render_list_item`):
+```python
+def render_list_container(render_rows: Callable[[], None]) -> None:
+    with ui.column().classes('w-full gap-1') as container:
+        render_rows()
+    container.make_sortable(handle='.drag-handle', on_end=handle_reorder)
+
+DrillDownWrapper.from_adapter(WidgetModel, widgets_adapter,
+    render_list_item=render_list_item, render_list_container=render_list_container,
+    render_detail=render_detail, add_button=None,
+).render()
+```
+
 `render_detail`'s `set_key` callback is for renaming: call it whenever the item's key changes
 (e.g. a "Name" input's `blur` handler that calls `adapter.rename(...)`) to keep the wrapper's
 navigation state in sync — it can be called any time, not just synchronously while
@@ -798,7 +813,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 639 tests
+uv run pytest          # 641 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 
