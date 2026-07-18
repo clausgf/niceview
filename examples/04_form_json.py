@@ -57,7 +57,7 @@ def page():
             EditFormWrapper.from_json(AppConfig, AUTOSAVE_PATH,
                                       title='Edit JSON (autosaves on change)',
                                       autosave=True,
-                                      )
+                                      ).render()
 
         with ui.card().classes('flex-1'):
             ui.label(f'JSON — {AUTOSAVE_PATH.name}').classes('text-h6')
@@ -68,7 +68,7 @@ def page():
             EditFormWrapper.from_json(
                 AppConfig, BUTTONS_PATH,
                 title='Edit JSON (uses Save / Refresh buttons)',
-            )
+            ).render()
 
         with ui.card().classes('flex-1'):
             ui.label(f'JSON — {BUTTONS_PATH.name}').classes('text-h6')

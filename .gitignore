@@ -182,3 +182,5 @@ user.json
 
 # Claude Code personal settings (permissions, hooks)
 .claude/settings.local.json
+example_*.json
+example_notes/

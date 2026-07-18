@@ -52,7 +52,7 @@ def render_section(title: str, note: str, original: list, adapter: ListAdapter) 
     with ui.card().classes('w-full'):
         ui.markdown(f'**{title}**: {note}')
 
-        wrapper = EditGridWrapper.from_adapter(Task, adapter, inline_edit=True, title=title)
+        wrapper = EditGridWrapper.from_adapter(Task, adapter, inline_edit=True, title=title).render()
         wrapper.grid.widget.classes('w-full')  # canonical styling: via the exposed grid widget
 
         live_view = ui.code(_fmt(original)).classes('w-full')

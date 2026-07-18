@@ -51,7 +51,7 @@ class TestModelFormRender:
     async def test_title_visible(self, user: User) -> None:
         @ui.page('/')
         def page():
-            EditFormWrapper.from_item(Person(), title='Edit Person')
+            EditFormWrapper.from_item(Person(), title='Edit Person').render()
 
         await user.open('/')
         await user.should_see('Edit Person')
@@ -499,7 +499,7 @@ class TestEditGridWrapperRender:
     async def test_title_visible(self, user: User) -> None:
         @ui.page('/')
         def page():
-            EditGridWrapper.from_list(Person, [], title='People')
+            EditGridWrapper.from_list(Person, [], title='People').render()
 
         await user.open('/')
         await user.should_see('People')
@@ -507,7 +507,7 @@ class TestEditGridWrapperRender:
     async def test_add_button_present(self, user: User) -> None:
         @ui.page('/')
         def page():
-            EditGridWrapper.from_list(Person, [])
+            EditGridWrapper.from_list(Person, []).render()
 
         await user.open('/')
         await user.should_see(ui.button, content='add')
@@ -515,7 +515,7 @@ class TestEditGridWrapperRender:
     async def test_delete_button_present(self, user: User) -> None:
         @ui.page('/')
         def page():
-            EditGridWrapper.from_list(Person, [])
+            EditGridWrapper.from_list(Person, []).render()
 
         await user.open('/')
         await user.should_see(ui.button, content='delete')
@@ -523,7 +523,7 @@ class TestEditGridWrapperRender:
     async def test_grid_element_present(self, user: User) -> None:
         @ui.page('/')
         def page():
-            EditGridWrapper.from_list(Person, [])
+            EditGridWrapper.from_list(Person, []).render()
 
         await user.open('/')
         await user.should_see(ui.aggrid)

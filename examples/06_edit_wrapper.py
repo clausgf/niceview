@@ -54,24 +54,24 @@ def page():
         EditGridWrapper.from_list(
             Task, tasks,
             title='Tasks (EditGridWrapper with default buttons and dialogs)',
-        )
+        ).render()
 
     with ui.card().classes('w-full'):
         EditGridWrapper.from_list(
             Task, tasks,
             inline_edit=True,
             title='Tasks (EditGridWrapper with inline editing)',
-        )
+        ).render()
 
     with ui.grid().classes('w-full gap-4 grid-cols-1 lg:grid-cols-2').mark('my-form'):
         with ui.card().classes('w-full'):
             # from_item: no adapter, so no Save/Refresh buttons — edits go straight to tasks[0]
-            EditFormWrapper.from_item(Task, tasks[0], title='EditFormWrapper via item')
+            EditFormWrapper.from_item(Task, tasks[0], title='EditFormWrapper via item').render()
 
         with ui.card().classes('w-full'):
             adapter = ListAdapter(Task, tasks)
             key = adapter.key_from_item(tasks[0])
-            EditFormWrapper.from_adapter(Task, adapter, key, title='EditFormWrapper via adapter')
+            EditFormWrapper.from_adapter(Task, adapter, key, title='EditFormWrapper via adapter').render()
         ElementFilter().within(marker='my-form').props('dense').classes('w-full')
 
 

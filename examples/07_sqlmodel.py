@@ -82,7 +82,7 @@ def authors_page():
     ui.separator()
     ui.label('Authors').classes('text-h5')
     authors = SqlModelAdapter(Author, engine)
-    EditGridWrapper.from_adapter(Author, authors, title='Authors')
+    EditGridWrapper.from_adapter(Author, authors, title='Authors').render()
     ui.button('→ Books', on_click=lambda: ui.navigate.to('/books')).props('flat')
 
 
@@ -90,7 +90,7 @@ def authors_page():
 def author_edit_page(author_id: int):
     authors = SqlModelAdapter(Author, engine)
     with ui.card().classes('w-full max-w-lg'):
-        EditFormWrapper.from_adapter(Author, authors, str(author_id), title='Edit Author')
+        EditFormWrapper.from_adapter(Author, authors, str(author_id), title='Edit Author').render()
     ui.button('← Back', on_click=lambda: ui.navigate.to('/')).props('flat')
 
 
@@ -99,7 +99,7 @@ def books_page():
     books = SqlModelAdapter(Book, engine)
     authors = SqlModelAdapter(Author, engine)
     ui.label('Books').classes('text-h5')
-    wrapper = EditGridWrapper.from_adapter(Book, books, title='Books')
+    wrapper = EditGridWrapper.from_adapter(Book, books, title='Books').render()
     wrapper.with_repositories({Author: authors})
     ui.button('← Authors', on_click=lambda: ui.navigate.to('/')).props('flat')
 
@@ -110,7 +110,7 @@ def book_edit_page(book_id: int):
     authors = SqlModelAdapter(Author, engine)
     with ui.card().classes('w-full max-w-lg'):
         EditFormWrapper.from_adapter(Book, books, str(book_id), title='Edit Book',
-                                     repositories={Author: authors})
+                                     repositories={Author: authors}).render()
     ui.button('← Back', on_click=lambda: ui.navigate.to('/books')).props('flat')
 
 

@@ -115,33 +115,27 @@ class EditGridWrapper():
 
     @classmethod
     def from_list(cls, item_type: type[T], items: list[T], *, inline_edit: bool = False, **kwargs: Unpack[_EditGridWrapperFactoryInputs]) -> Self:
-        """Create an EditGridWrapper backed by an in-memory list. Renders immediately."""
+        """Create an EditGridWrapper backed by an in-memory list. Call render() (fluent: from_list(...).render()) to draw it."""
         wrapper_kwargs, grid_kwargs = cls._split_kwargs(kwargs)
         grid_cls = ModelGridInlineEdit if inline_edit else ModelGrid
         grid = grid_cls.from_list(item_type, items, **grid_kwargs)
-        instance = cls(grid, **wrapper_kwargs)
-        instance.render()
-        return instance
+        return cls(grid, **wrapper_kwargs)
 
     @classmethod
     def from_json(cls, item_type: type[T], path_name: Path, *, create_if_not_exist: bool = True, inline_edit: bool = False, **kwargs: Unpack[_EditGridWrapperFactoryInputs]) -> Self:
-        """Create an EditGridWrapper backed by a JSON file. Renders immediately."""
+        """Create an EditGridWrapper backed by a JSON file. Call render() to draw it."""
         wrapper_kwargs, grid_kwargs = cls._split_kwargs(kwargs)
         grid_cls = ModelGridInlineEdit if inline_edit else ModelGrid
         grid = grid_cls.from_json(item_type, path_name, create_if_not_exist=create_if_not_exist, **grid_kwargs)
-        instance = cls(grid, **wrapper_kwargs)
-        instance.render()
-        return instance
+        return cls(grid, **wrapper_kwargs)
 
     @classmethod
     def from_adapter(cls, item_type: type[T], adapter: CollectionAdapter, *, inline_edit: bool = False, **kwargs: Unpack[_EditGridWrapperFactoryInputs]) -> Self:
-        """Create an EditGridWrapper backed by any CollectionAdapter. Renders immediately."""
+        """Create an EditGridWrapper backed by any CollectionAdapter. Call render() to draw it."""
         wrapper_kwargs, grid_kwargs = cls._split_kwargs(kwargs)
         grid_cls = ModelGridInlineEdit if inline_edit else ModelGrid
         grid = grid_cls.from_adapter(item_type, adapter, **grid_kwargs)
-        instance = cls(grid, **wrapper_kwargs)
-        instance.render()
-        return instance
+        return cls(grid, **wrapper_kwargs)
 
     # --- configuration -----------------------------------------------------
 
@@ -476,7 +470,7 @@ class EditFormWrapper():
 
     @classmethod
     def from_item(cls, item_type_or_item: 'type[BaseModel] | BaseModel', item: 'BaseModel | None' = None, /, **kwargs: Unpack[_EditFormWrapperFactoryInputs]) -> Self:
-        """Create an EditFormWrapper backed by an in-memory item. Renders immediately."""
+        """Create an EditFormWrapper backed by an in-memory item. Call render() (fluent: from_item(...).render()) to draw it."""
         wrapper_kwargs, repositories, form_kwargs = _split_form_kwargs(kwargs)
         if isinstance(item_type_or_item, BaseModel):
             if item is not None:
@@ -488,24 +482,20 @@ class EditFormWrapper():
             form = ModelForm.from_item(item_type_or_item, item, **form_kwargs)
         if repositories:
             form.with_repositories(repositories)
-        instance = cls(form, **wrapper_kwargs)
-        instance.render()
-        return instance
+        return cls(form, **wrapper_kwargs)
 
     @classmethod
     def from_json(cls, item_type: type[BaseModel], json_path: Path, *, create_if_not_exist: bool = True, lock_field: str | None = None, created_field: str | None = None, **kwargs: Unpack[_EditFormWrapperFactoryInputs]) -> Self:
-        """Create an EditFormWrapper backed by a JSON file. Renders immediately with Save and Refresh buttons."""
+        """Create an EditFormWrapper backed by a JSON file with Save and Refresh buttons. Call render() to draw it."""
         wrapper_kwargs, repositories, form_kwargs = _split_form_kwargs(kwargs)
         form = ModelForm.from_json(item_type, json_path, create_if_not_exist=create_if_not_exist, lock_field=lock_field, created_field=created_field, **form_kwargs)
         if repositories:
             form.with_repositories(repositories)
-        instance = cls(form, **wrapper_kwargs)
-        instance.render()
-        return instance
+        return cls(form, **wrapper_kwargs)
 
     @classmethod
     def from_adapter(cls, item_type: type[BaseModel], adapter: 'CollectionAdapter | ItemAdapter', key: str | None = None, **kwargs: Unpack[_EditFormWrapperFactoryInputs]) -> Self:
-        """Create an EditFormWrapper backed by an adapter. Renders immediately with Save and Refresh buttons.
+        """Create an EditFormWrapper backed by an adapter with Save and Refresh buttons. Call render() to draw it.
 
         With key: wraps CollectionAdapter + key in a BoundItem.
         Without key: treats adapter directly as an ItemAdapter (e.g. JsonAdapter).
@@ -514,9 +504,7 @@ class EditFormWrapper():
         form = ModelForm.from_adapter(item_type, adapter, key, **form_kwargs)
         if repositories:
             form.with_repositories(repositories)
-        instance = cls(form, **wrapper_kwargs)
-        instance.render()
-        return instance
+        return cls(form, **wrapper_kwargs)
 
     # --- delegation --------------------------------------------------------
 

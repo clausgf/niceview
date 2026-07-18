@@ -164,7 +164,7 @@ def page_project(pid: str) -> None:
 
     with ui.row().classes('w-full flex-wrap q-pa-md gap-4 items-start'):
         with ui.card().classes('col'):
-            _fields_full_width(EditFormWrapper.from_adapter(Project, projects_adapter, pid))
+            _fields_full_width(EditFormWrapper.from_adapter(Project, projects_adapter, pid).render())
 
         with ui.card().classes('col-auto'):
             task_count = sum(1 for t in tasks_adapter if t.project_key == pid)
@@ -216,7 +216,7 @@ def page_task(pid: str, tid: str) -> None:
     with ui.column().classes('q-pa-md w-full max-w-lg'):
         with ui.card().classes('w-full'):
             _fields_full_width(EditFormWrapper.from_adapter(Task, tasks_adapter, tid,
-                                                            profile='detail'))
+                                                            profile='detail').render())
 
 
 ui.run(title='11 — Tree Navigation')
