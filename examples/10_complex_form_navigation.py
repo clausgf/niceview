@@ -1,50 +1,55 @@
 """
-Example 10 – Complex form via split-panel (pure NiceGUI).
+# Split-Panel Form Navigation
 
-- Desktop: button opens a right panel; close button hides it.
-           Multiple buttons → different forms in the same panel.
-- Mobile:  button navigates to a dedicated full-page form.
-           Back button returns to main.
+Responsive master-detail navigation around `ModelForm`:
+
+- **Desktop**: a button opens the form in a right-hand panel; a close button hides it.
+  Multiple buttons reuse the same panel with different forms.
+- **Mobile** (width < 1024px): the same button navigates to a dedicated full-page
+  form with a back button.
+
+The forms are plain `ModelForm.from_item()` instances — edits are validated and
+written back to the shared Pydantic objects immediately, so no Save button is
+needed and both render targets (panel and page) share one renderer function.
 """
+# Allows running without prior install. With uv: `uv run python examples/<file>.py`.
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from typing import Literal
+import pydantic
 from nicegui import ui
 
-# ---------------------------------------------------------------------------
-# Shared state (replace with JsonAdapter / SqlModelAdapter in production)
-# ---------------------------------------------------------------------------
+from niceview import ModelForm
 
-settings = {
-    'name': 'My App', 'debug': False,
-    'log_level': 'INFO', 'timeout': 30, 'endpoint': 'https://api.example.com',
-}
-profile = {'username': 'admin', 'email': 'admin@example.com', 'role': 'Admin'}
+
+class Settings(pydantic.BaseModel):
+    name: str = pydantic.Field(default='My App', max_length=40, title='App name')
+    log_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR'] = pydantic.Field(default='INFO', title='Log level')
+    debug: bool = pydantic.Field(default=False, title='Debug mode')
+    timeout: int = pydantic.Field(default=30, ge=1, le=300, title='Timeout (s)')
+    endpoint: str = pydantic.Field(default='https://api.example.com', title='API endpoint')
+
+
+class Profile(pydantic.BaseModel):
+    username: str = pydantic.Field(default='admin', title='Username')
+    email: str = pydantic.Field(default='admin@example.com', title='Email')
+    role: Literal['Admin', 'Editor', 'Viewer'] = pydantic.Field(default='Admin', title='Role')
+
+
+settings = Settings()
+profile = Profile()
 
 MOBILE_BREAKPOINT = 1024  # px — Quasar's md breakpoint
 
 
-# ---------------------------------------------------------------------------
-# Form renderers  (reused on desktop panel and mobile pages)
-# ---------------------------------------------------------------------------
-
 def render_settings() -> None:
-    ui.input('App name').bind_value(settings, 'name')
-    ui.select(['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-              label='Log level').bind_value(settings, 'log_level')
-    ui.switch('Debug mode').bind_value(settings, 'debug')
-    ui.number('Timeout (s)', min=1, max=300).bind_value(settings, 'timeout')
-    ui.input('API endpoint').bind_value(settings, 'endpoint')
-    with ui.row().classes('justify-end w-full q-mt-md'):
-        ui.button('Save', icon='save', color='primary',
-                  on_click=lambda: ui.notify('Saved', color='positive'))
+    ModelForm.from_item(settings).render()
 
 
 def render_profile() -> None:
-    ui.input('Username').bind_value(profile, 'username')
-    ui.input('Email').bind_value(profile, 'email')
-    ui.select(['Admin', 'Editor', 'Viewer'],
-              label='Role').bind_value(profile, 'role')
-    with ui.row().classes('justify-end w-full q-mt-md'):
-        ui.button('Save', icon='save', color='primary',
-                  on_click=lambda: ui.notify('Saved', color='positive'))
+    ModelForm.from_item(profile).render()
 
 
 # ---------------------------------------------------------------------------
@@ -53,13 +58,12 @@ def render_profile() -> None:
 
 @ui.page('/')
 def main_page() -> None:
-
-    with ui.row().classes('w-full flex-wrap') as root_row:
+    with ui.row().classes('w-full flex-wrap'):
 
         # ── Left / main content — col-md-8 always, col-12 on mobile ──────────
         with ui.column().classes('col-12 col-md-8 q-pa-md'):
-
-            ui.label('Dashboard').classes('text-h4 q-mb-lg')
+            ui.markdown(__doc__ or '')
+            ui.separator()
 
             with ui.card().classes('w-full q-mb-md'):
                 ui.label('Status').classes('text-h6')
@@ -78,14 +82,8 @@ def main_page() -> None:
 
     panel_col.set_visibility(False)
 
-    # ── Panel logic ─────────────────────────────────────────────────────────
-
-    def _hide_panel() -> None:
-        panel_col.set_visibility(False)
-
     async def _open(title: str, render_fn, mobile_url: str) -> None:
-        is_mobile = await ui.run_javascript(
-            f'window.innerWidth < {MOBILE_BREAKPOINT}')
+        is_mobile = await ui.run_javascript(f'window.innerWidth < {MOBILE_BREAKPOINT}')
         if is_mobile:
             ui.navigate.to(mobile_url)
             return
@@ -95,7 +93,7 @@ def main_page() -> None:
         with panel_body:
             with ui.row().classes('w-full justify-between items-center q-mb-sm'):
                 ui.label(title).classes('text-h6')
-                ui.button(icon='close', on_click=_hide_panel) \
+                ui.button(icon='close', on_click=lambda: panel_col.set_visibility(False)) \
                     .props('flat round dense')
             render_fn()
 
@@ -124,4 +122,4 @@ def profile_page() -> None:
     _mobile_page('Profile', render_profile)
 
 
-ui.run(title='Complex Form — Split Panel')
+ui.run(title='10 — Split-Panel Form Navigation')

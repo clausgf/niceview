@@ -74,7 +74,8 @@ NiceView follows a consistent factory pattern across all backends and UI compone
 | **JSON file** | `ModelForm.from_json(Type, path, lock_field=, created_field=)` | `EditFormWrapper.from_json(Type, path, lock_field=, created_field=)` | `ModelGrid.from_json(Type, path)`<br>`EditGridWrapper.from_json(Type, path)` |
 | **Any adapter** | `ModelForm.from_adapter(Type, adapter, key?)` | `EditFormWrapper.from_adapter(Type, adapter, key?)` | `ModelGrid.from_adapter(Type, adapter)`<br>`EditGridWrapper.from_adapter(Type, adapter)` |
 
-All `from_*` methods accept the same keyword options (see below).
+All `from_*` methods accept the same keyword options (see below); unknown keyword
+arguments raise `TypeError` instead of being silently ignored.
 `ModelGridInlineEdit` uses the same factory methods as `ModelGrid` via inheritance.
 `EditFormWrapper` wraps a `ModelForm` and adds a title, description, and action buttons.
 
@@ -189,6 +190,15 @@ grid = ModelGrid.from_adapter(User, adapter)      # for API symmetry with ModelF
 grid.render()
 grid.on_change(lambda e: print(e.row_key, e.field_name, e.new_value))
 grid.adapter      # read-only property — returns the backing CollectionAdapter
+
+# Row selection (rowSelection='single'): e.row_key/e.item mirror ModelList.on_select;
+# both are None when the selection is cleared
+grid = ModelGrid.from_list(User, users, rowSelection='single')
+grid.on_select(lambda e: print(e.row_key, e.item))
+
+# Styling: the canonical way is the exposed .widget after render()
+grid.render()
+grid.widget.classes('w-full')
 ```
 
 
@@ -261,7 +271,7 @@ wrapper.refresh_button                     # ui.button | None
 **`EditGridWrapper` options:**
 ```python
 wrapper = EditGridWrapper.from_list(User, users,
-    title='Users',        # shown as text-h6; None = no title row
+    title='Users',        # shown as text-h6; omitted or '' = auto title '{Type} List'; None = no title row
     description='...',    # markdown below the title row
     add_button='Add',     # label or '' for icon-only; None = hidden
     edit_button='',       # same
@@ -876,12 +886,12 @@ uv run python examples/01_form_basic.py
 | `04_form_json.py` | `ModelForm` — JSON persistence |
 | `05_grid.py` | `ModelGrid` |
 | `06_edit_wrapper.py` | `EditGridWrapper` / `EditFormWrapper` |
-| `07_sqlmodel.py` | `SqlModelAdapter` |
+| `07_sqlmodel.py` | `SqlModelAdapter` — SQL-backed grid/form, relationships, optimistic locking |
 | `08_reactive_grid.py` | Reactive grid — auto-update via `ObservableList` |
 | `09_drilldown.py` | `DrillDownWrapper` / `ModelList` — embeddable list <-> detail navigation |
-| `10_complex_form_navigation.py` | Split-panel navigation on desktop, full-page on mobile (pure NiceGUI) |
-| `11_tree_navigation.py` | Multi-level tree navigation — 4 levels, explicit back buttons, central URL factory |
-| `12_card_list.py` | Card-based list editing — one autosaving `ModelForm` per item, custom layout, `JsonListAdapter` |
+| `10_complex_form_navigation.py` | `ModelForm` in a responsive split-panel: side panel on desktop, full page on mobile |
+| `11_tree_navigation.py` | Multi-level tree navigation — URL factory, `FilteredAdapter`, `Meta.profiles` |
+| `12_card_list.py` | Card-based list editing — autosaving `ModelForm` per item, `@model_validator`, `confirm_dialog` |
 | `13_directory_drilldown.py` | `DrillDownWrapper` over `DirectoryAdapter` — one file per item, rename via a "Name" field |
 
 Unit tests cover data adapters, field resolution, validation logic, and pure CRUD operations.

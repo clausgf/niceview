@@ -7,7 +7,7 @@ Two rows, each pairing a form variant with a live JSON file viewer:
 - **Row 2 — Save / Refresh buttons**: explicit control; *Save* persists, *Refresh* reloads.
 
 Each row uses its own JSON file so you can observe both modes independently.
-The *Reload* button in each viewer re-reads the file from disk.
+Each JSON viewer re-reads its file from disk once per second.
 """
 # Allows running without prior install. With uv: `uv run python examples/<file>.py`.
 import sys
@@ -43,9 +43,8 @@ def make_json_viewer(path: Path) -> None:
             content.set_content('(file not yet created)')
 
     reload()
-    ui.timer(1, reload)  # Initial load after 1 second to allow form to save first.
+    ui.timer(1, reload)  # re-read the file every second
     ui.label('Auto-refreshes every second').classes('text-small')
-    #ui.button('Reload', icon='refresh', on_click=reload).props('flat dense')
 
 
 @ui.page('/')

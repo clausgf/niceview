@@ -7,9 +7,13 @@ to a SQLite database via SQLModel / SQLAlchemy.
 Features shown:
 - Optimistic locking via `updated_at` field (built into `SqlModelAdapter`)
 - `EditGridWrapper` over a full SQL table
-- `ModelForm.from_adapter()` for editing a single record
-- `EditFormWrapper` with Save / Cancel / Refresh
-- SQLModel relationship rendered as `ui.select`
+- `EditFormWrapper` with Save / Refresh for editing a single record
+- SQLModel relationship rendered as `ui.select` (via `repositories=`)
+
+**Try the optimistic locking:** open [/books/1](/books/1) in two browser tabs,
+edit and save in the first, then save in the second — the second save is
+rejected with a conflict notification (`ConflictError`), because its
+`updated_at` no longer matches the database.
 
 The database is re-created on every run.
 

@@ -244,7 +244,7 @@ class ModelForm():
         return instance
 
     @classmethod
-    def from_json(cls, item_type: type[BaseModel], json_path: Path, create_if_not_exist: bool = True, lock_field: str | None = None, created_field: str | None = None, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
+    def from_json(cls, item_type: type[BaseModel], json_path: Path, *, create_if_not_exist: bool = True, lock_field: str | None = None, created_field: str | None = None, **kwargs: Unpack[_ModelFormOptionInputs]) -> Self:
         """
         Create a ModelForm bound to a single-item JSON file.
         The file is created with default values if it does not exist.

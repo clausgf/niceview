@@ -119,6 +119,8 @@ class ModelList:
         subtitle_fields = kwargs.pop('subtitle_fields', None)
         self._title_field = title_field if title_field is not None else (visible[0] if visible else None)
         self._subtitle_fields = subtitle_fields if subtitle_fields is not None else visible[1:3]
+        if kwargs:
+            raise TypeError(f"Unexpected keyword arguments for ModelList: {', '.join(kwargs.keys())}")
 
     # --- factory methods ---------------------------------------------------
 
@@ -133,7 +135,7 @@ class ModelList:
         return cls(item_type, adapter, **kwargs)  # type: ignore[arg-type]
 
     @classmethod
-    def from_json(cls, item_type: type[T], path_name: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelListOptionInputs]) -> Self:
+    def from_json(cls, item_type: type[T], path_name: Path, *, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelListOptionInputs]) -> Self:
         """Create a ModelList backed by a JSON file."""
         adapter = JsonListAdapter(item_type, path_name, create_if_not_exist=create_if_not_exist)
         return cls(item_type, adapter, **kwargs)  # type: ignore[arg-type]
@@ -305,6 +307,9 @@ class DrillDownWrapper:
         self._add_button = kwargs.pop('add_button', '')
         self._delete_button = kwargs.pop('delete_button', '')
         self._list_kwargs = dict(kwargs)  # remainder forwarded to ModelList (include, exclude, ...) when render_list_item is unset
+        allowed_list_keys = {'include', 'exclude', 'field_infos', 'profile'}
+        if unknown := set(self._list_kwargs) - allowed_list_keys:
+            raise TypeError(f"Unexpected keyword arguments for DrillDownWrapper: {', '.join(sorted(unknown))}")
         self._state = {'view': 'list', 'key': None, 'direction': 'right'}
         self._auto_update_registered = False
 
@@ -341,7 +346,7 @@ class DrillDownWrapper:
         return cls(item_type, adapter, **kwargs)  # type: ignore[arg-type]
 
     @classmethod
-    def from_json(cls, item_type: type[T], path_name: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_DrillDownWrapperOptionInputs]) -> Self:
+    def from_json(cls, item_type: type[T], path_name: Path, *, create_if_not_exist: bool = True, **kwargs: Unpack[_DrillDownWrapperOptionInputs]) -> Self:
         """Create a DrillDownWrapper backed by a JSON file."""
         adapter = JsonListAdapter(item_type, path_name, create_if_not_exist=create_if_not_exist)
         return cls(item_type, adapter, **kwargs)  # type: ignore[arg-type]

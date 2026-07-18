@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pydantic
 from nicegui import ui
-from niceview import EditFormWrapper
+from niceview import ModelForm
 
 
 class Person(pydantic.BaseModel):
@@ -32,11 +32,12 @@ def page():
     ui.separator()
 
     with ui.card():
-        wrapper = EditFormWrapper.from_item(person, title='Edit Person')
+        form = ModelForm.from_item(person)
+        form.render()
 
     change_log = ui.log(max_lines=10).classes('w-full h-32 mt-4')
     change_log.push('Change log:')
-    wrapper.on_change(lambda e: change_log.push(
+    form.on_change(lambda e: change_log.push(
         f'{e.field_name}: {e.previous_value!r} → {e.value!r}'
     ))
 

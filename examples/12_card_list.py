@@ -13,6 +13,11 @@ application-specific, so it's composed directly from `ModelForm.from_adapter()`,
 Each card's form uses `autosave=True`, so edits persist to the JSON file field-by-field
 (after validation, on blur/change) — no shared save button, no row selection. The raw JSON
 file is shown live below the cards.
+
+Also shown:
+- a `@model_validator` whose error appears via `form.render_nonfield_errors()`
+  (try a non-https URL with method ≠ GET)
+- `confirm_dialog` from `niceview.util` guarding the per-card delete button
 """
 # Allows running without prior install. With uv: `uv run python examples/<file>.py`.
 import sys
@@ -25,12 +30,20 @@ import pydantic
 from nicegui import ui
 
 from niceview import JsonListAdapter, ModelForm
+from niceview.util import confirm_dialog
 
 
 class Webhook(pydantic.BaseModel):
     name: str = pydantic.Field(default='', min_length=1, max_length=40, pattern=r'^[a-zA-Z0-9_-]*$', title='Name')
     method: Literal['GET', 'POST', 'PUT', 'DELETE'] = pydantic.Field(default='POST', title='Method')
     url: str = pydantic.Field(default='https://', max_length=200, pattern=r'^https?://.*', title='URL')
+
+    @pydantic.model_validator(mode='after')
+    def _https_for_writes(self) -> 'Webhook':
+        # Model-level rule spanning two fields — shown by render_nonfield_errors()
+        if self.method != 'GET' and not self.url.startswith('https://'):
+            raise ValueError('Webhooks with method != GET must use an https:// URL')
+        return self
 
 
 WEBHOOKS_PATH = Path('./example_webhooks.json')
@@ -58,7 +71,10 @@ def add_row() -> None:
     render_cards.refresh()
 
 
-def delete_row(item: Webhook) -> None:
+async def delete_row(item: Webhook) -> None:
+    if not await confirm_dialog('Delete Webhook', f'Delete **{item.name or "this webhook"}**?',
+                                ok_label='Delete', ok_color='negative'):
+        return
     adapter.delete(adapter.key_from_item(item))
     render_cards.refresh()
 

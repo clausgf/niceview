@@ -69,6 +69,14 @@ class _ModelGridOptionInputs(typing_extensions.TypedDict, total=False):
 T = TypeVar('T', bound=BaseModel)
 
 
+@dataclass(kw_only=True, slots=True)
+class TableItemSelectEventArguments(ClickEventArguments):
+    """Fired by ModelGrid.on_select. row_key/item are None when the selection was cleared."""
+    grid: 'ModelGrid'
+    row_key: str | None
+    item: Any
+
+
 class ModelGrid:
     """
     Renders a Pydantic model collection as an ag-Grid table.
@@ -86,7 +94,7 @@ class ModelGrid:
     """
     _fields: Fields
     _data: CollectionAdapter
-    _selection_handlers: list[Handler[ValueChangeEventArguments]]
+    _selection_handlers: list[Handler[TableItemSelectEventArguments]]
     _auto_update_registered: bool
     _rows: list[dict[str, Any]]
     widget: ui.aggrid | None
@@ -117,6 +125,8 @@ class ModelGrid:
         self._defaultColDef = kwargs.pop('defaultColDef', {}).copy()
         self._rowSelection = kwargs.pop('rowSelection', None)
         self._cell_renderers = kwargs.pop('cell_renderers', {}).copy()
+        if kwargs:
+            raise TypeError(f"Unexpected keyword arguments for {type(self).__name__}: {', '.join(kwargs.keys())}")
 
     # --- factory methods ---------------------------------------------------
 
@@ -146,7 +156,7 @@ class ModelGrid:
         return cls(item_type, adapter, **kwargs)  # type: ignore[arg-type]
 
     @classmethod
-    def from_json(cls, item_type: type[T], path_name: Path, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelGridOptionInputs]) -> Self:
+    def from_json(cls, item_type: type[T], path_name: Path, *, create_if_not_exist: bool = True, **kwargs: Unpack[_ModelGridOptionInputs]) -> Self:
         """
         Create an instance backed by a JSON file via JsonListAdapter.
         The file is created with an empty list if it does not exist.
@@ -163,10 +173,11 @@ class ModelGrid:
 
     # --- event handler configuration --------------------------------------
 
-    def on_select(self, callback: Handler[ValueChangeEventArguments]) -> Self:
+    def on_select(self, callback: Handler[TableItemSelectEventArguments]) -> Self:
         """
         Add a callback invoked when the row selection changes.
-        Only meaningful when rowSelection='single'.
+        The event carries row_key and item (both None when the selection was cleared),
+        mirroring ModelList.on_select. Only meaningful when rowSelection='single'.
         """
         if not callable(callback):
             raise TypeError(f"callback must be callable, got {type(callback)}")
@@ -239,9 +250,17 @@ class ModelGrid:
         if not self.widget:
             return
         row = await self.widget.get_selected_row()
-        vce = ValueChangeEventArguments(sender=event.sender, client=event.client, value=row, previous_value=None)
+        row_key: str | None = row['__ui_row_key'] if row else None
+        item: Any = None
+        if row_key is not None:
+            try:
+                item = self._data.read(row_key)
+            except (KeyError, ValueError):
+                log.warning(f"on_select: selected row key {row_key!r} not found in adapter")
+        args = TableItemSelectEventArguments(sender=event.sender, client=event.client,
+                                             grid=self, row_key=row_key, item=item)
         for handler in self._selection_handlers:
-            handle_event(handler, vce)
+            handle_event(handler, args)
 
 
 @dataclass(kw_only=True, slots=True)

@@ -1,6 +1,7 @@
 import logging
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Self, Unpack
+from typing import Any, Self, Unpack
 from fastapi import HTTPException
 import typing_extensions
 from pydantic import BaseModel
@@ -8,8 +9,8 @@ from nicegui import ui
 from nicegui.events import Handler, ClickEventArguments, handle_event
 
 from niceview.dataadapter import CollectionAdapter, ConflictError, StorageError, ItemAdapter, ReloadableAdapter
-from niceview.form import ModelForm, FieldChangeEventArguments
-from niceview.grid import ModelGridInlineEdit, ModelGrid, T, TableItemEventArguments
+from niceview.form import ModelForm, FieldChangeEventArguments, _ModelFormOptionInputs
+from niceview.grid import ModelGridInlineEdit, ModelGrid, T, TableItemEventArguments, _InlineEditableModelGridOptionInputs
 from niceview.util import submit_dialog
 
 log = logging.getLogger('niceview')
@@ -24,6 +25,10 @@ class _EditGridWrapperInputs(typing_extensions.TypedDict, total=False):
     refresh_button: str | None
 
 
+class _EditGridWrapperFactoryInputs(_EditGridWrapperInputs, _InlineEditableModelGridOptionInputs, total=False):
+    """Options accepted by the EditGridWrapper factory methods: wrapper chrome plus all ModelGrid options."""
+
+
 _GRID_WRAPPER_INPUT_KEYS = set(_EditGridWrapperInputs.__annotations__.keys())
 
 
@@ -31,6 +36,11 @@ class EditGridWrapper():
     """
     Chrome wrapper for ModelGrid: renders title, description, and CRUD buttons
     (add, edit, delete, refresh) above the grid.
+
+    Title semantics: omitted or '' → auto-generated title '{ItemType} List';
+    None → no title; any other string → that title.
+    Button semantics ('' and None differ from the title!): '' → icon-only
+    button (the default), a string → labeled button, None → button hidden.
 
     After render(), the NiceGUI elements are exposed for further styling:
         wrapper.title          → ui.label | None
@@ -71,7 +81,8 @@ class EditGridWrapper():
         self.grid._rowSelection = 'single'
 
         default_edit = None if isinstance(self.grid, ModelGridInlineEdit) else ''
-        self._title = kwargs.pop('title', f'{self.grid._fields._item_type.__name__} List')
+        title = kwargs.pop('title', '')
+        self._title = f'{self.grid._fields._item_type.__name__} List' if title == '' else title
         self._description = kwargs.pop('description', None)
         self._delete_button = kwargs.pop('delete_button', '')
         self._add_button = kwargs.pop('add_button', '')
@@ -90,35 +101,45 @@ class EditGridWrapper():
         self._change_handlers = []
         self._model_repositories = {}
 
+        if kwargs:
+            raise TypeError(f"Unexpected keyword arguments for EditGridWrapper: {', '.join(kwargs.keys())}")
+
     # --- factory methods ---------------------------------------------------
 
     @classmethod
-    def from_list(cls, item_type: type[T], items: list[T], *, inline_edit: bool = False, **kwargs) -> Self:
+    def _split_kwargs(cls, kwargs: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Split factory kwargs into (wrapper chrome options, ModelGrid options)."""
+        grid_kwargs = dict(kwargs)
+        wrapper_kwargs = {k: grid_kwargs.pop(k) for k in list(grid_kwargs) if k in _GRID_WRAPPER_INPUT_KEYS}
+        return wrapper_kwargs, grid_kwargs
+
+    @classmethod
+    def from_list(cls, item_type: type[T], items: list[T], *, inline_edit: bool = False, **kwargs: Unpack[_EditGridWrapperFactoryInputs]) -> Self:
         """Create an EditGridWrapper backed by an in-memory list. Renders immediately."""
-        wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _GRID_WRAPPER_INPUT_KEYS}
+        wrapper_kwargs, grid_kwargs = cls._split_kwargs(kwargs)
         grid_cls = ModelGridInlineEdit if inline_edit else ModelGrid
-        grid = grid_cls.from_list(item_type, items, **kwargs)
-        instance = cls(grid, **wrapper_kwargs)  # type: ignore[arg-type]
+        grid = grid_cls.from_list(item_type, items, **grid_kwargs)
+        instance = cls(grid, **wrapper_kwargs)
         instance.render()
         return instance
 
     @classmethod
-    def from_json(cls, item_type: type[T], path_name: Path, create_if_not_exist: bool = True, *, inline_edit: bool = False, **kwargs) -> Self:
+    def from_json(cls, item_type: type[T], path_name: Path, *, create_if_not_exist: bool = True, inline_edit: bool = False, **kwargs: Unpack[_EditGridWrapperFactoryInputs]) -> Self:
         """Create an EditGridWrapper backed by a JSON file. Renders immediately."""
-        wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _GRID_WRAPPER_INPUT_KEYS}
+        wrapper_kwargs, grid_kwargs = cls._split_kwargs(kwargs)
         grid_cls = ModelGridInlineEdit if inline_edit else ModelGrid
-        grid = grid_cls.from_json(item_type, path_name, create_if_not_exist, **kwargs)
-        instance = cls(grid, **wrapper_kwargs)  # type: ignore[arg-type]
+        grid = grid_cls.from_json(item_type, path_name, create_if_not_exist=create_if_not_exist, **grid_kwargs)
+        instance = cls(grid, **wrapper_kwargs)
         instance.render()
         return instance
 
     @classmethod
-    def from_adapter(cls, item_type: type[T], adapter: CollectionAdapter, *, inline_edit: bool = False, **kwargs) -> Self:
+    def from_adapter(cls, item_type: type[T], adapter: CollectionAdapter, *, inline_edit: bool = False, **kwargs: Unpack[_EditGridWrapperFactoryInputs]) -> Self:
         """Create an EditGridWrapper backed by any CollectionAdapter. Renders immediately."""
-        wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _GRID_WRAPPER_INPUT_KEYS}
+        wrapper_kwargs, grid_kwargs = cls._split_kwargs(kwargs)
         grid_cls = ModelGridInlineEdit if inline_edit else ModelGrid
-        grid = grid_cls.from_adapter(item_type, adapter, **kwargs)
-        instance = cls(grid, **wrapper_kwargs)  # type: ignore[arg-type]
+        grid = grid_cls.from_adapter(item_type, adapter, **grid_kwargs)
+        instance = cls(grid, **wrapper_kwargs)
         instance.render()
         return instance
 
@@ -381,7 +402,20 @@ class _EditFormWrapperInputs(typing_extensions.TypedDict, total=False):
     refresh_button: str | None
 
 
+class _EditFormWrapperFactoryInputs(_EditFormWrapperInputs, _ModelFormOptionInputs, total=False):
+    """Options accepted by the EditFormWrapper factory methods: wrapper chrome plus all ModelForm options."""
+    repositories: dict[type[BaseModel], CollectionAdapter]
+
+
 _FORM_WRAPPER_INPUT_KEYS = set(_EditFormWrapperInputs.__annotations__.keys())
+
+
+def _split_form_kwargs(kwargs: Mapping[str, Any]) -> 'tuple[dict[str, Any], dict | None, dict[str, Any]]':
+    """Split factory kwargs into (wrapper chrome options, repositories, ModelForm options)."""
+    form_kwargs = dict(kwargs)
+    wrapper_kwargs = {k: form_kwargs.pop(k) for k in list(form_kwargs) if k in _FORM_WRAPPER_INPUT_KEYS}
+    repositories = form_kwargs.pop('repositories', None)
+    return wrapper_kwargs, repositories, form_kwargs
 
 
 class EditFormWrapper():
@@ -441,18 +475,17 @@ class EditFormWrapper():
     # --- factory methods ---------------------------------------------------
 
     @classmethod
-    def from_item(cls, item_type_or_item: 'type[BaseModel] | BaseModel', item: 'BaseModel | None' = None, **kwargs) -> Self:
+    def from_item(cls, item_type_or_item: 'type[BaseModel] | BaseModel', item: 'BaseModel | None' = None, /, **kwargs: Unpack[_EditFormWrapperFactoryInputs]) -> Self:
         """Create an EditFormWrapper backed by an in-memory item. Renders immediately."""
-        wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _FORM_WRAPPER_INPUT_KEYS}
-        repositories: 'dict | None' = kwargs.pop('repositories', None)
+        wrapper_kwargs, repositories, form_kwargs = _split_form_kwargs(kwargs)
         if isinstance(item_type_or_item, BaseModel):
             if item is not None:
                 raise TypeError("When passing an item instance as the first argument, do not pass a second item")
-            form = ModelForm.from_item(item_type_or_item, **kwargs)
+            form = ModelForm.from_item(item_type_or_item, **form_kwargs)
         else:
             if item is None:
                 raise TypeError("When passing an item type as the first argument, an item instance is required")
-            form = ModelForm.from_item(item_type_or_item, item, **kwargs)
+            form = ModelForm.from_item(item_type_or_item, item, **form_kwargs)
         if repositories:
             form.with_repositories(repositories)
         instance = cls(form, **wrapper_kwargs)
@@ -460,11 +493,10 @@ class EditFormWrapper():
         return instance
 
     @classmethod
-    def from_json(cls, item_type: type[BaseModel], json_path: Path, create_if_not_exist: bool = True, lock_field: str | None = None, created_field: str | None = None, **kwargs) -> Self:
+    def from_json(cls, item_type: type[BaseModel], json_path: Path, *, create_if_not_exist: bool = True, lock_field: str | None = None, created_field: str | None = None, **kwargs: Unpack[_EditFormWrapperFactoryInputs]) -> Self:
         """Create an EditFormWrapper backed by a JSON file. Renders immediately with Save and Refresh buttons."""
-        wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _FORM_WRAPPER_INPUT_KEYS}
-        repositories: 'dict | None' = kwargs.pop('repositories', None)
-        form = ModelForm.from_json(item_type, json_path, create_if_not_exist, lock_field=lock_field, created_field=created_field, **kwargs)
+        wrapper_kwargs, repositories, form_kwargs = _split_form_kwargs(kwargs)
+        form = ModelForm.from_json(item_type, json_path, create_if_not_exist=create_if_not_exist, lock_field=lock_field, created_field=created_field, **form_kwargs)
         if repositories:
             form.with_repositories(repositories)
         instance = cls(form, **wrapper_kwargs)
@@ -472,15 +504,14 @@ class EditFormWrapper():
         return instance
 
     @classmethod
-    def from_adapter(cls, item_type: type[BaseModel], adapter: 'CollectionAdapter | ItemAdapter', key: str | None = None, **kwargs) -> Self:
+    def from_adapter(cls, item_type: type[BaseModel], adapter: 'CollectionAdapter | ItemAdapter', key: str | None = None, **kwargs: Unpack[_EditFormWrapperFactoryInputs]) -> Self:
         """Create an EditFormWrapper backed by an adapter. Renders immediately with Save and Refresh buttons.
 
         With key: wraps CollectionAdapter + key in a BoundItem.
         Without key: treats adapter directly as an ItemAdapter (e.g. JsonAdapter).
         """
-        wrapper_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in _FORM_WRAPPER_INPUT_KEYS}
-        repositories: 'dict | None' = kwargs.pop('repositories', None)
-        form = ModelForm.from_adapter(item_type, adapter, key, **kwargs)
+        wrapper_kwargs, repositories, form_kwargs = _split_form_kwargs(kwargs)
+        form = ModelForm.from_adapter(item_type, adapter, key, **form_kwargs)
         if repositories:
             form.with_repositories(repositories)
         instance = cls(form, **wrapper_kwargs)

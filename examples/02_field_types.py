@@ -96,9 +96,9 @@ class AllTypes(pydantic.BaseModel):
 
 @ui.page('/')
 def page():
-    # Styling example: make all inputs outlined and dense
-    #app.colors(primary='#800000)
-    #ui.input.default_props('outlined dense')
+    # Global styling alternative (applies to every ui.input in the app):
+    #   ui.input.default_props('outlined dense')
+    # The scoped alternative via ElementFilter is shown at the end of this function.
 
     with ui.tabs().classes('w-full') as tabs:
         tab_home = ui.tab('Documentation')

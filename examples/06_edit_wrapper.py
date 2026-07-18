@@ -1,23 +1,23 @@
 """
 # EditGridWrapper / EditFormWrapper
 
-Wrappers that add CRUD buttons on top of a grid or form:
+Wrappers that add chrome (title + action buttons) on top of a grid or form:
 
 - **EditGridWrapper** — Add / Edit / Delete / Refresh buttons above a `ModelGrid`;
-  Add and Edit open a popup dialog with a `ModelForm`.
-- **EditFormWrapper** — Refresh / Cancel / Apply / Ok buttons alongside a `ModelForm`
-  backed by any adapter. Refresh and Cancel reload from the adapter (discarding unsaved
-  edits); Apply and Ok save to the adapter.
+  Add and Edit open a popup dialog with a `ModelForm`. With `inline_edit=True` the
+  cells are edited directly in the grid and the Edit button disappears.
+- **EditFormWrapper** — Save / Refresh buttons above a `ModelForm`. Save persists
+  to the adapter, Refresh reloads from it. Both buttons are hidden for
+  `from_item()` (no adapter) and Save is hidden with `autosave=True`.
 
-Both sections share the same in-memory `tasks` list. The JSON view below each widget
-updates automatically via an `on_change` listener whenever data changes.
+All sections share the same in-memory `tasks` list; the live view at the top
+shows its current content.
 """
 # Allows running without prior install. With uv: `uv run python examples/<file>.py`.
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from time import time
 import pydantic
 from typing import Literal
 from nicegui import ElementFilter, ui
@@ -30,27 +30,15 @@ class Task(pydantic.BaseModel):
     done: bool = pydantic.Field(default=False, title='Done')
 
 
-t1 = Task(title='Buy groceries', priority='low', done=True)
 tasks = [
-    t1,
+    Task(title='Buy groceries', priority='low', done=True),
     Task(title='Write report', priority='high', done=False),
     Task(title='Fix bug #42', priority='high', done=False),
 ]
 
 
-_blink_on = False
-_last_blink_time = time()
-
-def _fmt(original: list) -> str:
-    global _blink_on, _last_blink_time
-    if (time() - _last_blink_time) > 0.5:
-        _blink_on = not _blink_on
-        _last_blink_time = time()
-    blink = '*' if _blink_on else ' '
-
-    lines = [f"{blink} {type(original).__name__} ({len(original)} items)"]
-    lines += [f"  {r!r}" for r in original]
-    return '\n'.join(lines)
+def _fmt() -> str:
+    return '\n'.join([f'tasks ({len(tasks)} items)'] + [f'  {t!r}' for t in tasks])
 
 
 @ui.page('/')
@@ -59,9 +47,8 @@ def page():
     ui.separator()
 
     with ui.card().classes('w-full'):
-        code_b = ui.code(_fmt(tasks)).classes('w-full')
-        ui.timer(1, lambda: code_b.set_content(_fmt(tasks)))
-        data_form = ui.code(f"Task {tasks[0]}").classes('w-full')
+        live_view = ui.code(_fmt()).classes('w-full')
+        ui.timer(1, lambda: live_view.set_content(_fmt()))
 
     with ui.card().classes('w-full'):
         EditGridWrapper.from_list(
@@ -75,17 +62,16 @@ def page():
             inline_edit=True,
             title='Tasks (EditGridWrapper with inline editing)',
         )
-    
+
     with ui.grid().classes('w-full gap-4 grid-cols-1 lg:grid-cols-2').mark('my-form'):
         with ui.card().classes('w-full'):
-            efw = EditFormWrapper.from_item(Task, tasks[0], title='EditFromWrapper via item')
-            efw.on_change(lambda e: data_form.set_content(f"Task {efw.form.item}"))
+            # from_item: no adapter, so no Save/Refresh buttons — edits go straight to tasks[0]
+            EditFormWrapper.from_item(Task, tasks[0], title='EditFormWrapper via item')
 
         with ui.card().classes('w-full'):
             adapter = ListAdapter(Task, tasks)
             key = adapter.key_from_item(tasks[0])
-            efw = EditFormWrapper.from_adapter(Task, adapter, key, title='EditFromWrapper via adapter')
-            efw.on_change(lambda e: data_form.set_content(f"Task {efw.form.item}"))
+            EditFormWrapper.from_adapter(Task, adapter, key, title='EditFormWrapper via adapter')
         ElementFilter().within(marker='my-form').props('dense').classes('w-full')
 
 
