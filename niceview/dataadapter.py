@@ -4,7 +4,6 @@ import logging
 import threading
 from pathlib import Path
 from typing import Any, Callable, Generic, TypeVar, Iterator, Protocol, runtime_checkable
-from fastapi import HTTPException, status
 import pydantic
 
 log = logging.getLogger('niceview')

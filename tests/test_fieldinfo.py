@@ -51,8 +51,8 @@ class TestInit:
         fi = FieldInfo(label=None)
         assert fi.label == ''
 
-    def test_invalid_kwarg_raises_value_error(self):
-        with pytest.raises(ValueError, match='Invalid field name'):
+    def test_invalid_kwarg_raises_type_error(self):
+        with pytest.raises(TypeError, match='Unexpected keyword argument'):
             FieldInfo(not_a_real_field='value')
 
     def test_set_tooltip(self):

@@ -1,11 +1,6 @@
-import datetime
-from typing import Any, Awaitable, Callable, Dict, List, Literal, Union, Unpack
-import typing
-from pydantic import BaseModel
-import pydantic
+from typing import Awaitable, Callable, Literal, TypeAlias, Unpack
 import typing_extensions
 
-from nicegui import ui
 from nicegui.elements.mixins.validation_element import ValidationFunction, ValidationDict
 
 
@@ -19,6 +14,12 @@ WidgetType = Literal[
 """All widget types a field can be rendered as. 'ui.*' widgets map directly to a native NiceGUI
 element of the same name; unprefixed widgets (checkbox_group, datetime, date, time, timedelta,
 editgrid, modelselect) are niceview-specific (composite widgets or ui.input variants)."""
+
+
+OptionsSource: TypeAlias = list | dict | Callable[[], list | dict | Awaitable[list] | Awaitable[dict]]
+"""Source of choices for select/radio/toggle/checkbox_group widgets: a list, a dict
+(value -> label), or a zero-argument callable returning either — the callable may be
+sync or async (an async callable's options are applied as soon as they are available)."""
 
 
 class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
@@ -39,13 +40,17 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
     style: str
     tooltip: str
 
-    # additional options when field is renderd in a ui.input widget
+    # choices for select/radio/toggle/checkbox_group widgets — the canonical option;
+    # the widget-specific *_options names below are supported as aliases
+    options: OptionsSource
+
+    # additional options when field is rendered in a ui.input widget
     password: bool
     password_toggle_button: bool
-    autocomplete: List[str]
-    validation: Union[ValidationFunction, ValidationDict]
+    autocomplete: list[str]
+    validation: ValidationFunction | ValidationDict
 
-    # addtional options when field is rendered as ui.number
+    # additional options when field is rendered as ui.number
     min: float
     max: float
     precision: int
@@ -55,20 +60,20 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
     format: str
 
     # additional options when field is rendered as ui.select
-    select_options: Union[List, Dict, Callable[[], list]]
+    select_options: OptionsSource
     with_input: bool
     multiple: bool
     clearable: bool
     # validation same as in ui.input
 
     # additional options when field is rendered as ui.radio
-    radio_options: Union[List, Dict, Callable[[], list]]
+    radio_options: OptionsSource
 
     # additional options when field is rendered as ui.toggle
-    toggle_options: Union[List, Dict, Callable[[], list]]
+    toggle_options: OptionsSource
 
     # additional options when field is rendered as checkbox_group
-    checkbox_group_options: Union[List, Dict, Callable[[], list]]
+    checkbox_group_options: OptionsSource
 
     # additional options when field is rendered as ui.color_input
     color_preview: bool
@@ -94,11 +99,11 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
 
 class FieldInfo():
     """
-    Metadata for a UI field. This class is used to annotate a field similar 
+    Metadata for a UI field. This class is used to annotate a field similar
     to Pydantic's Field class/method.
     While pydantic's Field is used to define the properties of a field
     related to data validation and JSON serialization, this class is used
-    to define the properties of a field in a UI context, such as forms and 
+    to define the properties of a field in a UI context, such as forms and
     tables.
     """
     field_type: type = str  # the type of the field, e.g. str, int, float, bool, datetime, date, time
@@ -112,7 +117,7 @@ class FieldInfo():
     hidden: bool = False
     editable: bool = True
     help_text: str | None = None
-    # widget type for the field  (default infered from field type)
+    # widget type for the field (default inferred from field type)
     widget_type: WidgetType | None = None
 
     # ui.element
@@ -124,13 +129,19 @@ class FieldInfo():
     # options when field is rendered as ui.aggrid column
     aggrid: dict[str, str] | None = None  # additional options for the aggrid column, e.g. {'headerName': 'My Column', 'field': 'my_field'}
 
-    # additional options when field is renderd in a ui.input widget
+    # choices for select/radio/toggle/checkbox_group widgets — the canonical option.
+    # Resolution order per widget: options, then the widget-specific alias
+    # (select_options/radio_options/toggle_options/checkbox_group_options), then
+    # literal_options (auto-extracted from Literal[...] types).
+    options: OptionsSource | None = None
+
+    # additional options when field is rendered in a ui.input widget
     password: bool = False
     password_toggle_button: bool = False
-    autocomplete: List[str] | None = None
-    validation: Union[None, ValidationFunction, ValidationDict] = None
+    autocomplete: list[str] | None = None
+    validation: ValidationFunction | ValidationDict | None = None
 
-    # addtional options when field is rendered as ui.number
+    # additional options when field is rendered as ui.number
     min: float | None = None
     max: float | None = None
     precision: int | None = None
@@ -139,27 +150,28 @@ class FieldInfo():
     suffix: str | None = None
     format: str | None = None
 
-    # additional options when field is rendered as ui.select
-    select_options: Union[None, List, Dict, Callable[[], Awaitable[list[str]]]] = None  # list of options for the select widget
+    # additional options when field is rendered as ui.select (alias of options)
+    select_options: OptionsSource | None = None
     with_input: bool = False
     multiple: bool = False
     clearable: bool = False
 
-    # additional options when field is rendered as ui.radio
-    radio_options: Union[None, List, Dict, Callable[[], list]] = None
+    # additional options when field is rendered as ui.radio (alias of options)
+    radio_options: OptionsSource | None = None
 
-    # additional options when field is rendered as ui.toggle
-    toggle_options: Union[None, List, Dict, Callable[[], list]] = None
+    # additional options when field is rendered as ui.toggle (alias of options)
+    toggle_options: OptionsSource | None = None
 
     # additional options when field is rendered as checkbox_group (list[Literal[...]] as a
-    # row/column of checkboxes). Horizontal layout: props='inline' (same convention as ui.radio).
-    checkbox_group_options: Union[None, List, Dict, Callable[[], list]] = None
+    # row/column of checkboxes; alias of options). Horizontal layout: props='inline'
+    # (same convention as ui.radio).
+    checkbox_group_options: OptionsSource | None = None
 
     # additional options when field is rendered as ui.color_input
     color_preview: bool = False
 
     # options inferred from Literal type args — set by Fields, not user-settable
-    literal_options: Union[None, List] = None
+    literal_options: list | None = None
 
     # additional options when the field is rendered as ui.input_chips
     new_value_mode: Literal['add', 'add-unique', 'toggle'] = 'add-unique'
@@ -187,7 +199,7 @@ class FieldInfo():
                 if value is not None:
                     setattr(self, key, value)
             else:
-                raise ValueError(f"Invalid field name: {key}")
+                raise TypeError(f"Unexpected keyword argument for FieldInfo: {key}")
 
     def __repr__(self):
         """Print non-none values"""
@@ -212,4 +224,3 @@ def _merge_field_infos(base: FieldInfo, override: FieldInfo) -> FieldInfo:
         if k in _FIELD_INFO_KWARGS:
             setattr(merged, k, v)
     return merged
-

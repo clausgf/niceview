@@ -59,8 +59,7 @@ Contents
 - [Validation](#validation)
 - [Dialogs](#dialogs)
 - [Development](#development)
-- [Design Decisions and Accepted Technical Debt](#design-decisions-and-accepted-technical-debt)
-- [Open Questions / TODO](#open-questions--todo)
+- [Design Decisions / TODO](#design-decisions--todo) — details in [DESIGN.md](DESIGN.md) and [TODO.md](TODO.md)
 
 
 API Design
@@ -161,7 +160,24 @@ form.adapter_bound          # True if save()/refresh() are available
 form.has_validation_errors  # True if any field or model errors present
 form.validation_errors      # dict[str, str] — field-level errors
 form.nonfield_validation_errors  # list[str] — model-level errors
+
+form.save()                 # persist to the adapter; shows a ui.notify popup
+form.save(notify=False)     # same, but without any popup (programmatic saves)
+form.refresh(notify=False)  # reload from the adapter, also without popup
 ```
+
+**Accessing widgets after render():** every rendered field's widget is available via
+`form.widgets[field_name]` (a plain dict) or `form.w(field_name)`. `w()` also offers typed
+narrowing — pass the expected widget class and get it back correctly typed, with a
+`TypeError` if the field rendered as something else. This is the canonical way to style
+or tweak individual widgets after `render()`:
+```python
+form.w('name')                      # ui.element subclass (or CheckboxGroup/ModelGrid/... for composite fields)
+form.w('name', ui.input).props('outlined')   # typed: IDE knows it's a ui.input
+form.w('perms', CheckboxGroup).checkboxes['admin'].classes('text-negative')
+form.widgets['age'].classes('w-32')          # dict access, untyped
+```
+`w()` raises `KeyError` for unrendered/excluded fields and `TypeError` on a widget-class mismatch.
 
 **Change events** carry field name and old/new value:
 ```python
@@ -713,10 +729,26 @@ Additional widgets can be selected explicitly via `niceview.Field(widget_type='.
 type-based widgets `'datetime'`/`'date'`/`'time'`/`'timedelta'`/`'editgrid'`/`'modelselect'`.
 
 `'ui.radio'` and `'checkbox_group'` render vertically by default; pass `props='inline'` for a
-horizontal row (`niceview.Field(widget_type='ui.radio', props='inline')`). For `'checkbox_group'`,
-options come from `checkbox_group_options` or (like `'ui.radio'`/`'ui.toggle'`) fall back to
-`literal_options`, which NiceView extracts automatically from `Literal[...]` — including inside
-`list[Literal[...]]` and `Optional[list[Literal[...]]]`, even when `widget_type` is overridden.
+horizontal row (`niceview.Field(widget_type='ui.radio', props='inline')`).
+
+**Widget options (choices):** all choice widgets (`ui.select`, `ui.radio`, `ui.toggle`,
+`checkbox_group`) read their choices from the same resolution chain: `niceview.Field(options=...)`
+first, then the widget-specific alias (`select_options` / `radio_options` / `toggle_options` /
+`checkbox_group_options`), then `literal_options`, which NiceView extracts automatically from
+`Literal[...]` — including inside `list[Literal[...]]` and `Optional[list[Literal[...]]]`, even
+when `widget_type` is overridden. Prefer the unified `options=`; the aliases remain supported.
+`options` accepts a list, a dict (`value -> label`), or a zero-argument callable returning
+either — **sync or async**. An async callable renders the widget with empty choices first and
+fills them in as soon as the awaitable resolves (the field's current value is preserved):
+
+```python
+async def load_countries() -> list[str]:
+    return await fetch_from_api()
+
+class User(pydantic.BaseModel):
+    country: Annotated[str, niceview.Field(widget_type='ui.select', options=load_countries)] = ''
+```
+
 `None` and `[]` are interchangeable for `Optional[list[Literal[...]]]`, same as with the
 multi-select `ui.select`.
 
@@ -792,7 +824,7 @@ ModelForm.from_item(user, profile='detail').render()
 ModelList.from_list(User, users, profile='summary').render()
 ```
 
-Key `FieldInfo` options: `label`, `placeholder`, `tooltip`, `hidden`, `editable`, `widget_type`, `min`, `max`, `classes`, `select_options`.
+Key `FieldInfo` options: `label`, `placeholder`, `tooltip`, `hidden`, `editable`, `widget_type`, `min`, `max`, `classes`, `options` (see "Widget options" above).
 
 
 Validation
@@ -857,11 +889,11 @@ async def on_create():
 | `validator` | `Callable[[str], bool] \| None` | `None` | Validation function; `True` = valid |
 | `error_message` | `str` | `'Invalid input'` | Error shown when validator fails |
 
-**`submit_dialog`** — generic dialog with custom button list, returns the button text:
+**`submit_dialog`** — generic dialog with custom button list, returns the text of the
+pressed button (without prefixes), or `None` if the dialog was dismissed:
 
 ```python
-dialog = submit_dialog('Confirm', 'Proceed?', ['Cancel', '|1OK'])
-result = await dialog  # 'Cancel' or 'OK'
+result = await submit_dialog('Confirm', 'Proceed?', ['Cancel', '|1OK'])  # 'Cancel' or 'OK'
 ```
 
 Button labels can be prefixed for spacing (`|`) and color (`1`=primary, `2`=secondary, `a`=accent, `d`=dark, `+`=positive, `-`=negative, `i`=info, `w`=warning). Prefixes can be combined: `'|-OK'` = spacer + negative color.
@@ -873,7 +905,7 @@ Development
 Install dependencies and run tests:
 ```bash
 uv sync --dev
-uv run pytest          # 645 tests
+uv run pytest          # 657 tests
 uv run mypy niceview/ --ignore-missing-imports   # 0 errors
 ```
 
@@ -904,30 +936,9 @@ to verify render output and widget↔model interaction. AgGrid cell content is J
 not inspectable via the `User` fixture; row data is covered by unit tests instead.
 
 
-Design decisions and Accepted Technical Debt
---------------------------------------------
-- **Mobile navigation: `ModelList` + `DrillDownWrapper` as separate components**: A new `ModelList` (Quasar list) and `DrillDownWrapper` are added alongside `ModelGrid` / `EditGridWrapper` rather than making the existing desktop components responsive. Motivation: the UX patterns are fundamentally different — card list with drill-down vs data table with dialogs — and a single component handling both would need too many conditional paths.
-- **`DrillDownWrapper` is embeddable, not page-owning (no `.register(base_path)`, no `@ui.page` of its own)**: An earlier version registered two NiceGUI pages (list + `{key}` detail) with a CSS-only desktop split-panel. In practice this was rarely useful on its own — real editors need custom detail layout and often heterogeneous item types in one collection, which a single auto-rendered `EditFormWrapper` per item can't express, and most call sites wanted the widget embedded inside an existing page/card rather than owning a URL. It was replaced by a `ui.refreshable_method`-driven list/detail body with a slide animation (same technique as manual multi-page-in-one-page navigation elsewhere) plus `render_list_item`/`render_detail` override hooks, dropping the split-panel layout and page registration entirely.
-- **`render_detail`'s `set_key` callback instead of a return value**: The first design had `render_detail` return the new key after a rename. That only works for synchronous renames — a "Name" input's `blur` handler fires well after `render_detail` has already returned, so the wrapper would never learn about the change. `set_key(new_key)`, callable at any time, fixes this at the cost of one extra parameter.
-- **`DrillDownWrapper`/`ModelList` still take `item_type` explicitly alongside `adapter`**, even though concrete adapters (`ListAdapter`, `JsonListAdapter`, ...) already know their item type internally. Kept for consistency with `ModelForm.from_adapter`, `ModelGrid.from_adapter`, and `EditFormWrapper.from_adapter`, which all take the same `(item_type, adapter, ...)` shape — and because `CollectionAdapter` doesn't guarantee item-type introspection (`DirectoryAdapter`'s items are always `FileEntry`, `FilteredAdapter` just wraps another adapter). Deriving it from the adapter would need a new required Protocol member across every adapter implementation (including the optional `SqlModelAdapter`) for a parameter that's one extra argument, not a real pain point.
-- **`DrillDownWrapper`'s title row is built once, not recreated on every navigation like the body**: the first version applied the same "tear down and rebuild" `ui.refreshable_method` treatment to both, which gave the title row a matching slide-in animation but meant any styling applied to `wrapper.title`/`wrapper.add_button`/etc. was silently wiped on the very next list<->detail swap. Since the title row's structure barely changes between views (same slots, just text and visibility), it's now built once in `render()` and updated in place (`.set_text()`/`.set_visibility()`), at the cost of dropping its own slide animation — the body still animates, since its content is genuinely rebuilt every time regardless.
-- **Multi-level tree navigation**: `DrillDownWrapper` covers the common 2-level (list → detail) case per instance, though nesting one inside another's `render_detail` (see `examples/13_directory_drilldown.py`'s directory-of-files → per-file editor pattern) composes further levels. For URL-addressable deep trees (card grid → edit form → sub-list → sub-detail, etc.) the recommended pattern is still explicit `@ui.page` routes with a central URL factory class (`R`) and a shared `page_header(title, back_url)` helper — see `examples/11_tree_navigation.py`. This keeps each page self-contained, makes URL changes a one-place edit, and ensures the back button is always explicit and visible (not relying on browser history).
-- **Form navigation / dirty state**: No detection when the user leaves an unsaved form. Options: (a) track dirty state via `on_change` and expose `is_dirty` property; (b) use a JS `beforeunload` guard (requires NiceGUI `ui.run_javascript`). Neither covers in-app navigation — NiceGUI has no built-in route guard.
-- **NiceGUI element lifecycle**: When are elements instantiated, active, deleted? `render()` must be called inside a NiceGUI page context; elements created outside a client context silently fail. No lifecycle hooks for cleanup.
-- **Tests for async dialog flows**: `create_item` / `update_item` / `delete_item` open a NiceGUI dialog (`await dialog`) and cannot be tested without a browser. The CRUD data operations are covered via `_apply_create`, `_apply_update`, `_apply_delete` (unit tests) and the render/button presence via acceptance tests. Full dialog flow testing would require the `Screen` fixture (Playwright-based).
-- Design decision **date/time/datetime**: Use Python data types and HTML native widgets instead of NiceGUI/Quasar widgets with strings.
-- **`ui.notify()` in `save()`/`refresh()`**: Both methods call `ui.notify()` unconditionally. Callers who want custom feedback or suppress the popup have no opt-out today. Options: `notify=True` parameter, or an overridable `_on_save_success()`/`_on_save_error()` hook method. Deferred — the default behaviour is what most apps need, and adding a parameter to every call site adds noise.
-- **`ModelForm[T]` generics**: Making `ModelForm` generic would allow `form.item` to return `T` instead of `BaseModel`, eliminating casts in callers. The machinery is non-trivial: `@classmethod` + `TypeVar` generics are awkward pre-3.12, and internal fields (`_current_item`, `_validated_item`) would need careful typing. Deferred — the benefit is modest since callers rarely access `form.item` directly and `model_copy()`/`model_validate()` stay untyped internally anyway.
+Design Decisions / TODO
+-----------------------
 
-
-Open Questions / TODO
----------------------
-- EditGridWrapper is not a complete dialog, but the interface needed to edit a collection. The refresh button is the only button to affect the table as a whole (refresh the UI from the model). For collections, we never have a *save* semantics. That to conclude for EditFormWrapper?
-  - refresh button possible and makes sense, but already provided by ModelForm
-  - save button also provided
-- provide examples and tests for nested data structures
-- display collections in a responsive card grid in addition got grid/table
-- provide optional search and filtering mechanims to the tables
-- Collections: allow querying specific subsets
-- Collections: analyze efficiency, caching, paging
-- **Support dataclasses**: In addition to Pydantic models.
+- [DESIGN.md](DESIGN.md) — design decisions and accepted technical debt
+- [TODO.md](TODO.md) — open questions and planned work
+- License: [MIT](LICENSE)

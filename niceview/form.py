@@ -1,15 +1,16 @@
 from dataclasses import dataclass
 import datetime
+import inspect
 import logging
 import types
-from typing import Any, Self, TypeVar, Unpack
+from typing import Any, Callable, Self, TypeVar, Unpack
 import typing
 from pathlib import Path
 from zoneinfo import ZoneInfo
 import typing_extensions
 from pydantic import BaseModel, TypeAdapter
 
-from nicegui import ui
+from nicegui import background_tasks, ui
 from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, handle_event
 
 from niceview.dataadapter import BoundItem, ConflictError, StorageError, JsonAdapter, CollectionAdapter, ItemAdapter
@@ -54,6 +55,10 @@ class CheckboxGroup:
         self.options = options
         self.checkboxes = checkboxes
         self.widget = widget
+        self._value_change_handlers: list[Handler[ValueChangeEventArguments]] = []
+        self._disabled = False
+        for checkbox in self.checkboxes.values():
+            checkbox.on_value_change(self._relay)
 
     @property
     def value(self) -> list[Any]:
@@ -75,13 +80,31 @@ class CheckboxGroup:
         return self.widget.client
 
     def on_value_change(self, handler: Handler[ValueChangeEventArguments]) -> None:
-        def relay(e: ValueChangeEventArguments) -> None:
-            vce = ValueChangeEventArguments(sender=self, client=e.client, value=self.value, previous_value=None)  # type: ignore[arg-type]
+        self._value_change_handlers.append(handler)
+
+    def _relay(self, e: ValueChangeEventArguments) -> None:
+        vce = ValueChangeEventArguments(sender=self, client=e.client, value=self.value, previous_value=None)  # type: ignore[arg-type]
+        for handler in self._value_change_handlers:
             handle_event(handler, vce)
-        for checkbox in self.checkboxes.values():
-            checkbox.on_value_change(relay)
+
+    def set_options(self, options: 'list | dict') -> None:
+        """Replace the checkboxes with a new option set, keeping the current selection where possible."""
+        items = list(options.items()) if isinstance(options, dict) else [(opt, opt) for opt in options]
+        selected = set(self.value)
+        self.widget.clear()
+        self.checkboxes = {}
+        with self.widget:
+            for opt, label in items:
+                # initial value in the constructor does not fire on_value_change
+                checkbox = ui.checkbox(text=str(label), value=opt in selected)
+                checkbox.on_value_change(self._relay)
+                self.checkboxes[opt] = checkbox
+        self.options = [opt for opt, _ in items]
+        if self._disabled:
+            self.disable()
 
     def disable(self) -> None:
+        self._disabled = True
         for checkbox in self.checkboxes.values():
             checkbox.disable()
 
@@ -323,31 +346,41 @@ class ModelForm():
         """True if the form is bound to a data adapter (save/refresh are available)."""
         return self._item_adapter is not None
 
-    def refresh(self) -> None:
-        """Reload the item from the adapter, discarding any unsaved edits."""
+    def refresh(self, notify: bool = True) -> None:
+        """Reload the item from the adapter, discarding any unsaved edits.
+
+        notify=False suppresses the ui.notify popup (e.g. for programmatic refreshes)."""
         if not self.adapter_bound:
             raise ValueError("No adapter set. Use from_adapter(), from_json(), or load() first.")
         self.load(self._item_adapter)  # type: ignore[arg-type]
-        ui.notify('Form refreshed', color='positive')
+        if notify:
+            ui.notify('Form refreshed', color='positive')
 
-    def save(self) -> None:
-        """Persist the current item to the adapter. No-op if validation errors are present."""
+    def save(self, notify: bool = True) -> None:
+        """Persist the current item to the adapter. No-op if validation errors are present.
+
+        notify=False suppresses all ui.notify popups (success and error); errors are
+        still logged and reflected in the form's validation state."""
         if self._item_adapter is None:
             raise ValueError("No adapter set. Use from_adapter(), from_json(), or load() first.")
 
         if self.has_validation_errors:
-            ui.notify('Cannot save form: validation errors present', color='negative')
+            if notify:
+                ui.notify('Cannot save form: validation errors present', color='negative')
             return
 
         try:
             updated = self._item_adapter.save(self.item)
         except (ConflictError, StorageError) as e:
-            ui.notify(str(e), color='negative')
+            log.error(f"save failed: {e}")
+            if notify:
+                ui.notify(str(e), color='negative')
             return
         if updated is not None and updated is not self._validated_item:
             self._validated_item = updated
             self._current_item = updated.model_copy()
-        ui.notify('Form saved', color='positive')
+        if notify:
+            ui.notify('Form saved', color='positive')
 
     # --- widget management -------------------------------------------------
 
@@ -409,12 +442,29 @@ class ModelForm():
     # --- widget rendering helpers ------------------------------------------
 
     @staticmethod
-    def _resolve_options(field_name: str, field_info: FieldInfo, primary_attr: str, fallback_attr: str) -> Any:
-        """Resolve options for select/radio/toggle widgets from field_info, calling if callable."""
-        raw = getattr(field_info, primary_attr) or getattr(field_info, fallback_attr)
+    def _resolve_options(field_name: str, field_info: FieldInfo, specific_attr: str) -> 'tuple[Any, typing.Awaitable | None]':
+        """
+        Resolve options for select/radio/toggle/checkbox_group widgets from field_info.
+        Resolution order: field_info.options, then the widget-specific alias
+        (select_options/radio_options/...), then literal_options.
+        A callable source is invoked; it may be sync or async. Returns (options, pending):
+        for a sync source pending is None; for an async source options is [] and pending
+        is the awaitable — the caller schedules it via _schedule_late_options().
+        """
+        raw = field_info.options or getattr(field_info, specific_attr) or field_info.literal_options
         if not raw:
-            raise ValueError(f"Field '{field_name}' has no {primary_attr} (or {fallback_attr}) defined in FieldInfo")
-        return raw() if callable(raw) else raw
+            raise ValueError(f"Field '{field_name}' has no options ({specific_attr}/literal_options) defined in FieldInfo")
+        value = raw() if callable(raw) else raw
+        if inspect.isawaitable(value):
+            return [], value
+        return value, None
+
+    @staticmethod
+    def _schedule_late_options(field_name: str, pending: 'typing.Awaitable', apply: Callable[[Any], None]) -> None:
+        """Await an async options source in the background and apply the result to the widget."""
+        async def _later() -> None:
+            apply(await pending)
+        background_tasks.create(_later(), name=f'niceview options for {field_name}')
 
     def _wire_text_input(self, widget: Any, field_name: str) -> None:
         """Wire a text-input widget: validate on change, commit on blur."""
@@ -442,38 +492,51 @@ class ModelForm():
     # --- widget rendering methods ------------------------------------------
 
     def _render_select_widget(self, field_name: str, field_info: FieldInfo, kwargs: dict[str, Any], value_widget_type: str = 'ui.select') -> ui.select:
-        """Render a select widget. Options come from select_options or literal_options on field_info."""
-        kwargs['options'] = self._resolve_options(field_name, field_info, 'select_options', 'literal_options')
+        """Render a select widget. Options come from options/select_options/literal_options on field_info."""
+        kwargs['options'], pending = self._resolve_options(field_name, field_info, 'select_options')
         widget = ui.select(**kwargs)
         self._from_current_item_to_widget_value(field_name, value_widget_type, widget)
         self._wire_immediate(widget, field_name)
         widget.validation = lambda value, fn=field_name: self._get_field_error(fn, value)
+        if pending is not None:
+            self._schedule_late_options(field_name, pending, self._make_late_options_applier(field_name, value_widget_type, widget))
         return widget
 
     def _render_radio_widget(self, field_name: str, field_info: FieldInfo) -> ui.radio:
-        """Render a radio widget. Options come from radio_options or literal_options on field_info."""
-        options = self._resolve_options(field_name, field_info, 'radio_options', 'literal_options')
+        """Render a radio widget. Options come from options/radio_options/literal_options on field_info."""
+        options, pending = self._resolve_options(field_name, field_info, 'radio_options')
         widget = ui.radio(options)
         self._from_current_item_to_widget_value(field_name, 'ui.radio', widget)
         self._wire_immediate(widget, field_name)
+        if pending is not None:
+            self._schedule_late_options(field_name, pending, self._make_late_options_applier(field_name, 'ui.radio', widget))
         return widget
 
     def _render_toggle_widget(self, field_name: str, field_info: FieldInfo) -> ui.toggle:
-        """Render a toggle widget. Options come from toggle_options or literal_options on field_info."""
-        options = self._resolve_options(field_name, field_info, 'toggle_options', 'literal_options')
+        """Render a toggle widget. Options come from options/toggle_options/literal_options on field_info."""
+        options, pending = self._resolve_options(field_name, field_info, 'toggle_options')
         widget = ui.toggle(options)
         self._from_current_item_to_widget_value(field_name, 'ui.toggle', widget)
         self._wire_immediate(widget, field_name)
+        if pending is not None:
+            self._schedule_late_options(field_name, pending, self._make_late_options_applier(field_name, 'ui.toggle', widget))
         return widget
+
+    def _make_late_options_applier(self, field_name: str, widget_type: str, widget: Any) -> Callable[[Any], None]:
+        """Return a callback that sets late-arriving options and re-pushes the item's value."""
+        def apply(options: Any) -> None:
+            widget.set_options(options)
+            self._from_current_item_to_widget_value(field_name, widget_type, widget)
+        return apply
 
     def _render_checkbox_group_widget(self, field_name: str, field_info: FieldInfo) -> CheckboxGroup:
         """
         Render a row/column of ui.checkbox elements for a list[Literal[...]] field.
-        Options come from checkbox_group_options or literal_options on field_info.
+        Options come from options/checkbox_group_options/literal_options on field_info.
         Layout is vertical by default; pass props='inline' (same convention as ui.radio) for a
         horizontal row.
         """
-        raw_options = self._resolve_options(field_name, field_info, 'checkbox_group_options', 'literal_options')
+        raw_options, pending = self._resolve_options(field_name, field_info, 'checkbox_group_options')
         items = list(raw_options.items()) if isinstance(raw_options, dict) else [(opt, opt) for opt in raw_options]
 
         inline = field_info.props is not None and 'inline' in field_info.props.split()
@@ -489,6 +552,8 @@ class ModelForm():
             widget.disable()
         self._from_current_item_to_widget_value(field_name, 'checkbox_group', widget)
         self._wire_immediate(widget, field_name)
+        if pending is not None:
+            self._schedule_late_options(field_name, pending, self._make_late_options_applier(field_name, 'checkbox_group', widget))
         return widget
 
     def _render_modelselect_widget(self, field_name: str, field_info: FieldInfo, kwargs: dict[str, Any]) -> ui.select:

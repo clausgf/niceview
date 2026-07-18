@@ -64,8 +64,9 @@ async def input_dialog(
     return await dialog
 
 
-def submit_dialog(title: str, message: str, buttons: list[str] = ["Cancel", "OK"]) -> ui.dialog:
-    """Create a dialog with a title, message and buttons.
+async def submit_dialog(title: str, message: str, buttons: 'tuple[str, ...] | list[str]' = ('Cancel', 'OK')) -> str | None:
+    """Show a dialog with a title, message and buttons; returns the text of the
+       pressed button, or None if the dialog was dismissed (e.g. Escape key).
        Buttons can be prefixed with a character for formatting and to set the color:
        - '|': space before button (also in combination with color)
        - '1': primary
@@ -76,10 +77,10 @@ def submit_dialog(title: str, message: str, buttons: list[str] = ["Cancel", "OK"
        - '-': negative
        - 'i': info
        - 'w': warning
-       
+
        Usage:
-       dialog = my_dialog('Title', 'Message', ['|dCancel', 'OK'])
-       result = await dialog  # result is the button text "Cancel" or "OK"
+       result = await submit_dialog('Title', 'Message', ['|dCancel', 'OK'])
+       # result is the button text "Cancel" or "OK" (without prefixes), or None
        """
 
     dialog = ui.dialog().props(':maximized="$q.screen.lt.md" transition-show="slide-up" transition-hide="slide-down"').style('width: 400px')
@@ -102,7 +103,4 @@ def submit_dialog(title: str, message: str, buttons: list[str] = ["Cancel", "OK"
                     else:
                         prop = None
                     ui.button(button).on_click(lambda msg: dialog.submit(msg.sender.text)).props(prop)
-    return dialog
-
-
-# ***************************************************************************
+    return await dialog
