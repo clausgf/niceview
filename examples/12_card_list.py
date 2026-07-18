@@ -24,8 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pydantic
 from nicegui import ui
 
-from niceview.dataadapter import JsonListAdapter
-from niceview.form import ModelForm
+from niceview import JsonListAdapter, ModelForm
 
 
 class Webhook(pydantic.BaseModel):

@@ -21,8 +21,7 @@ from time import time
 import pydantic
 from typing import Literal
 from nicegui import ElementFilter, ui
-from niceview.dataadapter import ListAdapter
-from niceview.wrapper import EditGridWrapper, EditFormWrapper
+from niceview import ListAdapter, EditGridWrapper, EditFormWrapper
 
 
 class Task(pydantic.BaseModel):

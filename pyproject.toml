@@ -1,16 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "niceview"
 version = "0.1.0"
 description = "NiceGUI adapter layer: generate forms and grids from Pydantic models"
+readme = "README.md"
+authors = [{ name = "clausgf", email = "fuehner@gmx.net" }]
 requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: Pydantic :: 2",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: User Interfaces",
+    "Typing :: Typed",
+]
 dependencies = [
     "nicegui>=3.0",
+    "pydantic>=2.7",
     "annotated-types>=0.7",
     "typing-extensions>=4.12",
 ]
 
+[project.urls]
+Repository = "https://github.com/clausgf/niceview"
+
 [project.optional-dependencies]
 sqlmodel = ["sqlmodel>=0.0.22"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["niceview"]
 
 [dependency-groups]
 dev = [

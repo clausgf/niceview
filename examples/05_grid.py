@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pydantic
 from typing import Literal
 from nicegui import ui
-from niceview.grid import ModelGrid, ModelGridInlineEdit
+from niceview import ModelGrid, ModelGridInlineEdit
 
 
 class Task(pydantic.BaseModel):

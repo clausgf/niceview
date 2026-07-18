@@ -6,13 +6,26 @@ NiceView
 NiceView simplifies [NiceGUI](https://nicegui.io) programming by deriving forms and tables from Pydantic models. Inspired by [MagicGUI](https://magicgui.readthedocs.io/), [NiceCRUD](https://github.com/zauberzeug/nicegui/tree/main/examples/nicecrud) and [Django](https://docs.djangoproject.com/)'s admin integration.
 
 
+Installation
+------------
+
+```bash
+uv add git+https://github.com/clausgf/niceview          # or: pip install git+https://...
+uv add "niceview[sqlmodel] @ git+https://github.com/clausgf/niceview"   # with SqlModelAdapter
+```
+
+`SqlModelAdapter` is the only component with an extra dependency (`sqlmodel`); everything else
+works with the base install. All public names are importable directly from `niceview`
+(`from niceview import ModelForm, ModelGrid, ...`).
+
+
 Quick Start
 -----------
 
 ```python
 import pydantic
 from nicegui import ui
-from niceview.modelform import ModelForm
+from niceview import ModelForm
 
 class User(pydantic.BaseModel):
     name: str = pydantic.Field(default='', max_length=50, title='Name')
@@ -33,6 +46,7 @@ ui.run()
 Contents
 --------
 
+- [Installation](#installation)
 - [API Design](#api-design)
 - [ModelForm](#modelform)
 - [ModelGrid / ModelGridInlineEdit](#modelgrid--modelgridinlineedit)
@@ -76,7 +90,7 @@ ModelForm
 Use `EditFormWrapper` to add a title, description, and action buttons.
 
 ```python
-from niceview.modelform import ModelForm
+from niceview import ModelForm
 
 # In-memory item (explicit type optional)
 form = ModelForm.from_item(user)
@@ -158,7 +172,7 @@ ModelGrid / ModelGridInlineEdit
 `ModelGridInlineEdit` adds per-cell editing with immediate validation and persistence.
 
 ```python
-from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
+from niceview import ModelGrid, ModelGridInlineEdit
 
 # In-memory list
 grid = ModelGrid.from_list(User, user_list, include=['name', 'age'])
@@ -184,7 +198,7 @@ EditGridWrapper / EditFormWrapper
 Both wrappers add a title, optional description, and action buttons as chrome above their inner component.
 
 ```python
-from niceview.modeledit import EditGridWrapper, EditFormWrapper
+from niceview import EditGridWrapper, EditFormWrapper
 
 # Grid with CRUD buttons — factory methods create and render in one call
 EditGridWrapper.from_list(User, user_list, title='Users')
@@ -285,8 +299,7 @@ inherently application-specific:
 
 ```python
 from nicegui import ui
-from niceview.dataadapter import JsonListAdapter
-from niceview.form import ModelForm
+from niceview import JsonListAdapter, ModelForm
 
 adapter = JsonListAdapter(Forwarding, Path('forwardings.json'))
 
@@ -340,7 +353,7 @@ other niceview widget, so it can sit inside a `ui.card()`, a tab panel, or a big
 without taking it over.
 
 ```python
-from niceview.modellist import ModelList, DrillDownWrapper
+from niceview import ModelList, DrillDownWrapper
 
 # Standalone list — fire on_select callback when an item is tapped
 list_view = ModelList.from_list(User, users,
@@ -457,8 +470,9 @@ or let the `from_*` factory methods create them transparently.
 | `ListAdapter(Type, list)` | Grid | In-memory list |
 | `JsonAdapter(Type, path)` | Form | Single object in a JSON file; supports `lock_field=`, `created_field=`, `strict=` |
 | `JsonListAdapter(Type, path)` | Grid | List of objects in a JSON file; supports `created_field=`, `strict=` |
-| `SqlModelAdapter(Type, engine)` | Grid, Form | SQLModel / SQLAlchemy table *(optional)* |
+| `SqlModelAdapter(Type, engine)` | Grid, Form | SQLModel / SQLAlchemy table *(requires the `sqlmodel` extra, see [Installation](#installation))* |
 | `DirectoryAdapter(dir_path)` | `DrillDownWrapper` | One file per item in a directory; items are filename metadata (`FileEntry`), not parsed content — supports `rename()` |
+| `FilteredAdapter(inner, predicate, defaults=)` | Grid, `DrillDownWrapper` | Filtered view of another `CollectionAdapter` (see below) |
 
 All JSON adapters write atomically (`.tmp` → rename).
 `JsonListAdapter` and `SqlModelAdapter` both implement `ReloadableAdapter`: `reload()` re-reads
@@ -476,6 +490,23 @@ on disk. Both are meant to be called directly by application code (an "Add" hand
 widget's `blur` handler), not through `DrillDownWrapper`'s generic `item_type()`-based Add flow
 — see `examples/13_directory_drilldown.py`.
 
+**`FilteredAdapter`** wraps any `CollectionAdapter` and filters iteration by a predicate —
+the standard way to show a parent-filtered view of a child collection (e.g. only the books of
+one author) while mutations still go through the inner adapter for persistence. `defaults=`
+injects field values on `create()`, so new items automatically belong to the current parent.
+Change notifications and `reload()` are forwarded from/to the inner adapter. See
+`examples/11_tree_navigation.py`.
+
+```python
+from niceview import FilteredAdapter
+
+books_of_author = FilteredAdapter(books_adapter,
+    predicate=lambda b: b.author_id == author.id,
+    defaults={'author_id': author.id},   # applied to every create()
+)
+ModelGrid(Book, books_of_author).render()
+```
+
 **Lenient loading (default) vs strict loading:** `JsonAdapter` and `JsonListAdapter` default to
 `strict=False`, which means a hand-edited or partially-migrated file does not crash the
 application:
@@ -492,13 +523,13 @@ possible in strict mode (in lenient mode a corrupted file returns `None` lock va
 check is skipped).
 
 The helper functions `lenient_model_load` and `lenient_list_load` are also importable from
-`niceview.dataadapter` for use outside the built-in adapters.
+`niceview` for use outside the built-in adapters.
 
 > **Breaking change (since lenient default):** code that relied on `JsonAdapter.read()` or
 > `JsonListAdapter` raising on a malformed file must pass `strict=True` explicitly.
 
 ```python
-from niceview.dataadapter import lenient_model_load, lenient_list_load
+from niceview import lenient_model_load, lenient_list_load
 
 # Load a single model from a JSON string, tolerating bad fields:
 item = lenient_model_load(MyModel, json_text, context='myfile.json')
@@ -590,7 +621,7 @@ obs.append(User(name='Bob'))   # also triggers update_rows(), no adapter call ne
 ```
 
 ```python
-from niceview.dataadapter import SqlModelAdapter
+from niceview import SqlModelAdapter
 
 adapter = SqlModelAdapter(Book, engine)                                          # optimistic locking on updated_at
 adapter = SqlModelAdapter(Book, engine, lock_field=None)                         # without locking
@@ -681,7 +712,7 @@ multi-select `ui.select`.
 return it directly. Its `checkboxes` (`dict[option, ui.checkbox]`) and `widget`
 (the `ui.row`/`ui.column`) attributes are public for styling:
 ```python
-from niceview.form import CheckboxGroup
+from niceview import CheckboxGroup
 
 group = form.w('perms', CheckboxGroup)     # typed narrowing, raises TypeError if not a CheckboxGroup
 group.checkboxes['admin'].classes('text-negative')

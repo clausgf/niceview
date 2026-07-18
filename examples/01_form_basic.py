@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pydantic
 from nicegui import ui
-from niceview.wrapper import EditFormWrapper
+from niceview import EditFormWrapper
 
 
 class Person(pydantic.BaseModel):

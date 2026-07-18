@@ -22,9 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pydantic
 from nicegui import ui
 
-from niceview.dataadapter import DirectoryAdapter, FileEntry, JsonAdapter
-from niceview.form import ModelForm
-from niceview.modellist import DrillDownWrapper
+from niceview import DirectoryAdapter, FileEntry, JsonAdapter, ModelForm, DrillDownWrapper
 
 
 class Note(pydantic.BaseModel):

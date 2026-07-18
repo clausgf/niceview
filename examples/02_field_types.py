@@ -42,7 +42,7 @@ import pydantic
 from nicegui import ElementFilter, ui
 
 import niceview
-from niceview.form import ModelForm
+from niceview import ModelForm
 
 
 class Tag(pydantic.BaseModel):

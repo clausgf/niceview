@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pydantic
 from nicegui import ui
-from niceview.modellist import DrillDownWrapper
+from niceview import DrillDownWrapper
 
 
 class Contact(pydantic.BaseModel):

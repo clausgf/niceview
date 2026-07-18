@@ -17,9 +17,7 @@ from typing import Literal
 from nicegui import ui
 from pydantic import BaseModel, Field
 
-from niceview.dataadapter import ListAdapter, FilteredAdapter
-from niceview.modellist import ModelList
-from niceview.wrapper import EditFormWrapper
+from niceview import ListAdapter, FilteredAdapter, ModelList, EditFormWrapper
 
 
 # ---------------------------------------------------------------------------

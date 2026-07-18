@@ -1031,12 +1031,17 @@ wheels = [
 [[package]]
 name = "niceview"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "annotated-types" },
     { name = "nicegui" },
-    { name = "sqlmodel" },
+    { name = "pydantic" },
     { name = "typing-extensions" },
+]
+
+[package.optional-dependencies]
+sqlmodel = [
+    { name = "sqlmodel" },
 ]
 
 [package.dev-dependencies]
@@ -1045,15 +1050,18 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
+    { name = "sqlmodel" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "annotated-types", specifier = ">=0.7" },
     { name = "nicegui", specifier = ">=3.0" },
-    { name = "sqlmodel", specifier = ">=0.0.22" },
+    { name = "pydantic", specifier = ">=2.7" },
+    { name = "sqlmodel", marker = "extra == 'sqlmodel'", specifier = ">=0.0.22" },
     { name = "typing-extensions", specifier = ">=4.12" },
 ]
+provides-extras = ["sqlmodel"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1061,6 +1069,7 @@ dev = [
     { name = "pytest", specifier = ">=9.0" },
     { name = "pytest-asyncio", specifier = ">=1.0" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
+    { name = "sqlmodel", specifier = ">=0.0.22" },
 ]
 
 [[package]]
