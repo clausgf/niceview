@@ -10,7 +10,7 @@ from nicegui import ui
 import sqlmodel
 
 from niceview.dataadapter import BoundItem, ListAdapter, JsonAdapter, SqlModelAdapter
-from niceview.form import ModelForm
+from niceview.modelform import ModelForm
 
 
 @pytest.fixture(autouse=True)

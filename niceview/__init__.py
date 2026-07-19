@@ -19,10 +19,11 @@ from niceview.dataadapter import (
     lenient_list_load,
     lenient_model_load,
 )
-from niceview.form import CheckboxGroup, ModelForm
-from niceview.grid import ModelGrid, ModelGridInlineEdit
-from niceview.wrapper import EditFormWrapper, EditGridWrapper
-from niceview.modellist import ModelList, DrillDownWrapper
+from niceview.modelform import CheckboxGroup, ModelForm
+from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
+from niceview.editwrapper import EditFormWrapper, EditGridWrapper
+from niceview.modellist import ModelList
+from niceview.drilldown import DrillDownWrapper
 
 __all__ = [
     # Field customization

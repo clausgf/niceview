@@ -61,21 +61,21 @@ class TestInit:
     def test_set_classes(self):
         assert FieldInfo(classes='text-red-500').classes == 'text-red-500'
 
-    def test_set_radio_options_list(self):
-        fi = FieldInfo(radio_options=['a', 'b', 'c'])
-        assert fi.radio_options == ['a', 'b', 'c']
+    def test_set_options_list(self):
+        fi = FieldInfo(options=['a', 'b', 'c'])
+        assert fi.options == ['a', 'b', 'c']
 
-    def test_set_radio_options_dict(self):
-        fi = FieldInfo(radio_options={'a': 'Option A', 'b': 'Option B'})
-        assert fi.radio_options == {'a': 'Option A', 'b': 'Option B'}
+    def test_set_options_dict(self):
+        fi = FieldInfo(options={'a': 'Option A', 'b': 'Option B'})
+        assert fi.options == {'a': 'Option A', 'b': 'Option B'}
 
     def test_set_widget_type_radio(self):
         fi = FieldInfo(widget_type='ui.radio')
         assert fi.widget_type == 'ui.radio'
 
-    def test_set_toggle_options_list(self):
-        fi = FieldInfo(toggle_options=['a', 'b', 'c'])
-        assert fi.toggle_options == ['a', 'b', 'c']
+    def test_removed_alias_select_options_raises(self):
+        with pytest.raises(TypeError, match='Unexpected keyword argument'):
+            FieldInfo(select_options=['a', 'b'])
 
     def test_set_widget_type_toggle(self):
         fi = FieldInfo(widget_type='ui.toggle')

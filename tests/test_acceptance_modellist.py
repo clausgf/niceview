@@ -11,7 +11,8 @@ from nicegui import ui
 from nicegui.testing import User
 
 from niceview.dataadapter import ListAdapter, DirectoryAdapter, FileEntry
-from niceview.modellist import ModelList, DrillDownWrapper
+from niceview.modellist import ModelList
+from niceview.drilldown import DrillDownWrapper
 
 
 class Contact(pydantic.BaseModel):

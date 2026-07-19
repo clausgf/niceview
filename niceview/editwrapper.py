@@ -9,8 +9,8 @@ from nicegui import ui
 from nicegui.events import Handler, ClickEventArguments, handle_event
 
 from niceview.dataadapter import CollectionAdapter, ConflictError, StorageError, ItemAdapter, ReloadableAdapter
-from niceview.form import ModelForm, FieldChangeEventArguments, _ModelFormOptionInputs
-from niceview.grid import ModelGridInlineEdit, ModelGrid, T, TableItemEventArguments, _InlineEditableModelGridOptionInputs
+from niceview.modelform import ModelForm, FieldChangeEventArguments, _ModelFormOptionInputs
+from niceview.modelgrid import ModelGridInlineEdit, ModelGrid, T, TableItemEventArguments, _InlineEditableModelGridOptionInputs
 from niceview.util import submit_dialog
 
 log = logging.getLogger('niceview')

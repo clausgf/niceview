@@ -125,9 +125,9 @@ class TestWidgetTypeInference:
         fields = Fields(LiteralModel)
         assert fields['color'].widget_type == 'ui.select'
 
-    def test_literal_select_options(self):
+    def test_literal_options_populated(self):
         fields = Fields(LiteralModel)
-        assert fields['color'].select_options == ['red', 'green', 'blue']
+        assert fields['color'].options == ['red', 'green', 'blue']
 
     def test_list_str_to_input_chips(self):
         fields = Fields(ListModel)
@@ -151,7 +151,7 @@ class TestWidgetTypeInference:
 
     def test_list_literal_options(self):
         fields = Fields(MultiSelectModel)
-        assert fields['perms'].select_options == ['read', 'write', 'admin']
+        assert fields['perms'].options == ['read', 'write', 'admin']
 
     def test_list_annotated_str_to_input_chips(self):
         fields = Fields(ConstrainedListModel)
@@ -192,7 +192,7 @@ class TestWidgetTypeInference:
 
     def test_optional_list_literal_options(self):
         fields = Fields(MultiSelectModel)
-        assert fields['opt_perms'].select_options == ['read', 'write', 'admin']
+        assert fields['opt_perms'].options == ['read', 'write', 'admin']
 
 
 # ---------------------------------------------------------------------------

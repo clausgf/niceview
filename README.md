@@ -733,10 +733,9 @@ horizontal row (`niceview.Field(widget_type='ui.radio', props='inline')`).
 
 **Widget options (choices):** all choice widgets (`ui.select`, `ui.radio`, `ui.toggle`,
 `checkbox_group`) read their choices from the same resolution chain: `niceview.Field(options=...)`
-first, then the widget-specific alias (`select_options` / `radio_options` / `toggle_options` /
-`checkbox_group_options`), then `literal_options`, which NiceView extracts automatically from
-`Literal[...]` — including inside `list[Literal[...]]` and `Optional[list[Literal[...]]]`, even
-when `widget_type` is overridden. Prefer the unified `options=`; the aliases remain supported.
+first, then `literal_options`, which NiceView extracts automatically from `Literal[...]` —
+including inside `list[Literal[...]]` and `Optional[list[Literal[...]]]`, even when
+`widget_type` is overridden.
 `options` accepts a list, a dict (`value -> label`), or a zero-argument callable returning
 either — **sync or async**. An async callable renders the widget with empty choices first and
 fills them in as soon as the awaitable resolves (the field's current value is preserved):
@@ -752,7 +751,7 @@ class User(pydantic.BaseModel):
 `None` and `[]` are interchangeable for `Optional[list[Literal[...]]]`, same as with the
 multi-select `ui.select`.
 
-`'checkbox_group'` fields render as `niceview.form.CheckboxGroup` — not a `ui.element` subclass
+`'checkbox_group'` fields render as `CheckboxGroup` — not a `ui.element` subclass
 (there is no native NiceGUI/Quasar equivalent), but public and importable like `ModelGrid` /
 `EditGridWrapper` for the same reason: `form.widgets[field_name]` and `form.w(field_name, ...)`
 return it directly. Its `checkboxes` (`dict[option, ui.checkbox]`) and `widget`

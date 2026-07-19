@@ -17,8 +17,8 @@ One form showing all field types supported by NiceView:
 | `datetime.timedelta` | `ui.input` (ISO 8601 duration) |
 | `Literal[...]` | `ui.select`, `ui.radio`, or `ui.toggle` (via `widget_type` override) |
 | `Literal[...]` with `with_input=True` | `ui.select` (searchable) |
-| `list[str]` with `select_options` + `multiple=True` | `ui.select` (multi-select) |
-| `list[Literal[...]]` | `ui.select` (multi-select; options from the `Literal`, no `select_options` needed) |
+| `list[str]` with `options` + `multiple=True` | `ui.select` (multi-select) |
+| `list[Literal[...]]` | `ui.select` (multi-select; options from the `Literal`, no `options` needed) |
 | `list[Literal[...]]` with `props='use-chips'` | `ui.select` (multi-select, selections shown as removable chips) |
 | `list[Literal[...]]` with `widget_type='checkbox_group'` | Row/column of `ui.checkbox` (alternative to the multi-select) |
 | `str` (color) | `ui.color_input` (via `widget_type` override) |
@@ -74,7 +74,7 @@ class AllTypes(pydantic.BaseModel):
     )
     choice: Literal['red', 'green', 'blue'] = 'green' # label and widget are auto-detected from the Literal type
     choice_search: Annotated[Literal['apple', 'banana', 'cherry', 'date', 'elderberry'], niceview.Field(widget_type='ui.select', with_input=True, label='Fruit (searchable select)')] = 'apple'
-    choice_multi: Annotated[list[str], niceview.Field(widget_type='ui.select', select_options=['red', 'green', 'blue'], multiple=True, clearable=True)] = pydantic.Field(default_factory=lambda: ['red', 'blue'], title='Colors (multi-select)')
+    choice_multi: Annotated[list[str], niceview.Field(widget_type='ui.select', options=['red', 'green', 'blue'], multiple=True, clearable=True)] = pydantic.Field(default_factory=lambda: ['red', 'blue'], title='Colors (multi-select)')
     perms_multiselect: list[Literal['read', 'write', 'admin']] = pydantic.Field(default_factory=lambda: ['read'], title='Permissions (list[Literal], auto multi-select)')  # type: ignore[arg-type]
     perms_chips: Annotated[list[Literal['read', 'write', 'admin']], niceview.Field(props='use-chips', label='Permissions (multi-select with use-chips)')] = pydantic.Field(default_factory=lambda: ['read'])  # type: ignore[arg-type]
     perms_checkboxes: Annotated[list[Literal['read', 'write', 'admin']], niceview.Field(widget_type='checkbox_group', props='inline', label='Permissions (checkbox_group)')] = pydantic.Field(default_factory=lambda: ['read'])  # type: ignore[arg-type]

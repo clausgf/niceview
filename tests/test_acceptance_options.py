@@ -11,7 +11,7 @@ from nicegui.testing import User
 
 import niceview
 from niceview import ModelForm
-from niceview.form import CheckboxGroup
+from niceview.modelform import CheckboxGroup
 
 
 class TestUnifiedOptions:
@@ -76,37 +76,11 @@ class TestUnifiedOptions:
         await user.open('/')
         assert captured[0].w('perms', CheckboxGroup).options == ['read', 'write']
 
-    async def test_options_wins_over_specific_alias(self, user: User) -> None:
-        class Item(pydantic.BaseModel):
-            color: Annotated[str, niceview.Field(widget_type='ui.select',
-                                                 options=['red', 'green'],
-                                                 select_options=['blue'])] = 'red'
-
-        captured: list[ModelForm] = []
-
-        @ui.page('/')
-        def page():
-            form = ModelForm.from_item(Item())
-            form.render()
-            captured.append(form)
-
-        await user.open('/')
-        assert captured[0].w('color', ui.select).options == ['red', 'green']
-
-    async def test_specific_alias_still_works(self, user: User) -> None:
-        class Item(pydantic.BaseModel):
-            color: Annotated[str, niceview.Field(widget_type='ui.select', select_options=['red', 'green'])] = 'red'
-
-        captured: list[ModelForm] = []
-
-        @ui.page('/')
-        def page():
-            form = ModelForm.from_item(Item())
-            form.render()
-            captured.append(form)
-
-        await user.open('/')
-        assert captured[0].w('color', ui.select).options == ['red', 'green']
+    async def test_removed_aliases_raise(self, user: User) -> None:
+        import pytest
+        for alias in ['select_options', 'radio_options', 'toggle_options', 'checkbox_group_options']:
+            with pytest.raises(TypeError, match='Unexpected keyword argument'):
+                niceview.Field(**{alias: ['a', 'b']})
 
     async def test_literal_fallback_unchanged(self, user: User) -> None:
         class Item(pydantic.BaseModel):

@@ -147,14 +147,14 @@ class _FieldInfoResolver:
             log.debug(f"_field_info_from_pydantic: {field_name=} widget_type from lookup: {nv_field_info.widget_type}")
         elif typing.get_origin(field_type) == typing.Literal:
             nv_field_info.widget_type = 'ui.select'
-            if nv_field_info.select_options is None:
-                nv_field_info.select_options = list(typing.get_args(field_type))
-            log.debug(f"_field_info_from_pydantic: {field_name=} widget_type=ui.select select_options={nv_field_info.select_options}")
+            if nv_field_info.options is None:
+                nv_field_info.options = list(typing.get_args(field_type))
+            log.debug(f"_field_info_from_pydantic: {field_name=} widget_type=ui.select options={nv_field_info.options}")
         elif isinstance(field_type, type) and issubclass(field_type, enum.Enum):
             nv_field_info.widget_type = 'ui.select'
-            if nv_field_info.select_options is None:
-                nv_field_info.select_options = {member: member.name for member in field_type}
-            log.debug(f"_field_info_from_pydantic: {field_name=} widget_type=ui.select (Enum) select_options={nv_field_info.select_options}")
+            if nv_field_info.options is None:
+                nv_field_info.options = {member: member.name for member in field_type}
+            log.debug(f"_field_info_from_pydantic: {field_name=} widget_type=ui.select (Enum) options={nv_field_info.options}")
         elif typing.get_origin(field_type) == list:
             self._infer_list_widget_type(field_name, field_type, nv_field_info)
         else:
@@ -172,8 +172,8 @@ class _FieldInfoResolver:
             nv_field_info.multiple = True
             if nv_field_info.literal_options is None:
                 nv_field_info.literal_options = literal_args
-            if nv_field_info.select_options is None:
-                nv_field_info.select_options = literal_args
+            if nv_field_info.options is None:
+                nv_field_info.options = literal_args
             log.debug(f"_field_info_from_pydantic: {field_name=} list[Literal] -> ui.select multiple options={literal_args}")
             return
 

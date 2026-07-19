@@ -40,8 +40,7 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
     style: str
     tooltip: str
 
-    # choices for select/radio/toggle/checkbox_group widgets — the canonical option;
-    # the widget-specific *_options names below are supported as aliases
+    # choices for select/radio/toggle/checkbox_group widgets
     options: OptionsSource
 
     # additional options when field is rendered in a ui.input widget
@@ -60,20 +59,10 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
     format: str
 
     # additional options when field is rendered as ui.select
-    select_options: OptionsSource
     with_input: bool
     multiple: bool
     clearable: bool
     # validation same as in ui.input
-
-    # additional options when field is rendered as ui.radio
-    radio_options: OptionsSource
-
-    # additional options when field is rendered as ui.toggle
-    toggle_options: OptionsSource
-
-    # additional options when field is rendered as checkbox_group
-    checkbox_group_options: OptionsSource
 
     # additional options when field is rendered as ui.color_input
     color_preview: bool
@@ -129,10 +118,9 @@ class FieldInfo():
     # options when field is rendered as ui.aggrid column
     aggrid: dict[str, str] | None = None  # additional options for the aggrid column, e.g. {'headerName': 'My Column', 'field': 'my_field'}
 
-    # choices for select/radio/toggle/checkbox_group widgets — the canonical option.
-    # Resolution order per widget: options, then the widget-specific alias
-    # (select_options/radio_options/toggle_options/checkbox_group_options), then
-    # literal_options (auto-extracted from Literal[...] types).
+    # choices for select/radio/toggle/checkbox_group widgets. Resolution order per
+    # widget: options, then literal_options (auto-extracted from Literal[...] types).
+    # For checkbox_group, horizontal layout via props='inline' (same convention as ui.radio).
     options: OptionsSource | None = None
 
     # additional options when field is rendered in a ui.input widget
@@ -150,22 +138,10 @@ class FieldInfo():
     suffix: str | None = None
     format: str | None = None
 
-    # additional options when field is rendered as ui.select (alias of options)
-    select_options: OptionsSource | None = None
+    # additional options when field is rendered as ui.select
     with_input: bool = False
     multiple: bool = False
     clearable: bool = False
-
-    # additional options when field is rendered as ui.radio (alias of options)
-    radio_options: OptionsSource | None = None
-
-    # additional options when field is rendered as ui.toggle (alias of options)
-    toggle_options: OptionsSource | None = None
-
-    # additional options when field is rendered as checkbox_group (list[Literal[...]] as a
-    # row/column of checkboxes; alias of options). Horizontal layout: props='inline'
-    # (same convention as ui.radio).
-    checkbox_group_options: OptionsSource | None = None
 
     # additional options when field is rendered as ui.color_input
     color_preview: bool = False

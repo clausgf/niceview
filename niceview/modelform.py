@@ -19,9 +19,9 @@ from niceview.fields import Fields
 
 if typing.TYPE_CHECKING:
     # Only for the FormWidget type alias below; imported lazily elsewhere in this module
-    # to avoid a circular import (wrapper.py imports ModelForm from this module).
-    from niceview.grid import ModelGrid
-    from niceview.wrapper import EditGridWrapper
+    # to avoid a circular import (editwrapper.py imports ModelForm from this module).
+    from niceview.modelgrid import ModelGrid
+    from niceview.editwrapper import EditGridWrapper
 
 log = logging.getLogger('niceview')
 
@@ -442,18 +442,18 @@ class ModelForm():
     # --- widget rendering helpers ------------------------------------------
 
     @staticmethod
-    def _resolve_options(field_name: str, field_info: FieldInfo, specific_attr: str) -> 'tuple[Any, typing.Awaitable | None]':
+    def _resolve_options(field_name: str, field_info: FieldInfo) -> 'tuple[Any, typing.Awaitable | None]':
         """
         Resolve options for select/radio/toggle/checkbox_group widgets from field_info.
-        Resolution order: field_info.options, then the widget-specific alias
-        (select_options/radio_options/...), then literal_options.
-        A callable source is invoked; it may be sync or async. Returns (options, pending):
-        for a sync source pending is None; for an async source options is [] and pending
-        is the awaitable — the caller schedules it via _schedule_late_options().
+        Resolution order: field_info.options, then literal_options (auto-extracted from
+        Literal[...] types). A callable source is invoked; it may be sync or async.
+        Returns (options, pending): for a sync source pending is None; for an async source
+        options is [] and pending is the awaitable — the caller schedules it via
+        _schedule_late_options().
         """
-        raw = field_info.options or getattr(field_info, specific_attr) or field_info.literal_options
+        raw = field_info.options or field_info.literal_options
         if not raw:
-            raise ValueError(f"Field '{field_name}' has no options ({specific_attr}/literal_options) defined in FieldInfo")
+            raise ValueError(f"Field '{field_name}' has no options (or literal_options) defined in FieldInfo")
         value = raw() if callable(raw) else raw
         if inspect.isawaitable(value):
             return [], value
@@ -492,8 +492,8 @@ class ModelForm():
     # --- widget rendering methods ------------------------------------------
 
     def _render_select_widget(self, field_name: str, field_info: FieldInfo, kwargs: dict[str, Any], value_widget_type: str = 'ui.select') -> ui.select:
-        """Render a select widget. Options come from options/select_options/literal_options on field_info."""
-        kwargs['options'], pending = self._resolve_options(field_name, field_info, 'select_options')
+        """Render a select widget. Options come from options/literal_options on field_info."""
+        kwargs['options'], pending = self._resolve_options(field_name, field_info)
         widget = ui.select(**kwargs)
         self._from_current_item_to_widget_value(field_name, value_widget_type, widget)
         self._wire_immediate(widget, field_name)
@@ -503,8 +503,8 @@ class ModelForm():
         return widget
 
     def _render_radio_widget(self, field_name: str, field_info: FieldInfo) -> ui.radio:
-        """Render a radio widget. Options come from options/radio_options/literal_options on field_info."""
-        options, pending = self._resolve_options(field_name, field_info, 'radio_options')
+        """Render a radio widget. Options come from options/literal_options on field_info."""
+        options, pending = self._resolve_options(field_name, field_info)
         widget = ui.radio(options)
         self._from_current_item_to_widget_value(field_name, 'ui.radio', widget)
         self._wire_immediate(widget, field_name)
@@ -513,8 +513,8 @@ class ModelForm():
         return widget
 
     def _render_toggle_widget(self, field_name: str, field_info: FieldInfo) -> ui.toggle:
-        """Render a toggle widget. Options come from options/toggle_options/literal_options on field_info."""
-        options, pending = self._resolve_options(field_name, field_info, 'toggle_options')
+        """Render a toggle widget. Options come from options/literal_options on field_info."""
+        options, pending = self._resolve_options(field_name, field_info)
         widget = ui.toggle(options)
         self._from_current_item_to_widget_value(field_name, 'ui.toggle', widget)
         self._wire_immediate(widget, field_name)
@@ -532,11 +532,11 @@ class ModelForm():
     def _render_checkbox_group_widget(self, field_name: str, field_info: FieldInfo) -> CheckboxGroup:
         """
         Render a row/column of ui.checkbox elements for a list[Literal[...]] field.
-        Options come from options/checkbox_group_options/literal_options on field_info.
+        Options come from options/literal_options on field_info.
         Layout is vertical by default; pass props='inline' (same convention as ui.radio) for a
         horizontal row.
         """
-        raw_options, pending = self._resolve_options(field_name, field_info, 'checkbox_group_options')
+        raw_options, pending = self._resolve_options(field_name, field_info)
         items = list(raw_options.items()) if isinstance(raw_options, dict) else [(opt, opt) for opt in raw_options]
 
         inline = field_info.props is not None and 'inline' in field_info.props.split()
@@ -572,7 +572,7 @@ class ModelForm():
             return widget  # type: ignore[return-value]
 
         repo = self._model_repositories[field_info.item_type]
-        field_info.select_options = {repo.key_from_item(item): str(item) for item in repo}
+        field_info.options = {repo.key_from_item(item): str(item) for item in repo}
         return self._render_select_widget(field_name, field_info, kwargs, value_widget_type='modelselect')
 
     def _get_fk_info(self, field_name: str) -> tuple[str, Any] | None:
@@ -600,8 +600,8 @@ class ModelForm():
 
     def _render_editgrid_widget(self, field_name: str, field_info: FieldInfo) -> Any:
         # Local imports to avoid circular dependencies (grid/wrapper import form).
-        from niceview.wrapper import EditGridWrapper
-        from niceview.grid import ModelGrid, TableItemEventArguments
+        from niceview.editwrapper import EditGridWrapper
+        from niceview.modelgrid import ModelGrid, TableItemEventArguments
         from niceview.dataadapter import ListAdapter, FilteredAdapter
 
         def notify_change(e: TableItemEventArguments) -> None:

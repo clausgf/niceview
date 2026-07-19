@@ -22,9 +22,9 @@ from typing import Annotated, Callable, Literal, Optional
 from niceview.util import confirm_dialog, input_dialog
 
 import niceview
-from niceview.form import ModelForm
-from niceview.grid import ModelGrid, ModelGridInlineEdit
-from niceview.wrapper import EditFormWrapper, EditGridWrapper
+from niceview.modelform import ModelForm
+from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
+from niceview.editwrapper import EditFormWrapper, EditGridWrapper
 
 
 class Person(pydantic.BaseModel):
@@ -248,7 +248,7 @@ class TestModelFormRatingWidget:
 # ---------------------------------------------------------------------------
 
 class Choice(pydantic.BaseModel):
-    # Literal auto-infers select_options; widget_type override picks them up as radio/toggle options
+    # Literal auto-infers options; widget_type override picks them up as radio/toggle options
     color: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.radio')] = 'green'
     color_toggle: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.toggle')] = 'green'
     color_inline: Annotated[Literal['red', 'green', 'blue'], niceview.Field(widget_type='ui.radio', props='inline')] = 'green'

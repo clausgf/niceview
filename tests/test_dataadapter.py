@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Annotated
 
 from niceview.dataadapter import ConflictError, ListAdapter, JsonAdapter, JsonListAdapter, DirectoryAdapter, FileEntry
-from niceview.grid import ModelGrid, ModelGridInlineEdit
+from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
 
 
 class Item(pydantic.BaseModel):
