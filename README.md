@@ -5,10 +5,10 @@ NiceView
 
 NiceView simplifies [NiceGUI](https://nicegui.io) programming by deriving forms and tables from Pydantic models. Inspired by [MagicGUI](https://magicgui.readthedocs.io/), [NiceCRUD](https://github.com/zauberzeug/nicegui/tree/main/examples/nicecrud) and [Django](https://docs.djangoproject.com/)'s admin integration.
 
-<!-- Screenshots: add PNGs/GIFs to docs/img/ and embed them here, e.g.
-![ModelForm](docs/img/modelform.png)
-![ModelGrid](docs/img/modelgrid.png)
-See docs/img/README.md for the suggested shots. -->
+<p align="center">
+  <img src="docs/img/hero.png" width="430" alt="A ModelForm rendered from a Pydantic model — text, select, toggle, number, slider, switch, multi-select chips, color and textarea widgets"><br>
+  <sub>One <code>ModelForm.from_item(...)</code> call, rendered from a Pydantic model.</sub>
+</p>
 
 
 Installation
@@ -79,6 +79,25 @@ Components at a glance
 | [`EditGridWrapper` / `EditFormWrapper`](docs/components.md#editgridwrapper--editformwrapper) | Grid/form plus title, description and CRUD/action buttons |
 | [Card-based list editing](docs/components.md#card-based-list-editing) | One autosaving `ModelForm` per item, custom layout |
 | [`ModelList` / `DrillDownWrapper`](docs/components.md#modellist--drilldownwrapper) | Mobile-first list ↔ detail drill-down navigation |
+
+
+Screenshots
+-----------
+
+<table>
+  <tr>
+    <td align="center" valign="top">
+      <img src="docs/img/grid.png" width="440" alt="EditGridWrapper: a table with add, edit, delete and refresh buttons"><br>
+      <sub><b>EditGridWrapper</b> — table with add / edit / delete / refresh</sub>
+    </td>
+    <td align="center" valign="top">
+      <img src="docs/img/drilldown.gif" width="250" alt="DrillDownWrapper: tapping a row slides to its detail form and back"><br>
+      <sub><b>DrillDownWrapper</b> — mobile list ↔ detail drill-down</sub>
+    </td>
+  </tr>
+</table>
+
+(Screenshots are regenerated with `docs/screenshots/capture.py` — see [docs/img/README.md](docs/img/README.md).)
 
 
 Documentation

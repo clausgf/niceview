@@ -51,6 +51,13 @@ dev = [
     "sqlmodel>=0.0.22",
 ]
 
+# Extra tooling for regenerating the documentation screenshots (docs/screenshots/).
+# Not needed to use or test the library; install with: uv sync --group screenshots
+screenshots = [
+    "playwright>=1.40",
+    "pillow>=10.0",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

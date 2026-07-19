@@ -1,14 +1,20 @@
-Images for the documentation
-=============================
+Documentation images
+=====================
 
-Drop screenshots / GIFs here and reference them from the main `README.md`
-(and the pages under `docs/`).
+These images are embedded in the top-level `README.md`:
 
-Suggested shots for the landing README (see the `<!-- Screenshots -->` placeholder there):
+- `hero.png` — a styled `ModelForm` showing the range of widget types
+- `grid.png` — an `EditGridWrapper` with its CRUD buttons
+- `drilldown.gif` — the `DrillDownWrapper` list ↔ detail navigation
 
-- `modelform.png` — a rendered `ModelForm` (e.g. from `examples/02_field_types.py`)
-- `modelgrid.png` — an `EditGridWrapper` with its CRUD buttons (e.g. `examples/06_edit_wrapper.py`)
-- `drilldown.gif` — the list → detail slide animation of `DrillDownWrapper`
-  (e.g. `examples/09_drilldown.py`)
+They are generated (not hand-captured) by [`../screenshots/capture.py`](../screenshots/capture.py),
+so they stay reproducible. To regenerate:
 
-Keep images reasonably sized (≲ 1600px wide, compressed PNG) so the repo stays small.
+```bash
+uv sync --group screenshots
+uv run playwright install chromium   # once
+uv run python docs/screenshots/capture.py
+```
+
+Keep embedded images small (these are all well under 150 KB); the capture script
+already downscales and quantizes the GIF.

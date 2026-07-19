@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [Unreleased]
 ------------
 
+### Added
+
+- README screenshots (hero `ModelForm`, `EditGridWrapper` table, `DrillDownWrapper` GIF),
+  generated reproducibly by `docs/screenshots/capture.py` (optional `screenshots` dependency group).
+
 ### Changed
 
 - Example scripts no longer manipulate `sys.path`; they rely on the editable install created by
