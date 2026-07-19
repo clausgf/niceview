@@ -8,10 +8,6 @@ detail view) plus a body that swaps between the list and a per-item form, with a
 animation on every swap. It owns no NiceGUI page/route of its own — render() draws into
 whatever context it's called in, here a single `@ui.page('/')`.
 """
-# Allows running without prior install. With uv: `uv run python examples/<file>.py`.
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pydantic
 from nicegui import ui

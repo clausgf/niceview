@@ -1,0 +1,15 @@
+{
+  // Press F5 with any example open to run it against the .venv interpreter.
+  // "version" is the launch.json schema version (unrelated to the package version).
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run current example",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

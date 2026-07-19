@@ -12,10 +12,6 @@ The forms are plain `ModelForm.from_item()` instances — edits are validated an
 written back to the shared Pydantic objects immediately, so no Save button is
 needed and both render targets (panel and page) share one renderer function.
 """
-# Allows running without prior install. With uv: `uv run python examples/<file>.py`.
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from typing import Literal
 import pydantic

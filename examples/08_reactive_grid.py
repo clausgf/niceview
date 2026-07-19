@@ -16,10 +16,6 @@ mutations on the original list are invisible to the grid. When the input already
 **is** an `ObservableList`, the adapter uses the same object and direct mutations
 propagate immediately. `update_rows()` or the Refresh button always work.
 """
-# Allows running without prior install. With uv: `uv run python examples/<file>.py`.
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pydantic
 from nicegui import ui

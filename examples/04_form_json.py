@@ -9,11 +9,8 @@ Two rows, each pairing a form variant with a live JSON file viewer:
 Each row uses its own JSON file so you can observe both modes independently.
 Each JSON viewer re-reads its file from disk once per second.
 """
-# Allows running without prior install. With uv: `uv run python examples/<file>.py`.
-import sys
 import json
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pydantic
 from nicegui import ui

@@ -20,10 +20,6 @@ The database is re-created on every run.
 Pages: [`/` → Authors grid](/), [`/authors/{id}` → Edit Author](/authors/1),
 [`/books` → Books grid](/books), [`/books/{id}` → Edit Book](/books/1)
 """
-# Allows running without prior install. With uv: `uv run python examples/<file>.py`.
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import os
 import datetime

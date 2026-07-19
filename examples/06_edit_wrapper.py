@@ -13,10 +13,6 @@ Wrappers that add chrome (title + action buttons) on top of a grid or form:
 All sections share the same in-memory `tasks` list; the live view at the top
 shows its current content.
 """
-# Allows running without prior install. With uv: `uv run python examples/<file>.py`.
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pydantic
 from typing import Literal

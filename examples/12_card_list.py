@@ -19,12 +19,9 @@ Also shown:
   (try a non-https URL with method ≠ GET)
 - `confirm_dialog` from `niceview.util` guarding the per-card delete button
 """
-# Allows running without prior install. With uv: `uv run python examples/<file>.py`.
-import sys
 import json
 from pathlib import Path
 from typing import Literal
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pydantic
 from nicegui import ui

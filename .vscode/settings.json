@@ -1,0 +1,8 @@
+{
+  // Use the uv-managed virtualenv, so `import niceview` (editable-installed by
+  // `uv sync`) resolves without any sys.path tweaks in the example files.
+  // On Windows the interpreter lives at .venv\Scripts\python.exe; the Python
+  // extension auto-detects .venv in either case, so this path is just a hint.
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.terminal.activateEnvironment": true
+}

@@ -8,7 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [Unreleased]
 ------------
 
-(nothing yet)
+### Changed
+
+- Example scripts no longer manipulate `sys.path`; they rely on the editable install created by
+  `uv sync`. A `.vscode/` config is included so examples run directly via the Run button / F5.
 
 
 [0.2.0] - 2026-07-19

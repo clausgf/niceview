@@ -22,10 +22,6 @@ Further sub-collections (notes, files, ...) repeat the Level-3/4 pattern.
 Replace the in-memory `ListAdapter`s with `JsonListAdapter` or `SqlModelAdapter`
 for persistence without changing any page logic.
 """
-# Allows running without prior install. With uv: `uv run python examples/<file>.py`.
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from typing import Literal
 from nicegui import ui

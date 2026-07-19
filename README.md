@@ -104,10 +104,14 @@ uv run mypy niceview/ --ignore-missing-imports
 uv run ruff check
 ```
 
-Run examples:
+Run examples (after `uv sync --dev`, which editable-installs `niceview` into `.venv`):
 ```bash
 uv run python examples/01_form_basic.py
 ```
+
+In **VS Code**, open the folder and pick the `.venv` interpreter (auto-detected; a
+`.vscode/` config is included). Then just press the ▶ **Run** button — or **F5** — with any
+example open; no `sys.path` setup is needed because `niceview` is installed into the venv.
 
 | Example | Topic |
 |---|---|

@@ -11,6 +11,10 @@ Getting started
 uv sync --dev
 ```
 
+This also editable-installs `niceview` into `.venv`, so the example scripts and your own code
+can `import niceview` directly. In VS Code, select the `.venv` interpreter (auto-detected; the
+repo ships a `.vscode/` config) and run any example with the ▶ Run button or F5.
+
 Before opening a pull request
 -----------------------------
 

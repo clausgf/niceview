@@ -9,10 +9,7 @@ Three variants of the AgGrid-based table component:
 - **ModelGridInlineEdit (JSON)** — same as above, but persists to a JSON file
   automatically after every change; the file is created on first run
 """
-# Allows running without prior install. With uv: `uv run python examples/<file>.py`.
-import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pydantic
 from typing import Literal
