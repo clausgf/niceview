@@ -2,8 +2,6 @@ import datetime
 import json
 import pytest
 import pydantic
-from pathlib import Path
-from typing import Annotated
 
 from niceview.dataadapter import ConflictError, ListAdapter, JsonAdapter, JsonListAdapter, DirectoryAdapter, FileEntry
 from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
@@ -245,7 +243,7 @@ class TestListAdapterKeys:
 class TestJsonAdapter:
     def test_create_if_not_exist(self, tmp_path):
         path = tmp_path / 'data.json'
-        adapter = JsonAdapter(Item, path, create_if_not_exist=True)
+        JsonAdapter(Item, path, create_if_not_exist=True)
         assert path.exists()
 
     def test_created_file_has_default_values(self, tmp_path):
@@ -1135,7 +1133,7 @@ class TestSqlModelAdapterUpdate:
         adapter = SqlModelAdapter(DbItem, engine)
         item = adapter.create(DbItem(name='conflict'))
         item.name = 'v1'
-        v1 = adapter.update(item)
+        adapter.update(item)
         item.name = 'v2'
         with pytest.raises(ValueError, match='changed by another user'):
             adapter.update(item)  # stale lock field

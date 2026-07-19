@@ -17,7 +17,7 @@ import pydantic
 import pytest
 from nicegui import ui
 from nicegui.testing import User
-from typing import Annotated, Callable, Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from niceview.util import confirm_dialog, input_dialog
 

@@ -1,6 +1,5 @@
 import datetime
 import json
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pydantic
@@ -324,7 +323,7 @@ class TestFromJson:
         form_b = ModelForm.from_json(Timestamped, path, lock_field='updated_at')
         form_a._validated_item.name = 'A'
         notify_calls = []
-        with MagicMock() as m:
+        with MagicMock():
             ui.notify = lambda *a, **kw: notify_calls.append((a, kw))
             form_a.save()  # advances lock
             form_b._validated_item.name = 'B'

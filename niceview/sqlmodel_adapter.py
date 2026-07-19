@@ -6,7 +6,7 @@ This module requires the optional `sqlmodel` dependency:
 """
 import datetime
 import logging
-from typing import Any, Generic, Iterator, TypeVar
+from typing import Any, Iterator, TypeVar
 
 import pydantic
 from sqlalchemy import Engine

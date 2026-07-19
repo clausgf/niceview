@@ -289,7 +289,7 @@ class ListAdapter(_ChangeNotifier, CollectionAdapter[T]):
     def key_from_item(self, item: pydantic.BaseModel) -> str:
         key = self._id_to_key.get(id(item))
         if key is None:
-            raise KeyError(f"Item not found in adapter.")
+            raise KeyError("Item not found in adapter.")
         return key
 
     def _query_all_strs(self) -> Iterator[tuple[str, str]]:

@@ -880,7 +880,6 @@ class TestBooksGridPage:
 
         @ui.page('/')
         def page():
-            books = SqlModelAdapter(Book, engine)
             authors = SqlModelAdapter(Author, engine)
             new_book = Book()
             form = ModelForm.from_item(new_book)
@@ -1041,8 +1040,8 @@ class TestBookDetailPage:
         def page():
             books = SqlModelAdapter(Book, engine)
             authors = SqlModelAdapter(Author, engine)
-            wrapper = EditFormWrapper.from_adapter(Book, books, 1, title='Edit Book',
-                                                   repositories={Author: authors}).render()
+            EditFormWrapper.from_adapter(Book, books, 1, title='Edit Book',
+                                         repositories={Author: authors}).render()
 
         await user.open('/')
         await user.should_see(ui.button, content='save')
@@ -1056,8 +1055,8 @@ class TestBookDetailPage:
         def page():
             books = SqlModelAdapter(Book, engine)
             authors = SqlModelAdapter(Author, engine)
-            wrapper = EditFormWrapper.from_adapter(Book, books, 1, title='Edit Book',
-                                                   repositories={Author: authors}).render()
+            EditFormWrapper.from_adapter(Book, books, 1, title='Edit Book',
+                                         repositories={Author: authors}).render()
 
         await user.open('/')
         await user.should_see(ui.select)
@@ -1071,8 +1070,8 @@ class TestBookDetailPage:
         def page():
             books = SqlModelAdapter(Book, engine)
             authors = SqlModelAdapter(Author, engine)
-            wrapper = EditFormWrapper.from_adapter(Book, books, 1, title='Edit Book',
-                                                   repositories={Author: authors}).render()
+            EditFormWrapper.from_adapter(Book, books, 1, title='Edit Book',
+                                         repositories={Author: authors}).render()
 
         await user.open('/')
         user.find('Title').clear().type('Completely New Title')

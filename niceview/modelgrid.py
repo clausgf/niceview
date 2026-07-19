@@ -6,7 +6,7 @@ from typing import Any, Callable, Literal, Self, TypeVar, Unpack
 import typing_extensions
 from pydantic import BaseModel
 from nicegui import ui
-from nicegui.events import Handler, ClickEventArguments, ValueChangeEventArguments, handle_event
+from nicegui.events import Handler, ClickEventArguments, handle_event
 
 from niceview.dataadapter import CollectionAdapter, ConflictError, ListAdapter, JsonListAdapter, ReactiveAdapter
 from niceview.fieldinfo import FieldInfo

@@ -1,6 +1,5 @@
 import asyncio
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pydantic
@@ -280,7 +279,6 @@ class TestEditFormWrapperFactoryMethods:
 
     def test_from_json_lock_field_set(self, tmp_path):
         import datetime
-        from niceview.dataadapter import JsonAdapter
 
         class Ts1(pydantic.BaseModel):
             name: str = ''
@@ -292,8 +290,7 @@ class TestEditFormWrapperFactoryMethods:
 
     def test_from_json_stale_lock_notifies(self, tmp_path):
         import datetime
-        from unittest.mock import patch, MagicMock
-        from niceview.dataadapter import JsonAdapter
+        from unittest.mock import patch
 
         class Ts2(pydantic.BaseModel):
             name: str = ''

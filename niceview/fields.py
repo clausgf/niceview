@@ -11,7 +11,7 @@ import pydantic
 from niceview.fieldinfo import FieldInfo, WidgetType, _merge_field_infos
 
 try:
-    import sqlalchemy
+    import sqlalchemy  # noqa: F401  # availability probe: sqlmodel requires sqlalchemy
     from sqlmodel import SQLModel as _SQLModel
     _SQLMODEL_AVAILABLE = True
 except ImportError:

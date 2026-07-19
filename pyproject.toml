@@ -4,13 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "niceview"
-version = "0.1.0"
+version = "0.2.0"
 description = "NiceGUI adapter layer: generate forms and grids from Pydantic models"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "clausgf", email = "fuehner@gmx.net" }]
 requires-python = ">=3.12"
+keywords = ["nicegui", "pydantic", "forms", "crud", "gui", "web", "admin"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Framework :: Pydantic :: 2",
@@ -28,7 +29,11 @@ dependencies = [
 ]
 
 [project.urls]
+Homepage = "https://github.com/clausgf/niceview"
 Repository = "https://github.com/clausgf/niceview"
+Documentation = "https://github.com/clausgf/niceview#readme"
+Issues = "https://github.com/clausgf/niceview/issues"
+Changelog = "https://github.com/clausgf/niceview/blob/main/docs/CHANGELOG.md"
 
 [project.optional-dependencies]
 sqlmodel = ["sqlmodel>=0.0.22"]
@@ -42,6 +47,7 @@ dev = [
     "pytest>=9.0",
     "pytest-asyncio>=1.0",
     "pytest-cov>=7.1.0",
+    "ruff>=0.6",
     "sqlmodel>=0.0.22",
 ]
 
@@ -49,4 +55,15 @@ dev = [
 testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
-main_file = ""
+main_file = ""  # NiceGUI pytest plugin: empty = no main.py; do not remove (User fixture needs it)
+
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+extend-exclude = ["build", "examples"]
+
+[tool.ruff.lint]
+# Conservative set: pyflakes (real bugs: unused imports, undefined names, f-strings
+# without placeholders) plus syntax errors. Style rules are intentionally left off to
+# avoid churn on the existing, deliberately-formatted code base.
+select = ["E9", "F"]
