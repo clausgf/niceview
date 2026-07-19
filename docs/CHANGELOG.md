@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [Unreleased]
 ------------
 
+(nothing yet)
+
+
+[0.9.0] - 2026-07-19
+--------------------
+
 ### Added
 
 - README screenshots (hero `ModelForm`, `EditGridWrapper` table, `DrillDownWrapper` GIF),

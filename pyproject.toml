@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "niceview"
-version = "0.2.0"
+version = "0.9.0"
 description = "NiceGUI adapter layer: generate forms and grids from Pydantic models"
 readme = "README.md"
 license = "MIT"
