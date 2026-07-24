@@ -846,6 +846,15 @@ class ModelForm():
             return type(None) in typing.get_args(field_type)
         return False
 
+    @staticmethod
+    def _unwrap_optional(field_type: Any) -> Any:
+        """Return the single non-None member of an Optional/Union, else field_type unchanged."""
+        if typing.get_origin(field_type) is typing.Union or isinstance(field_type, types.UnionType):
+            non_none = [t for t in typing.get_args(field_type) if t is not type(None)]
+            if len(non_none) == 1:
+                return non_none[0]
+        return field_type
+
     def _from_current_item_to_widget_value(self, field_name: str, widget_type: str, widget: Any) -> None:
         """Push the current item's field value into the widget."""
         value = getattr(self._current_item, field_name)
@@ -919,13 +928,18 @@ class ModelForm():
                 raise ValueError(f"Field '{field_name}' is a list but no allowed item type is specified")
 
         elif widget_type == 'ui.number':
-            if field_type == int:
+            # A cleared number field yields None (or ''); map it back to None so
+            # Optional fields round-trip and required fields fail validation cleanly,
+            # instead of int(None)/float(None) raising and leaving a stale value.
+            if value is None or value == '':
+                value = None
+            elif self._unwrap_optional(field_type) == int:
                 value = int(value)
             else:
                 value = float(value)
 
         elif widget_type in ('ui.slider', 'ui.rating'):
-            if field_type == int:
+            if self._unwrap_optional(field_type) == int:
                 value = int(value) if value is not None else 0
             else:
                 value = float(value) if value is not None else 0.0

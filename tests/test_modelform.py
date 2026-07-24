@@ -1,5 +1,6 @@
 import datetime
 import json
+import typing
 from unittest.mock import MagicMock
 
 import pydantic
@@ -46,6 +47,13 @@ class CrossFieldModel(pydantic.BaseModel):
 
 class SimpleModel(pydantic.BaseModel):
     value: str = ''
+
+
+class NumberModel(pydantic.BaseModel):
+    count: int = 0
+    ratio: float = 0.0
+    opt_count: typing.Optional[int] = None
+    opt_ratio: typing.Optional[float] = None
 
 
 # ---------------------------------------------------------------------------
@@ -597,3 +605,60 @@ class TestModelFormSqlRefresh:
         form.refresh()
         assert form.item.name == 'Bob'
         assert form.item.city == 'Munich'
+
+
+# ---------------------------------------------------------------------------
+# ui.number widget value conversion
+# ---------------------------------------------------------------------------
+
+class TestNumberWidgetConversion:
+    """Exercise _from_widget_value_to_current_item for the ui.number branch."""
+
+    def _form_with_widget(self, field_name, widget_value):
+        form = ModelForm.from_item(NumberModel())
+        form.widgets[field_name] = MagicMock(value=widget_value)
+        return form
+
+    def test_int_field_kept_int(self):
+        form = self._form_with_widget('count', 5)
+        form._from_widget_value_to_current_item('count')
+        assert form._current_item.count == 5
+        assert type(form._current_item.count) is int
+
+    def test_float_field_kept_float(self):
+        form = self._form_with_widget('ratio', 2.5)
+        form._from_widget_value_to_current_item('ratio')
+        assert form._current_item.ratio == 2.5
+        assert type(form._current_item.ratio) is float
+
+    def test_optional_int_kept_int_not_float(self):
+        # Optional[int] must not be coerced to float (regression: 50 -> 50.0).
+        form = self._form_with_widget('opt_count', 50)
+        form._from_widget_value_to_current_item('opt_count')
+        assert form._current_item.opt_count == 50
+        assert type(form._current_item.opt_count) is int
+
+    def test_optional_float_kept_float(self):
+        form = self._form_with_widget('opt_ratio', 1.5)
+        form._from_widget_value_to_current_item('opt_ratio')
+        assert type(form._current_item.opt_ratio) is float
+
+    def test_cleared_optional_field_becomes_none(self):
+        # Regression: clearing a number field yields None; must not raise int(None).
+        form = self._form_with_widget('opt_count', None)
+        form._current_item.opt_count = 50
+        form._from_widget_value_to_current_item('opt_count')
+        assert form._current_item.opt_count is None
+
+    def test_cleared_field_empty_string_becomes_none(self):
+        form = self._form_with_widget('opt_ratio', '')
+        form._from_widget_value_to_current_item('opt_ratio')
+        assert form._current_item.opt_ratio is None
+
+    def test_cleared_required_int_becomes_none_for_validation(self):
+        # A cleared required field maps to None so _validate() reports it,
+        # rather than silently retaining a stale value.
+        form = self._form_with_widget('count', None)
+        form._current_item.count = 7
+        form._from_widget_value_to_current_item('count')
+        assert form._current_item.count is None

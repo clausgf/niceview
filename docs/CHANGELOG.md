@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 (nothing yet)
 
 
+[0.9.1] - 2026-07-24
+--------------------
+
+### Fixed
+
+- `ModelForm`: clearing a `ui.number` field no longer raises `TypeError` and leaves a stale
+  value. A cleared field now maps to `None`, so `Optional` number fields round-trip and required
+  number fields fail validation cleanly.
+- `ModelForm`: `Optional[int]` number fields are no longer coerced to `float` (e.g. `50` stayed
+  `50.0`); the field type is unwrapped so integers stay integers.
+
+
 [0.9.0] - 2026-07-19
 --------------------
 
