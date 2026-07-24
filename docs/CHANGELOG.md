@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.9.1] - 2026-07-24
 --------------------
 
+### Changed
+
+- Pinned dev/test environment updated to NiceGUI 3.15.0 (declared floor stays `>=3.0`).
+
 ### Fixed
 
 - `ModelForm`: clearing a `ui.number` field no longer raises `TypeError` and leaves a stale
