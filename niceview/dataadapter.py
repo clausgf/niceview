@@ -610,10 +610,20 @@ class FileEntry(pydantic.BaseModel):
 
 class DirectoryAdapter(_ChangeNotifier, CollectionAdapter[FileEntry]):
     """
-    A CollectionAdapter over files in a directory: one item (FileEntry) per file,
-    keyed by filename stem (without suffix). Items carry only metadata
-    (name/mtime/size), not parsed file content — open the file's own adapter
-    (JsonAdapter/JsonListAdapter) for that.
+    A CollectionAdapter over files in a directory: one item (FileEntry) per file.
+    Items carry only metadata (name/mtime/size), not parsed file content — open the
+    file's own adapter (JsonAdapter/JsonListAdapter) for that.
+
+    Two modes, selected by ``suffix``:
+
+    * Suffix mode (default, ``suffix='.json'``): a homogeneous document collection of
+      files sharing one extension. Keys are the filename *stem* (suffix stripped), and
+      only ``*<suffix>`` files are listed. create() writes ``default_content``.
+    * All-files mode (``suffix=None`` or ``''``): a general file browser over a directory
+      with mixed extensions. Keys are the *full* filename (extension included), every
+      regular file is listed (hidden dotfiles excluded, plus any ``name_filter``), and
+      create() expects a full name. ``default_content`` still seeds new files but rarely
+      makes sense across mixed types, so pass names explicitly in this mode.
 
     create() picks a free 'untitled-NN' name and writes default_content;
     rename() renames the file on disk. Both are meant to be driven directly by
@@ -622,23 +632,45 @@ class DirectoryAdapter(_ChangeNotifier, CollectionAdapter[FileEntry]):
     render_detail hook.
     """
 
-    def __init__(self, dir_path: Path, suffix: str = '.json', default_content: str | Callable[[], str] = '') -> None:
+    def __init__(
+        self,
+        dir_path: Path,
+        suffix: str | None = '.json',
+        default_content: str | Callable[[], str] = '',
+        name_filter: Callable[[str], bool] | None = None,
+    ) -> None:
         if not dir_path.is_dir():
             raise ValueError(f"{dir_path} is not a directory")
         self._dir_path = dir_path
-        self._suffix = suffix
+        # suffix=None (or '') switches from the single-suffix document collection to a
+        # general file browser: keys become full filenames and every regular file lists.
+        self._all_files = not suffix
+        self._suffix = '' if self._all_files else suffix
         self._default_content = default_content
+        self._name_filter = name_filter
         self._init_notifier()
 
     def _validate_key(self, key: str) -> None:
         if not key or key in ('.', '..') or '/' in key or '\\' in key:
             raise ValueError(f"Invalid file name: {key!r}")
 
+    def _accept(self, name: str) -> bool:
+        # All-files mode only: keep the listing to real, addressable files. Hidden
+        # dotfiles are excluded unconditionally; an optional name_filter narrows further.
+        if name.startswith('.'):
+            return False
+        if self._name_filter is not None:
+            return self._name_filter(name)
+        return True
+
     def _strip_suffix(self, key: str) -> str:
         # Names come from user-facing "Name" widgets that never show the suffix (see
         # DrillDownWrapper's render_detail hook) -- but users familiar with file browsers
         # sometimes type it anyway. Stripping it here (in create()/rename(), where a key
         # arrives from such a widget) avoids a silently-doubled suffix like "note.json.json".
+        # In all-files mode the full name *is* the key, so there is nothing to strip.
+        if self._all_files:
+            return key
         if key.endswith(self._suffix) and len(key) > len(self._suffix):
             return key[:-len(self._suffix)]
         return key
@@ -646,6 +678,15 @@ class DirectoryAdapter(_ChangeNotifier, CollectionAdapter[FileEntry]):
     def _path(self, key: str) -> Path:
         self._validate_key(key)
         return self._dir_path / f'{key}{self._suffix}'
+
+    def _name_from_path(self, path: Path) -> str:
+        # Suffix mode keys by stem; all-files mode keys by the full name (suffix is '').
+        return path.name if self._all_files else path.name[:-len(self._suffix)]
+
+    def _iter_paths(self) -> list[Path]:
+        if self._all_files:
+            return [p for p in self._dir_path.iterdir() if p.is_file() and self._accept(p.name)]
+        return [p for p in self._dir_path.glob(f'*{self._suffix}') if p.is_file()]
 
     def _entry(self, key: str) -> FileEntry:
         stat = self._path(key).stat()
@@ -656,8 +697,8 @@ class DirectoryAdapter(_ChangeNotifier, CollectionAdapter[FileEntry]):
         )
 
     def __iter__(self) -> Iterator[FileEntry]:
-        for path in sorted(self._dir_path.glob(f'*{self._suffix}')):
-            yield self._entry(path.name[:-len(self._suffix)])
+        for path in sorted(self._iter_paths()):
+            yield self._entry(self._name_from_path(path))
 
     def key_from_item(self, item: FileEntry) -> str:
         return item.name
@@ -668,7 +709,7 @@ class DirectoryAdapter(_ChangeNotifier, CollectionAdapter[FileEntry]):
         return self._entry(key)
 
     def _free_name(self) -> str:
-        existing = {p.name[:-len(self._suffix)] for p in self._dir_path.glob(f'*{self._suffix}')}
+        existing = {self._name_from_path(p) for p in self._iter_paths()}
         i = 1
         while f'untitled-{i:02d}' in existing:
             i += 1

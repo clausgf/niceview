@@ -8,7 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [Unreleased]
 ------------
 
-(nothing yet)
+### Added
+
+- `DirectoryAdapter`: all-files mode via `suffix=None` (or `''`) — a general, mixed-extension
+  file browser. Keys are full filenames (no suffix stripping), every regular file is listed
+  (hidden dotfiles excluded, plus an optional `name_filter=Callable[[str], bool]`), and
+  `create()` takes a full name. The default `suffix='.json'` document-collection mode and all
+  existing calls are unchanged (opt-in, backward-compatible).
 
 
 [0.9.1] - 2026-07-24

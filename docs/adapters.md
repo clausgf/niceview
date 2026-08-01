@@ -18,7 +18,7 @@ or let the `from_*` factory methods create them transparently.
 | `JsonAdapter(Type, path)` | Form | Single object in a JSON file; supports `lock_field=`, `created_field=`, `strict=` |
 | `JsonListAdapter(Type, path)` | Grid | List of objects in a JSON file; supports `created_field=`, `strict=` |
 | `SqlModelAdapter(Type, engine)` | Grid, Form | SQLModel / SQLAlchemy table *(requires the `sqlmodel` extra, see [Installation](../README.md#installation))* |
-| `DirectoryAdapter(dir_path)` | `DrillDownWrapper` | One file per item in a directory; items are filename metadata (`FileEntry`), not parsed content — supports `rename()` |
+| `DirectoryAdapter(dir_path)` | `DrillDownWrapper` | One file per item in a directory; items are filename metadata (`FileEntry`), not parsed content — supports `rename()`; `suffix=None` for a mixed-extension file browser |
 | `FilteredAdapter(inner, predicate, defaults=)` | Grid, `DrillDownWrapper` | Filtered view of another `CollectionAdapter` (see below) |
 
 All JSON adapters write atomically (`.tmp` → rename).
@@ -36,6 +36,13 @@ suffix anyway, `create()`/`rename()` strip a trailing match rather than doubling
 on disk. Both are meant to be called directly by application code (an "Add" handler, a "Name"
 widget's `blur` handler), not through `DrillDownWrapper`'s generic `item_type()`-based Add flow
 — see `examples/13_directory_drilldown.py`.
+
+Passing `suffix=None` (or `''`) switches `DirectoryAdapter` into **all-files mode** — a general
+file browser over a directory with mixed extensions. Keys become the *full* filename (extension
+included, no stripping), every regular file is listed (hidden dotfiles are excluded, plus an
+optional `name_filter=Callable[[str], bool]`), and `create()` takes a full name verbatim
+(`create()` without an item generates a bare `untitled-NN`). The default suffix mode
+(`suffix='.json'`) and all existing calls are unchanged.
 
 **`FilteredAdapter`** wraps any `CollectionAdapter` and filters iteration by a predicate —
 the standard way to show a parent-filtered view of a child collection (e.g. only the books of

@@ -813,6 +813,85 @@ class TestDirectoryAdapterItems:
         assert names == ['untitled-01']
 
 
+class TestDirectoryAdapterAllFilesMode:
+    def test_lists_mixed_extensions_by_full_name(self, tmp_path):
+        (tmp_path / 'notes.txt').write_text('a')
+        (tmp_path / 'config.json').write_text('{}')
+        (tmp_path / 'image.png').write_bytes(b'\x89PNG')
+        adapter = DirectoryAdapter(tmp_path, suffix=None)
+        names = [entry.name for entry in adapter]
+        assert names == ['config.json', 'image.png', 'notes.txt']
+
+    def test_empty_string_suffix_also_enables_all_files_mode(self, tmp_path):
+        (tmp_path / 'a.txt').write_text('x')
+        adapter = DirectoryAdapter(tmp_path, suffix='')
+        assert [entry.name for entry in adapter] == ['a.txt']
+
+    def test_key_is_full_filename(self, tmp_path):
+        (tmp_path / 'a.txt').write_text('hello')
+        adapter = DirectoryAdapter(tmp_path, suffix=None)
+        entry = adapter.read('a.txt')
+        assert entry.name == 'a.txt'
+        assert entry.size == len('hello')
+
+    def test_directories_not_listed(self, tmp_path):
+        (tmp_path / 'sub').mkdir()
+        (tmp_path / 'a.txt').write_text('x')
+        adapter = DirectoryAdapter(tmp_path, suffix=None)
+        assert [entry.name for entry in adapter] == ['a.txt']
+
+    def test_hidden_dotfiles_excluded(self, tmp_path):
+        (tmp_path / '.hidden').write_text('x')
+        (tmp_path / 'visible.txt').write_text('x')
+        adapter = DirectoryAdapter(tmp_path, suffix=None)
+        assert [entry.name for entry in adapter] == ['visible.txt']
+
+    def test_name_filter_narrows_listing(self, tmp_path):
+        (tmp_path / 'keep.txt').write_text('x')
+        (tmp_path / 'drop.log').write_text('x')
+        adapter = DirectoryAdapter(tmp_path, suffix=None, name_filter=lambda n: not n.endswith('.log'))
+        assert [entry.name for entry in adapter] == ['keep.txt']
+
+    def test_create_uses_full_name_verbatim(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path, suffix=None)
+        entry = adapter.create(FileEntry(name='report.txt', mtime=datetime.datetime.now(datetime.timezone.utc), size=0))
+        assert entry.name == 'report.txt'
+        assert (tmp_path / 'report.txt').exists()
+        assert not (tmp_path / 'report.txt.json').exists()
+
+    def test_create_does_not_strip_extension(self, tmp_path):
+        # In suffix mode 'note.json' -> 'note'; in all-files mode the extension is part of the key.
+        adapter = DirectoryAdapter(tmp_path, suffix=None)
+        entry = adapter.create(FileEntry(name='note.json', mtime=datetime.datetime.now(datetime.timezone.utc), size=0))
+        assert entry.name == 'note.json'
+        assert (tmp_path / 'note.json').exists()
+
+    def test_create_without_item_generates_bare_untitled(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path, suffix=None)
+        entry = adapter.create()
+        assert entry.name == 'untitled-01'
+        assert (tmp_path / 'untitled-01').exists()
+
+    def test_rename_keeps_full_name(self, tmp_path):
+        (tmp_path / 'old.txt').write_text('payload')
+        adapter = DirectoryAdapter(tmp_path, suffix=None)
+        new_key = adapter.rename('old.txt', 'new.md')
+        assert new_key == 'new.md'
+        assert not (tmp_path / 'old.txt').exists()
+        assert (tmp_path / 'new.md').read_text(encoding='utf-8') == 'payload'
+
+    def test_delete_removes_file(self, tmp_path):
+        (tmp_path / 'a.txt').write_text('x')
+        adapter = DirectoryAdapter(tmp_path, suffix=None)
+        adapter.delete('a.txt')
+        assert not (tmp_path / 'a.txt').exists()
+
+    def test_free_name_skips_existing_bare_untitled(self, tmp_path):
+        (tmp_path / 'untitled-01').write_text('x')
+        adapter = DirectoryAdapter(tmp_path, suffix=None)
+        assert adapter.create().name == 'untitled-02'
+
+
 # ---------------------------------------------------------------------------
 # ModelGrid.from_json / ModelGridInlineEdit.from_json
 # ---------------------------------------------------------------------------
