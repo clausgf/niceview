@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [Unreleased]
 ------------
 
+(nothing yet)
+
+
+[0.10.0] - 2026-08-01
+---------------------
+
 ### Added
 
 - `DirectoryAdapter`: all-files mode via `suffix=None` (or `''`) — a general, mixed-extension
