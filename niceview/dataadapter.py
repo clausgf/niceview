@@ -645,7 +645,8 @@ class DirectoryAdapter(_ChangeNotifier, CollectionAdapter[FileEntry]):
         # suffix=None (or '') switches from the single-suffix document collection to a
         # general file browser: keys become full filenames and every regular file lists.
         self._all_files = not suffix
-        self._suffix = '' if self._all_files else suffix
+        # Key the ternary off `suffix` (not self._all_files) so mypy narrows away None.
+        self._suffix: str = '' if not suffix else suffix
         self._default_content = default_content
         self._name_filter = name_filter
         self._init_notifier()
