@@ -812,6 +812,88 @@ class TestDirectoryAdapterItems:
         names = [entry.name for entry in adapter]
         assert names == ['untitled-01']
 
+    def test_sorted_by_filename_not_by_key(self, tmp_path):
+        # With suffix '.json' the stems 'a-b'/'a' order differently than the filenames
+        # 'a-b.json'/'a.json' do; the filesystem name decides.
+        for name in ('a-b.json', 'a.json', 'ab.json'):
+            (tmp_path / name).write_text('{}')
+        adapter = DirectoryAdapter(tmp_path)
+        assert [entry.name for entry in adapter] == ['a-b', 'a', 'ab']
+
+    def test_directories_not_listed(self, tmp_path):
+        (tmp_path / 'sub.json').mkdir()
+        (tmp_path / 'real.json').write_text('{}')
+        adapter = DirectoryAdapter(tmp_path)
+        assert [entry.name for entry in adapter] == ['real']
+
+
+class TestDirectoryAdapterFiltering:
+    """_accept() applies in both modes: hidden dotfiles and name_filter."""
+
+    def test_dotfiles_excluded_in_suffix_mode(self, tmp_path):
+        # pathlib's glob('*.json') does match '.hidden.json', so this needs filtering.
+        (tmp_path / '.hidden.json').write_text('{}')
+        (tmp_path / 'visible.json').write_text('{}')
+        adapter = DirectoryAdapter(tmp_path)
+        assert [entry.name for entry in adapter] == ['visible']
+
+    def test_name_filter_applies_in_suffix_mode(self, tmp_path):
+        (tmp_path / 'keep.json').write_text('{}')
+        (tmp_path / 'drop.json').write_text('{}')
+        adapter = DirectoryAdapter(tmp_path, name_filter=lambda n: not n.startswith('drop'))
+        assert [entry.name for entry in adapter] == ['keep']
+
+    def test_name_filter_receives_full_filename_in_suffix_mode(self, tmp_path):
+        (tmp_path / 'note.json').write_text('{}')
+        seen: list[str] = []
+        adapter = DirectoryAdapter(tmp_path, name_filter=lambda n: seen.append(n) or True)
+        list(adapter)
+        assert seen == ['note.json']  # full name, not the 'note' key
+
+    def test_hidden_file_does_not_block_its_visible_counterpart(self, tmp_path):
+        # '.untitled-01.json' keys as '.untitled-01', so it never collides with 'untitled-01'.
+        (tmp_path / '.untitled-01.json').write_text('{}')
+        adapter = DirectoryAdapter(tmp_path)
+        assert adapter.create().name == 'untitled-01'
+
+    def test_filtered_file_still_blocks_create_rather_than_overwriting(self, tmp_path):
+        # _free_name() only sees listed files, so a filtered-out file can collide. create()
+        # must raise rather than silently overwrite the existing file's content.
+        (tmp_path / 'untitled-01.json').write_text('precious')
+        adapter = DirectoryAdapter(tmp_path, name_filter=lambda n: False)
+        with pytest.raises(ValueError):
+            adapter.create()
+        assert (tmp_path / 'untitled-01.json').read_text() == 'precious'
+
+
+class TestDirectoryAdapterUnlistableNames:
+    """Files whose key cannot round-trip are skipped, never raised, during iteration."""
+
+    def test_bare_suffix_file_skipped(self, tmp_path):
+        # '.json' would yield an empty key and used to raise ValueError for the whole listing.
+        (tmp_path / '.json').write_text('{}')
+        (tmp_path / 'ok.json').write_text('{}')
+        adapter = DirectoryAdapter(tmp_path)
+        assert [entry.name for entry in adapter] == ['ok']
+
+    def test_backslash_name_skipped(self, tmp_path):
+        # A literal backslash is a legal POSIX filename but not a usable key.
+        (tmp_path / 'a\\b.json').write_text('{}')
+        (tmp_path / 'ok.json').write_text('{}')
+        adapter = DirectoryAdapter(tmp_path)
+        assert [entry.name for entry in adapter] == ['ok']
+
+    def test_unlistable_name_still_raises_when_addressed_directly(self, tmp_path):
+        adapter = DirectoryAdapter(tmp_path)
+        with pytest.raises(ValueError):
+            adapter.read('a\\b')
+
+    def test_all_files_mode_skips_unlistable_names(self, tmp_path):
+        (tmp_path / 'a\\b.txt').write_text('x')
+        (tmp_path / 'ok.txt').write_text('x')
+        adapter = DirectoryAdapter(tmp_path, suffix=None)
+        assert [entry.name for entry in adapter] == ['ok.txt']
+
 
 class TestDirectoryAdapterAllFilesMode:
     def test_lists_mixed_extensions_by_full_name(self, tmp_path):

@@ -39,10 +39,16 @@ widget's `blur` handler), not through `DrillDownWrapper`'s generic `item_type()`
 
 Passing `suffix=None` (or `''`) switches `DirectoryAdapter` into **all-files mode** — a general
 file browser over a directory with mixed extensions. Keys become the *full* filename (extension
-included, no stripping), every regular file is listed (hidden dotfiles are excluded, plus an
-optional `name_filter=Callable[[str], bool]`), and `create()` takes a full name verbatim
-(`create()` without an item generates a bare `untitled-NN`). The default suffix mode
-(`suffix='.json'`) and all existing calls are unchanged.
+included, no stripping), and `create()` takes a full name verbatim (`create()` without an item
+generates a bare `untitled-NN`). The default suffix mode (`suffix='.json'`) keeps keying by stem.
+
+In **both** modes the listing covers regular files only, hidden dotfiles are excluded, and an
+optional `name_filter=Callable[[str], bool]` narrows it further. `name_filter` always receives the
+full filename including the extension, never the key — so it reads the same in either mode. Note
+that dotfile exclusion is not redundant in suffix mode: `pathlib`'s `glob('*.json')` *does* match
+`.hidden.json`. Files whose key would be unusable (a bare `.json` in suffix mode, or a name
+containing a path separator) are skipped rather than raising, so a single odd file cannot break the
+whole listing; addressing such a file explicitly by key still raises `ValueError`.
 
 **`FilteredAdapter`** wraps any `CollectionAdapter` and filters iteration by a predicate —
 the standard way to show a parent-filtered view of a child collection (e.g. only the books of

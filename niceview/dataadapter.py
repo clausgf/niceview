@@ -1,6 +1,7 @@
 import datetime
 import json
 import logging
+import os
 import threading
 from pathlib import Path
 from typing import Any, Callable, Generic, TypeVar, Iterator, Protocol, runtime_checkable
@@ -620,10 +621,16 @@ class DirectoryAdapter(_ChangeNotifier, CollectionAdapter[FileEntry]):
       files sharing one extension. Keys are the filename *stem* (suffix stripped), and
       only ``*<suffix>`` files are listed. create() writes ``default_content``.
     * All-files mode (``suffix=None`` or ``''``): a general file browser over a directory
-      with mixed extensions. Keys are the *full* filename (extension included), every
-      regular file is listed (hidden dotfiles excluded, plus any ``name_filter``), and
+      with mixed extensions. Keys are the *full* filename (extension included), and
       create() expects a full name. ``default_content`` still seeds new files but rarely
       makes sense across mixed types, so pass names explicitly in this mode.
+
+    In both modes the listing covers regular files only; hidden dotfiles are excluded, as
+    are names an optional ``name_filter`` rejects. ``name_filter`` always receives the full
+    filename (extension included), never the key. Files whose key would be unusable (a bare
+    ``.json`` in suffix mode, or a name containing a path separator) are skipped rather than
+    raising, so one odd file cannot break the whole listing; addressing such a file
+    explicitly by key still raises ValueError.
 
     create() picks a free 'untitled-NN' name and writes default_content;
     rename() renames the file on disk. Both are meant to be driven directly by
@@ -651,13 +658,19 @@ class DirectoryAdapter(_ChangeNotifier, CollectionAdapter[FileEntry]):
         self._name_filter = name_filter
         self._init_notifier()
 
+    @staticmethod
+    def _is_valid_key(key: str) -> bool:
+        return bool(key) and key not in ('.', '..') and '/' not in key and '\\' not in key
+
     def _validate_key(self, key: str) -> None:
-        if not key or key in ('.', '..') or '/' in key or '\\' in key:
+        if not self._is_valid_key(key):
             raise ValueError(f"Invalid file name: {key!r}")
 
     def _accept(self, name: str) -> bool:
-        # All-files mode only: keep the listing to real, addressable files. Hidden
-        # dotfiles are excluded unconditionally; an optional name_filter narrows further.
+        # Applies in both modes. `name` is always the full filename (extension included),
+        # so a name_filter sees the same string a file browser would show. Hidden dotfiles
+        # are excluded unconditionally -- note pathlib's glob('*.json') *does* match
+        # '.hidden.json', so this matters in suffix mode too.
         if name.startswith('.'):
             return False
         if self._name_filter is not None:
@@ -680,26 +693,57 @@ class DirectoryAdapter(_ChangeNotifier, CollectionAdapter[FileEntry]):
         self._validate_key(key)
         return self._dir_path / f'{key}{self._suffix}'
 
-    def _name_from_path(self, path: Path) -> str:
+    def _key_from_name(self, name: str) -> str:
         # Suffix mode keys by stem; all-files mode keys by the full name (suffix is '').
-        return path.name if self._all_files else path.name[:-len(self._suffix)]
+        return name if self._all_files else name[:-len(self._suffix)]
 
-    def _iter_paths(self) -> list[Path]:
-        if self._all_files:
-            return [p for p in self._dir_path.iterdir() if p.is_file() and self._accept(p.name)]
-        return [p for p in self._dir_path.glob(f'*{self._suffix}') if p.is_file()]
+    def _scan(self) -> list[tuple[str, os.stat_result]]:
+        """
+        Scan the directory once, returning (key, stat) for every listable file, ordered
+        the way the filesystem names sort.
 
-    def _entry(self, key: str) -> FileEntry:
-        stat = self._path(key).stat()
+        Uses os.scandir because its DirEntry caches the stat taken during the directory
+        walk: one stat per file instead of the two a separate is_file()/Path.stat() pair
+        would cost.
+        """
+        found: list[tuple[str, str, os.stat_result]] = []
+        with os.scandir(self._dir_path) as scan:
+            for dir_entry in scan:
+                name = dir_entry.name
+                if not self._all_files and not name.endswith(self._suffix):
+                    continue
+                if not self._accept(name):
+                    continue
+                key = self._key_from_name(name)
+                # Names whose key cannot round-trip through _path() -- '.json' in suffix
+                # mode yields an empty key, and a literal backslash is legal on POSIX --
+                # are skipped, so a single odd file cannot break the whole listing.
+                if not self._is_valid_key(key):
+                    continue
+                try:
+                    if not dir_entry.is_file():
+                        continue
+                    found.append((name, key, dir_entry.stat()))
+                except OSError:
+                    continue  # vanished between the scan and the stat
+        # Sort by filename, not by key: with suffix '.json', the stems 'a-b' and 'a' order
+        # differently than the filenames 'a-b.json' and 'a.json' do.
+        found.sort(key=lambda triple: os.path.normcase(triple[0]))
+        return [(key, stat) for _, key, stat in found]
+
+    def _entry_from(self, key: str, stat: os.stat_result) -> FileEntry:
         return FileEntry(
             name=key,
             mtime=datetime.datetime.fromtimestamp(stat.st_mtime, tz=datetime.timezone.utc),
             size=stat.st_size,
         )
 
+    def _entry(self, key: str) -> FileEntry:
+        return self._entry_from(key, self._path(key).stat())
+
     def __iter__(self) -> Iterator[FileEntry]:
-        for path in sorted(self._iter_paths()):
-            yield self._entry(self._name_from_path(path))
+        for key, stat in self._scan():
+            yield self._entry_from(key, stat)
 
     def key_from_item(self, item: FileEntry) -> str:
         return item.name
@@ -710,7 +754,7 @@ class DirectoryAdapter(_ChangeNotifier, CollectionAdapter[FileEntry]):
         return self._entry(key)
 
     def _free_name(self) -> str:
-        existing = {self._name_from_path(p) for p in self._iter_paths()}
+        existing = {key for key, _ in self._scan()}
         i = 1
         while f'untitled-{i:02d}' in existing:
             i += 1
