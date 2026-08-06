@@ -23,7 +23,8 @@ for _el in (ui.input, ui.number, ui.select, ui.textarea):
 
 
 class Deployment(pydantic.BaseModel):
-    name: str = pydantic.Field(default='api-gateway', max_length=40, title='Service name')
+    name: str = pydantic.Field(default='api-gateway', max_length=40, title='Service name',
+                               description='Unique within the environment')
     environment: Literal['dev', 'staging', 'production'] = pydantic.Field(default='production', title='Environment')
     strategy: Annotated[
         Literal['rolling', 'recreate', 'blue-green'],
