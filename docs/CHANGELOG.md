@@ -11,6 +11,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 (nothing yet)
 
 
+[0.13.0] - 2026-08-06
+---------------------
+
+### Added
+
+- **Form layouts**: a nested list of field names arranges a form instead of stacking it —
+  `['# Address', 'street', ['zip_code:sm:w-1/3', 'city']]`. A nested list opens a container
+  (rows and columns alternate), a leading `'# Title'` makes the group a card, a leading
+  `':classes'` replaces the container's classes, and a field may carry classes after the first
+  colon (Tailwind prefixes such as `sm:` stay intact). Written in `Meta.profiles` — a profile
+  entry may now be nested, and is still a plain field list for grids and lists — or as the new
+  `layout=` option for a single form. Unknown, duplicated or excluded names raise `ValueError`
+  naming the position (`layout[1][0]`). See [Components](components.md#layout) and
+  `examples/16_form_layout.py`.
+- `ModelForm(field_props=..., field_classes=...)`: Quasar props and CSS classes for **every**
+  widget of a form, whatever its type. `ui.input.default_props()` reaches `ui.textarea` (a
+  subclass) but not `ui.select`, `ui.number`, `ui.input_chips` or `ui.color_input`. The cascade
+  is form defaults → the field's own `props`/`classes` → the layout's classes.
+- `Fields.layout` exposes the parsed tree; `field_names` stays flat, so grids and lists are
+  unaffected by an arrangement.
+
+### Changed
+
+- An explicit field list now defines the **order**, whether written as a list or as a
+  comma-separated string: `include=['c', 'a']` and `include='c, a'` both render c before a.
+  Previously the order came from the model annotations and the list was only a selection.
+  `include='__all__'` and `Meta.field_order` are unchanged; a layout defines the order itself,
+  so `field_order` does not apply on top of it.
+- Naming the same field twice in `include`, a profile or a layout raises `ValueError` instead
+  of rendering it twice.
+
+
 [0.12.0] - 2026-08-06
 ---------------------
 

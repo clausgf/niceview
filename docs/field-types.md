@@ -129,7 +129,7 @@ class User(pydantic.BaseModel):
         field_order = ['name', 'secret']   # explicit display order
 ```
 
-`Meta.field_order` is a list of field names that sets the display order. Fields not listed are appended at the end in their natural order. This is especially useful for SQLModel table classes, which do not guarantee declaration order.
+`Meta.field_order` is a list of field names that sets the display order. Fields not listed are appended at the end in their natural order. This is especially useful for SQLModel table classes, which do not guarantee declaration order. A form layout (below) defines the order itself, so `field_order` does not apply on top of it.
 
 **Context-specific layouts (profiles):** Define named field sets in `Meta.profiles` and select them via `profile=` when creating a form or grid. This lets you render the same model differently in different contexts — e.g. a compact summary list vs a full detail form — without repeating `include=` at every call site:
 
@@ -158,6 +158,11 @@ ModelForm.from_item(user, profile='detail').render()
 # Works the same on ModelList and DrillDownWrapper
 ModelList.from_list(User, users, profile='summary').render()
 ```
+
+A profile entry may also be **nested** — then it is not just a field selection but a form
+layout: `['name', ['zip_code:sm:w-1/3', 'city']]` puts two fields on one line. Grids and lists
+read the same entry and ignore the nesting. See
+[Layout](components.md#layout) for the notation and for `layout=`, the inline variant.
 
 Key `FieldInfo` options: `label`, `hint`, `placeholder`, `tooltip`, `required`, `hidden`,
 `editable`, `widget_type`, `min`, `max`, `classes`, `options` (see "Widget options" above).

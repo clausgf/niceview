@@ -12,7 +12,7 @@ from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments,
 
 from niceview.dataadapter import BoundItem, ConflictError, StorageError, JsonAdapter, CollectionAdapter, ItemAdapter
 from niceview.fieldinfo import FieldInfo, _FieldInfoInputs, _merge_field_infos
-from niceview.fields import Fields
+from niceview.fields import Fields, LayoutField, LayoutGroup
 from niceview.widgets import (
     REQUIRED_MARKER,
     REQUIRED_MESSAGE,
@@ -66,6 +66,20 @@ class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
     profile: str | None
     """Named field layout profile from Meta.profiles (e.g. 'summary', 'detail')."""
 
+    layout: list
+    """Inline field layout: a nested list of field names. Same notation as a Meta.profiles
+    entry — a nested list opens a row (rows and columns alternate), a leading '# Title' makes
+    the group a card, a leading ':classes' replaces the container's classes, and a field name
+    may carry its own classes after a colon ('street:sm:w-2/3')."""
+
+    field_props: str
+    """Quasar props applied to every field of this form (e.g. 'outlined dense'), before the
+    props of the individual field."""
+
+    field_classes: str
+    """CSS classes applied to every field of this form, before the field's own classes and
+    the layout's classes."""
+
     autosave: bool
     """Whether to automatically save the form on field change. Defaults to False (OFF)."""
 
@@ -113,6 +127,8 @@ class ModelForm():
     local_tz: str | None
     required_marker: str | None
     required_message: str
+    field_props: str | None
+    field_classes: str | None
 
     def __init__(self, item_type: type[BaseModel], **kwargs: Unpack[_ModelFormOptionInputs]) -> None:
         """
@@ -140,7 +156,8 @@ class ModelForm():
         exclude = _get_param('exclude', '')
         field_infos = _get_param('field_infos', {})
         profile = kwargs.pop('profile', None)  # type: ignore[misc]
-        self._fields = Fields(item_type, include, exclude, field_infos, profile=profile)
+        layout = _get_param('layout', None)
+        self._fields = Fields(item_type, include, exclude, field_infos, profile=profile, layout=layout)
         self._current_item = None
         self._validated_item = None
         self._validation_error_messages = {}
@@ -153,6 +170,8 @@ class ModelForm():
         self.local_tz = _get_param('local_tz', None)
         self.required_marker = _get_param('required_marker', REQUIRED_MARKER)
         self.required_message = _get_param('required_message', REQUIRED_MESSAGE)
+        self.field_props = _get_param('field_props', None)
+        self.field_classes = _get_param('field_classes', None)
 
         if on_change_callback := kwargs.pop('on_change', None):
             self.on_change(on_change_callback)
@@ -622,9 +641,34 @@ class ModelForm():
             raise ValueError(f"Field '{field_name}' is hidden and cannot be rendered individually")
         if kwargs:
             field_info = _merge_field_infos(field_info, FieldInfo(**kwargs))
-        widget = self._render_widget(field_name, field_info)
+        widget = self._render_widget(field_name, self._styled(field_info))
         self.widgets[field_name] = widget
         return widget
+
+    def _styled(self, field_info: FieldInfo, layout_classes: str | None = None, in_row: bool = False) -> FieldInfo:
+        """
+        Apply the styling cascade to a field: the form's field_props/field_classes first, then
+        the field's own props/classes from the model, then the layout's classes.
+
+        In a row, a field without layout classes shares the width evenly ('flex-1 min-w-0').
+        A field that brings its own classes gets those instead — 'flex-1' sets flex-basis to 0
+        and would silently override any width the layout asked for.
+        """
+        classes = [self.field_classes, field_info.classes]
+        if layout_classes:
+            classes.append(layout_classes)
+        if in_row:
+            classes.append('min-w-0' if layout_classes else 'flex-1 min-w-0')
+        props = [self.field_props, field_info.props]
+
+        overrides: dict[str, Any] = {}
+        if any(classes):
+            overrides['classes'] = ' '.join(c for c in classes if c)
+        if any(props):
+            overrides['props'] = ' '.join(p for p in props if p)
+        if not overrides:
+            return field_info
+        return _merge_field_infos(field_info, FieldInfo(**overrides))
 
     def render_nonfield_errors(self) -> ui.label:
         """
@@ -643,18 +687,47 @@ class ModelForm():
     def render(self) -> Self:
         """
         Render all non-hidden fields followed by the non-field error label.
-        Use render_field() and render_nonfield_errors() instead when custom layout is needed.
+
+        Fields are arranged according to the form's layout (from `layout=`, from the selected
+        `Meta.profiles` entry, or simply one below the other). Use render_field() and
+        render_nonfield_errors() instead when a layout the notation cannot express is needed.
         """
         self.widgets = {}
-        for field_name in self._fields:
-            field_info = self._fields[field_name]
-            if not field_info:
-                raise ValueError(f"Field {field_name} not found in field_infos")
-            if field_info.hidden:
-                continue
-            self.widgets[field_name] = self._render_widget(field_name, field_info)
+        self._render_group(self._fields.layout)
         self.render_nonfield_errors()
         return self
+
+    def _render_group(self, group: LayoutGroup) -> None:
+        """Render a layout group's children into the current NiceGUI context."""
+        for child in group.children:
+            if isinstance(child, LayoutField):
+                field_info = self._fields[child.name]
+                if not field_info:
+                    raise ValueError(f"Field {child.name} not found in field_infos")
+                if field_info.hidden:
+                    continue
+                self.widgets[child.name] = self._render_widget(
+                    child.name, self._styled(field_info, child.classes, in_row=group.row)
+                )
+            else:
+                with self._layout_container(child):
+                    self._render_group(child)
+
+    @staticmethod
+    def _layout_container(group: LayoutGroup) -> ui.element:
+        """
+        The container for a nested layout group: a card for a titled section, otherwise a row
+        or a column. `:classes` replaces the defaults rather than adding to them — Tailwind
+        resolves a duplicate utility by stylesheet order, not by the order in the class list.
+        """
+        if group.title is not None:
+            card = ui.card().props('flat bordered').classes(group.classes or 'w-full')
+            with card:
+                ui.label(group.title).classes('text-subtitle2')
+            return card
+        if group.row:
+            return ui.row().classes(group.classes or 'w-full items-start gap-4')
+        return ui.column().classes(group.classes or 'w-full gap-4')
 
     # --- value conversion --------------------------------------------------
 

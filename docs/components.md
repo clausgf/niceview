@@ -107,6 +107,70 @@ Events fire when a value is committed, not when it is typed — see Validation b
 interaction can therefore emit several events (every field that changed), and an edit that was
 blocked by a validation error is reported when the error clears.
 
+### Layout
+
+By default a form stacks its fields. A **layout** arranges them: a nested list of field names,
+either in `Meta.profiles` (when the arrangement belongs to the model) or as `layout=` for a
+single form.
+
+```python
+class Contact(pydantic.BaseModel):
+    ...
+    class Meta:
+        profiles = {
+            'card': [
+                ['# Name', ['first_name', 'last_name']],
+                ['# Address', 'street', ['zip_code:sm:w-1/3', 'city']],
+            ],
+        }
+
+ModelForm.from_item(contact, profile='card').render()
+ModelForm.from_item(contact, layout=['name', ['zip_code', 'city']]).render()
+```
+
+| Notation | Meaning |
+|---|---|
+| `'city'` | the field |
+| `'zip_code:sm:w-1/3'` | the field, with CSS classes — only the **first** colon separates, so Tailwind prefixes (`sm:`, `hover:`) survive |
+| `['zip_code', 'city']` | a nested list opens a container; rows and columns alternate with each level |
+| `'# Address'` | as the **first** element of a group: it becomes a `ui.card` (flat, bordered) with that title, and always stacks |
+| `':gap-8 items-end'` | as the **first** element of a group: replaces the container's default classes |
+
+A layout is a profile with an arrangement: it defines **which** fields are rendered, in which
+order — `Meta.field_order` does not apply on top of it. Grids and lists read the same entry and
+ignore the nesting, so one profile can serve a form and a table. Unknown, duplicated or
+excluded field names raise `ValueError` naming the position (`layout[1][0]`).
+
+Two rules exist to avoid fighting Tailwind, and both are worth knowing:
+
+- Fields in a row share the width evenly (`flex-1 min-w-0`). A field that brings its own
+  classes gets those **instead** — `flex-1` sets `flex-basis: 0` and would silently override
+  any width the layout asked for.
+- Container classes **replace** the defaults (`w-full items-start gap-4` for a row) rather than
+  adding to them: `gap-4 gap-8` is resolved by stylesheet order, not by the order in the class
+  list.
+
+Without a layout no container is created at all, so the fields become direct children of
+whatever the caller opened — which is what makes the `ui.grid()` two-column trick work:
+
+```python
+with ui.grid().classes('w-full grid-cols-1 lg:grid-cols-2'):
+    ModelForm.from_item(contact).render()
+```
+
+**Uniform styling** is a separate knob. `field_props` and `field_classes` apply to every widget
+of the form, whatever its type — `ui.select`, `ui.input_chips` and `ui.color_input` included,
+which `ui.input.default_props()` would miss (`ui.textarea` inherits from `ui.input`, the others
+do not):
+
+```python
+ModelForm.from_item(contact, field_props='outlined dense', field_classes='w-full').render()
+```
+
+The cascade is `field_props`/`field_classes` → the field's own `niceview.Field(props=, classes=)`
+→ the layout's classes. What the notation cannot express, `render_field()` still can: it renders
+one field wherever you call it, and honours the same form-level defaults.
+
 ### Validation
 
 Three layers run in a fixed order. The first two are the widget's own and behave exactly the

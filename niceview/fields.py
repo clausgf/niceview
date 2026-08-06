@@ -1,3 +1,4 @@
+import dataclasses
 import datetime
 import enum
 import logging
@@ -270,6 +271,96 @@ class _FieldInfoResolver:
         return resolved
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class LayoutField:
+    """One field in a form layout, with the CSS classes given after its colon (if any)."""
+    name: str
+    classes: str | None = None
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class LayoutGroup:
+    """
+    A container in a form layout: a row, a column, or — with a title — a card.
+    Nesting alternates row and column; a titled group is always a column, so that a section
+    reads the same wherever it sits.
+    """
+    children: tuple['LayoutField | LayoutGroup', ...]
+    row: bool = False
+    title: str | None = None
+    classes: str | None = None
+
+
+def parse_layout(spec: typing.Any, valid_names: typing.Container[str], *, row: bool = False, path: str = 'layout') -> LayoutGroup:
+    """
+    Parse a nested field layout into LayoutGroups and LayoutFields.
+
+    A list holds field names; a nested list opens a container (rows and columns alternate).
+    Leading strings are metadata for their own group — '# Title' makes it a titled card,
+    ':classes' replaces the container's default CSS classes. A field name may carry classes
+    of its own after a colon: 'street:sm:w-2/3' (only the first colon separates, so Tailwind
+    prefixes stay intact).
+
+    Raises ValueError with the position of the offending element.
+    """
+    if not isinstance(spec, (list, tuple)):
+        raise ValueError(f"{path}: expected a list of field names, got {type(spec).__name__}")
+
+    title: str | None = None
+    classes: str | None = None
+    first_field = 0
+    for index, element in enumerate(spec):
+        if not (isinstance(element, str) and element[:1] in ('#', ':')):
+            break
+        where = f'{path}[{index}]'
+        if element.startswith('#'):
+            if title is not None:
+                raise ValueError(f"{where}: the group already has a title ('{title}')")
+            title = element.lstrip('#').strip()
+            if not title:
+                raise ValueError(f"{where}: '#' needs a title")
+        else:
+            if classes is not None:
+                raise ValueError(f"{where}: the group already has classes ('{classes}')")
+            classes = element[1:].strip()
+            if not classes:
+                raise ValueError(f"{where}: ':' needs at least one CSS class")
+        first_field = index + 1
+
+    row = False if title is not None else row  # a titled group is a card, i.e. a column
+
+    children: list[LayoutField | LayoutGroup] = []
+    for index, element in enumerate(spec[first_field:], start=first_field):
+        where = f'{path}[{index}]'
+        if isinstance(element, str):
+            if element[:1] in ('#', ':'):
+                raise ValueError(f"{where}: '{element}' is group metadata and must come before the fields")
+            name, _, hint = element.partition(':')
+            name, hint = name.strip(), hint.strip()
+            if name not in valid_names:
+                raise ValueError(f"{where}: unknown field '{name}'")
+            children.append(LayoutField(name, hint or None))
+        elif isinstance(element, (list, tuple)):
+            children.append(parse_layout(element, valid_names, row=not row, path=where))
+        else:
+            raise ValueError(f"{where}: expected a field name or a nested list, got {type(element).__name__}")
+
+    if not children:
+        raise ValueError(f"{path}: a layout group must contain at least one field")
+    return LayoutGroup(tuple(children), row=row, title=title, classes=classes)
+
+
+def layout_field_names(group: LayoutGroup) -> list[str]:
+    """All field names in a layout, in rendering order."""
+    names: list[str] = []
+    for child in group.children:
+        if isinstance(child, LayoutField):
+            names.append(child.name)
+        else:
+            names.extend(layout_field_names(child))
+    return names
+
+
 class Fields(typing.Mapping[str, FieldInfo]):
     """
     Fields and field information for datamodel based UI components.
@@ -279,8 +370,9 @@ class Fields(typing.Mapping[str, FieldInfo]):
     _exclude: list[str]
     _field_names: list[str]
     _field_infos: dict[str, FieldInfo]
+    _layout: LayoutGroup
 
-    def __init__(self, item_type: type[pydantic.BaseModel], include: str | typing.Iterable[str] = '__all__', exclude: str | typing.Iterable[str] = '', field_infos: dict[str, FieldInfo] = {}, profile: str | None = None):
+    def __init__(self, item_type: type[pydantic.BaseModel], include: str | typing.Iterable[str] = '__all__', exclude: str | typing.Iterable[str] = '', field_infos: dict[str, FieldInfo] = {}, profile: str | None = None, layout: typing.Any = None):
         self._item_type = item_type
         meta = getattr(item_type, 'Meta', None)
 
@@ -290,14 +382,42 @@ class Fields(typing.Mapping[str, FieldInfo]):
                 available = list(profiles.keys())
                 raise ValueError(f"Profile '{profile}' not found in {item_type.__name__}.Meta.profiles. Available: {available}")
             include = profiles[profile]
+        if layout is not None:
+            include = layout  # an explicit layout is an inline profile: it defines the field set
 
         all_fields = set(item_type.model_fields.keys())
+
+        # An explicit field list is parsed as a layout: a flat list is a layout without rows, so
+        # there is one code path, one place that validates names — and one ordering rule, no
+        # matter whether the fields were given as a list or as a comma-separated string.
+        if isinstance(include, str) and include.strip() not in ('', '__all__'):
+            include = [name.strip() for name in include.split(',') if name.strip()]
+        parsed_layout: LayoutGroup | None = None
+        if isinstance(include, (list, tuple)) and list(include) != ['__all__']:
+            parsed_layout = parse_layout(include, all_fields)
+            include = layout_field_names(parsed_layout)
+            duplicates = sorted({n for n in include if include.count(n) > 1})
+            if duplicates:
+                raise ValueError(f"Layout for '{item_type.__name__}' names field(s) more than once: {duplicates}")
+
         self._include = self._parse_field_names(include, all_fields, allow_all=True, model_name=item_type.__name__)
         self._exclude = self._parse_field_names(exclude, all_fields, allow_all=False, model_name=item_type.__name__)
 
         resolver = _FieldInfoResolver(item_type)
         self._field_names, self._field_infos = self._build_field_infos(resolver, meta, field_infos)
-        self._apply_field_order(meta)
+        if parsed_layout is None:
+            self._apply_field_order(meta)
+            self._layout = LayoutGroup(tuple(LayoutField(name) for name in self._field_names))
+        else:
+            # The layout defines the order; Meta.field_order does not apply on top of it.
+            unavailable = [n for n in layout_field_names(parsed_layout) if n not in self._field_infos]
+            if unavailable:
+                raise ValueError(
+                    f"Layout for '{item_type.__name__}' names field(s) that are not available: {unavailable} "
+                    f"(excluded, private, or without usable type information)"
+                )
+            self._layout = parsed_layout
+            self._field_names = layout_field_names(parsed_layout)
 
     @staticmethod
     def _parse_field_names(field_list: str | typing.Iterable[str], all_fields: set[str], *, allow_all: bool, model_name: str = '') -> list[str]:
@@ -396,6 +516,15 @@ class Fields(typing.Mapping[str, FieldInfo]):
     @property
     def field_names(self) -> typing.Iterable[str]:
         return self._field_names
+
+    @property
+    def layout(self) -> LayoutGroup:
+        """
+        The form layout: a tree of rows, columns and cards over the fields. Without an explicit
+        layout this is a flat group in field order, which renders exactly as before.
+        Grids and lists ignore the tree and read the flattened `field_names`.
+        """
+        return self._layout
 
     def __getitem__(self, key: str) -> FieldInfo:
         return self._field_infos[key]
