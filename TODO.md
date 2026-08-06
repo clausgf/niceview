@@ -2,11 +2,8 @@ Open Questions / TODO
 =====================
 
 Open work items and unresolved questions. Design decisions already taken live in
-[DESIGN.md](DESIGN.md).
+[DESIGN.md](docs/DESIGN.md).
 
-- **Introduce a CHANGELOG and versioning/tags**: breaking changes (strict kwargs,
-  explicit `render()`, lenient loading default) are currently only recorded in commit
-  messages. Add `CHANGELOG.md`, bump to 0.2.0 and start tagging releases.
 - Create JsonSchemaForm
 - EditGridWrapper is not a complete dialog, but the interface needed to edit a collection. The refresh button is the only button to affect the table as a whole (refresh the UI from the model). For collections, we never have a *save* semantics. What to conclude for EditFormWrapper?
   - refresh button possible and makes sense, but already provided by ModelForm

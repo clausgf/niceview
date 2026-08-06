@@ -39,7 +39,7 @@ Design notes
 ------------
 
 Architectural decisions and consciously accepted trade-offs are recorded in
-[`DESIGN.md`](DESIGN.md); open questions and planned work live in [`TODO.md`](TODO.md).
+[`DESIGN.md`](docs/DESIGN.md); open questions and planned work live in [`TODO.md`](TODO.md).
 If your change touches one of those, update it in the same PR.
 
 Reporting bugs / requesting features

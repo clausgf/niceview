@@ -3,7 +3,7 @@ NiceView
 
 [![CI](https://github.com/clausgf/niceview/actions/workflows/ci.yml/badge.svg)](https://github.com/clausgf/niceview/actions/workflows/ci.yml)
 
-NiceView simplifies [NiceGUI](https://nicegui.io) programming by deriving forms and tables from Pydantic models. Inspired by [MagicGUI](https://magicgui.readthedocs.io/), [NiceCRUD](https://github.com/zauberzeug/nicegui/tree/main/examples/nicecrud) and [Django](https://docs.djangoproject.com/)'s admin integration.
+NiceView simplifies [NiceGUI](https://nicegui.io) programming by deriving forms and tables from Pydantic or SqlModel models — the widget for each type, the layout, and validation against the model, shown inline at the field it belongs to and including cross-field rules. Persistence is a swappable adapter: a JSON file, a directory of files, SQL through SqlModel, or your own, with save, refresh, autosave and optimistic locking already wired up. The same model renders as a desktop table or as a mobile list ↔ detail drill-down. Inspired by declarative UI libraries like [Django](https://docs.djangoproject.com/)'s admin integration, [MagicGUI](https://magicgui.readthedocs.io/) and [NiceCRUD](https://github.com/zauberzeug/nicegui/tree/main/examples/nicecrud).
 
 <p align="center">
   <img src="docs/img/hero.png" width="430" alt="A ModelForm rendered from a Pydantic model — text, select, toggle, number, slider, switch, multi-select chips, color and textarea widgets"><br>
@@ -68,6 +68,18 @@ instance again, so the fluent one-liner `X.from_list(...).render()` always works
 The `from_*` convenience methods create and hide the adapter; pass an adapter explicitly
 for full control or when using SQL / custom backends.
 
+**Without a model**, `render_field(field_info, value)` renders a single widget from a
+`niceview.Field()` and `field_value(widget, field_info)` reads it back — the same widgets,
+styling, conversions and `required` handling a form uses, for fields your code decides at
+runtime instead of declaring as a class:
+
+```python
+fi = niceview.Field(label='Name', widget_type='ui.input', required=True)
+widget = niceview.render_field(fi, 'Alice')
+...
+name = niceview.field_value(widget, fi)
+```
+
 
 Components at a glance
 ----------------------
@@ -109,7 +121,7 @@ Documentation
 - **[Field Types & Customization](docs/field-types.md)** — type→widget mapping, `niceview.Field()` options, `Meta` profiles, validation
 - **[Field Metadata Comparison](docs/field-metadata-comparison.md)** — how `niceview.Field()`, NiceGUI widget options, `pydantic.Field()` and JSON Schema correspond, and where they deviate
 - **[Dialogs](docs/dialogs.md)** — `confirm_dialog`, `input_dialog`, `submit_dialog`
-- **[DESIGN.md](DESIGN.md)** — design decisions and accepted technical debt
+- **[DESIGN.md](docs/DESIGN.md)** — design decisions and accepted technical debt
 - **[TODO.md](TODO.md)** — open questions and planned work
 - **[Changelog](docs/CHANGELOG.md)** · License: **[MIT](LICENSE)**
 
@@ -150,6 +162,7 @@ example open; no `sys.path` setup is needed because `niceview` is installed into
 | `12_card_list.py` | Card-based list editing — autosaving `ModelForm` per item, `@model_validator`, `confirm_dialog` |
 | `13_directory_drilldown.py` | `DrillDownWrapper` over `DirectoryAdapter` — one file per item, rename via a "Name" field |
 | `14_render_field.py` | `render_field` / `field_value` — a form built from field metadata, without a model |
+| `15_validation.py` | Validation — the three layers, `item` vs `draft`, cross-field rules, `required`, `frozen` |
 
 Unit tests cover data adapters, field resolution, validation logic, and pure CRUD operations.
 Acceptance tests use the NiceGUI `User` fixture (headless, no browser) to verify render output and

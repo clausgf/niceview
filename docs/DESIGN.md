@@ -2,7 +2,7 @@ Design Decisions and Accepted Technical Debt
 ============================================
 
 This document records design decisions and consciously accepted technical debt.
-User-facing documentation lives in [README.md](README.md); open work items in [TODO.md](TODO.md).
+User-facing documentation lives in [README.md](../README.md); open work items in [TODO.md](../TODO.md).
 
 - **Mobile navigation: `ModelList` + `DrillDownWrapper` as separate components**: A new `ModelList` (Quasar list) and `DrillDownWrapper` are added alongside `ModelGrid` / `EditGridWrapper` rather than making the existing desktop components responsive. Motivation: the UX patterns are fundamentally different — card list with drill-down vs data table with dialogs — and a single component handling both would need too many conditional paths.
 - **`DrillDownWrapper` is embeddable, not page-owning (no `.register(base_path)`, no `@ui.page` of its own)**: An earlier version registered two NiceGUI pages (list + `{key}` detail) with a CSS-only desktop split-panel. In practice this was rarely useful on its own — real editors need custom detail layout and often heterogeneous item types in one collection, which a single auto-rendered `EditFormWrapper` per item can't express, and most call sites wanted the widget embedded inside an existing page/card rather than owning a URL. It was replaced by a `ui.refreshable_method`-driven list/detail body with a slide animation (same technique as manual multi-page-in-one-page navigation elsewhere) plus `render_list_item`/`render_detail` override hooks, dropping the split-panel layout and page registration entirely.

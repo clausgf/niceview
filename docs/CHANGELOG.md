@@ -105,7 +105,7 @@ the edited item is written only when it validates as a whole. See
   deviations between them spelled out.
 - [Components](components.md#validation) documents the validation layers, the commit policy and
   the `item` / `draft` contract. The three principles behind this release are recorded in
-  [DESIGN.md](../DESIGN.md).
+  [DESIGN.md](DESIGN.md).
 
 
 [0.11.0] - 2026-08-05
