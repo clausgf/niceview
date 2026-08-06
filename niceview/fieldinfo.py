@@ -1,4 +1,4 @@
-from typing import Awaitable, Callable, Literal, TypeAlias, Unpack
+from typing import Any, Awaitable, Callable, Literal, TypeAlias, Unpack
 import typing_extensions
 
 from nicegui.elements.mixins.validation_element import ValidationFunction, ValidationDict
@@ -29,10 +29,15 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
     label: str
     placeholder: str
 
+    field_type: type
+    """Python type of the value. ModelForm sets this from the model annotation; set it
+    explicitly for render_field(), where it drives field_value()'s conversions (e.g. int
+    vs float for 'ui.number', list[str] for a comma-separated 'ui.input')."""
+
     required: bool
     hidden: bool
     editable: bool
-    help_text: str
+    hint: str
     widget_type: WidgetType
 
     props: str
@@ -56,12 +61,13 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
     step: float
     prefix: str
     suffix: str
-    format: str
+    number_format: str
 
     # additional options when field is rendered as ui.select
     with_input: bool
     multiple: bool
     clearable: bool
+    key_generator: Callable[[Any], Any]
     # validation same as in ui.input
 
     # additional options when field is rendered as ui.color_input
@@ -95,7 +101,10 @@ class FieldInfo():
     to define the properties of a field in a UI context, such as forms and
     tables.
     """
-    field_type: type = str  # the type of the field, e.g. str, int, float, bool, datetime, date, time
+    # the type of the field, e.g. str, int, float, bool, datetime, date, time.
+    # Resolved from the model annotation by Fields; set it explicitly when building a
+    # FieldInfo by hand for render_field().
+    field_type: type = str
 
     label: str = ''
     placeholder: str | None = None
@@ -105,7 +114,9 @@ class FieldInfo():
     required: bool | None = None
     hidden: bool = False
     editable: bool = True
-    help_text: str | None = None
+    hint: str | None = None
+    """Help text shown below the widget (Quasar's `hint` prop). Resolved from pydantic's
+    `description`; widgets without a hint slot ignore it."""
     # widget type for the field (default inferred from field type)
     widget_type: WidgetType | None = None
 
@@ -136,12 +147,15 @@ class FieldInfo():
     step: float | None = None
     prefix: str | None = None
     suffix: str | None = None
-    format: str | None = None
+    number_format: str | None = None
+    """Display format of ui.number, e.g. '%.2f'. Named number_format, not format, to keep it
+    apart from JSON Schema's `format`, which corresponds to widget_type."""
 
     # additional options when field is rendered as ui.select
     with_input: bool = False
     multiple: bool = False
     clearable: bool = False
+    key_generator: Callable[[Any], Any] | None = None
 
     # additional options when field is rendered as ui.color_input
     color_preview: bool = False

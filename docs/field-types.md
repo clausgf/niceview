@@ -3,7 +3,7 @@ Field Types & Customization
 
 How NiceView maps Python types to widgets, and how to customize fields.
 
-[← Back to the README](../README.md)
+[← Back to the README](../README.md) · Side-by-side comparison with `pydantic.Field()` and JSON Schema: [Field Metadata Comparison](field-metadata-comparison.md)
 
 
 Supported Field Types
@@ -20,6 +20,7 @@ NiceView automatically selects a widget based on the Python type annotation:
 | `datetime.time` | HTML time input |
 | `datetime.datetime` | HTML datetime-local input |
 | `datetime.timedelta` | `ui.input` (ISO 8601 duration) |
+| `pydantic.SecretStr` | `ui.input` (password, with reveal button) |
 | `Literal['a', 'b', ...]` | `ui.select` |
 | `list[Literal['a', 'b', ...]]` | `ui.select` (multi-select; options from the `Literal`) |
 | `Enum` subclass | `ui.select` (keys = enum members, labels = member names) |
@@ -158,7 +159,30 @@ ModelForm.from_item(user, profile='detail').render()
 ModelList.from_list(User, users, profile='summary').render()
 ```
 
-Key `FieldInfo` options: `label`, `placeholder`, `tooltip`, `hidden`, `editable`, `widget_type`, `min`, `max`, `classes`, `options` (see "Widget options" above).
+Key `FieldInfo` options: `label`, `hint`, `placeholder`, `tooltip`, `required`, `hidden`,
+`editable`, `widget_type`, `min`, `max`, `classes`, `options` (see "Widget options" above).
+
+**Texts** are resolved from the model, one source per destination — set any of them explicitly
+to override (an empty string counts as explicit and renders nothing):
+
+| Attribute | Comes from | Rendered as |
+|---|---|---|
+| `label` | `pydantic.Field(title=...)`, else the prettified field name | the widget's label; a caption above widgets that have none (radio, toggle, checkbox_group, slider, rating) |
+| `hint` | `pydantic.Field(description=...)` | Quasar's `hint`, below the widget |
+| `placeholder` | `pydantic.Field(examples=[...])[0]` | the widget's placeholder |
+| `tooltip` | nothing — opt-in | on hover |
+
+**State** is resolved too: a field without a default is `required` (label marker `' *'`, empty
+values rejected — see [Validation](components.md#validation)), and `pydantic.Field(frozen=True)`
+or `model_config = ConfigDict(frozen=True)` makes a field non-editable, since Pydantic raises on
+every assignment to it. An explicit `niceview.Field(editable=True)` still wins and logs a warning.
+A `pydantic.SecretStr` field renders as a password input with a reveal button.
+
+A `niceview.Field()` is also usable on its own, without a model: `niceview.render_field(field_info, value)`
+renders exactly one widget and `niceview.field_value(widget, field_info)` reads it back — see
+[render_field](components.md#render_field--a-single-widget-without-a-model) in Components.
+There, `widget_type` is required (nothing to infer it from) and `field_type` is set explicitly
+instead of coming from the annotation.
 
 
 Validation

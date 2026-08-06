@@ -26,6 +26,10 @@ def _collect_aggrid_cols(fields: Fields) -> list[dict[str, Any]]:
             'field': name,
             'sortable': info.table_sortable,
         }
+        if not info.editable:
+            # Only ever set to False: an inline-editable grid switches editing on via
+            # defaultColDef, and a read-only ModelGrid must stay read-only.
+            col['editable'] = False
         if info.aggrid_type:
             col['type'] = info.aggrid_type
         cell_style = info.table_cell_style or ''

@@ -1,7 +1,7 @@
 Components
 ==========
 
-Reference for the NiceView UI components. See also [Data Adapters](adapters.md), [Field Types & Customization](field-types.md) and [Dialogs](dialogs.md).
+Reference for the NiceView UI components. See also [Data Adapters](adapters.md), [Field Types & Customization](field-types.md), [Field Metadata Comparison](field-metadata-comparison.md) and [Dialogs](dialogs.md).
 
 [← Back to the README](../README.md)
 
@@ -103,6 +103,54 @@ form.widgets['age'].classes('w-32')          # dict access, untyped
 ```python
 form.on_change(lambda e: print(e.field_name, e.previous_value, e.value))
 ```
+Events fire when a value is committed, not when it is typed — see Validation below. One
+interaction can therefore emit several events (every field that changed), and an edit that was
+blocked by a validation error is reported when the error clears.
+
+### Validation
+
+Three layers run in a fixed order. The first two are the widget's own and behave exactly the
+same in `render_field()` without any model; the third is what `ModelForm` adds.
+
+| | Layer | Runs on | Message shown |
+|---|---|---|---|
+| 1a | `required` — rejects an empty value (`None`, `''`, `[]`; never `False`/`0`) | the raw widget value | below the widget |
+| 1b | `niceview.Field(validation=...)` — a callable or a `{message: predicate}` dict, NiceGUI's own contract | the raw widget value | below the widget |
+| 2 | value conversion to the field's Python type | the raw widget value | `'Error interpreting widget value'` |
+| 3 | **`ModelForm` only:** `model_validate()` over the whole item after every change | the converted draft | field errors below the widget, model-level errors in `render_nonfield_errors()` |
+
+A value rejected by layer 1 is never converted and never reaches the model, so Pydantic never
+sees a value the user was already told is wrong. A field's own message wins over the model's
+message for the same field.
+
+```python
+class User(pydantic.BaseModel):
+    # required (no default) + a widget-level rule + a model constraint, in that order
+    name: Annotated[str, pydantic.Field(max_length=20),
+                    niceview.Field(validation=lambda v: 'no digits' if any(c.isdigit() for c in v) else None)]
+
+form = ModelForm.from_item(user, required_marker=' *', required_message='Required').render()
+```
+
+**The item is written only when it validates as a whole.** `form.item` is the last state that
+passed every layer — the state `save()` would persist — and it is written *in place*, so
+`bind_text_from(form.item, 'name')` keeps working across edits. The values currently in the
+widgets, valid or not, are `form.draft` (a copy):
+
+```python
+form.item          # last fully valid state; identity stable; what save() writes
+form.draft         # what the widgets currently hold, including invalid values
+form.has_validation_errors, form.validation_errors, form.nonfield_validation_errors
+```
+
+Model-level (`@model_validator`) errors have no field to attach to. `render()` places the label
+for them automatically; with a hand-built layout of `render_field()` calls, call
+`form.render_nonfield_errors()` yourself — otherwise a cross-field error blocks every commit
+without showing why (the form logs a warning when that happens).
+
+Two limits worth knowing: an **async** validation function is displayed by the widget but
+cannot block a commit (the commit path is synchronous), and `required` is skipped for disabled
+fields so a non-editable empty field cannot block the form forever.
 
 
 ModelGrid / ModelGridInlineEdit
@@ -407,3 +455,79 @@ navigation state in sync — it can be called any time, not just synchronously w
 - **One file per item in a directory** (`DirectoryAdapter`, see [Data Adapters](adapters.md)) — items are just filename
   metadata; rename is a "Name" field in `render_detail`, wired to `DirectoryAdapter.rename()`.
   See `examples/13_directory_drilldown.py`.
+
+
+render_field — a single widget without a model
+----------------------------------------------
+
+`niceview.render_field()` renders one widget from one `FieldInfo`, with no Pydantic model
+involved, and `niceview.field_value()` reads it back with the same value conversions
+`ModelForm` applies. Use them when your code — not a model class — decides what a field is:
+an interpreter for a schema you must not turn into a class, a hand-built form, a widget in a
+dialog. `ModelForm` is built on the same functions, so both paths produce identical widgets.
+
+```python
+from niceview import Field, render_field, field_value
+
+fi = Field(label='Name', widget_type='ui.input', props='outlined dense', classes='w-full')
+
+widget = render_field(fi, 'Alice')      # renders in the current NiceGUI context
+...
+name = field_value(widget, fi)          # -> 'Alice'
+```
+
+A small form is a loop plus a dict:
+
+```python
+FIELDS = {
+    'name':   Field(label='Name', widget_type='ui.input', props='outlined dense', classes='w-full'),
+    'age':    Field(label='Age', widget_type='ui.number', field_type=int, min=0, max=120),
+    'start':  Field(label='Start', widget_type='date'),
+    'color':  Field(label='Color', widget_type='ui.select', options=['red', 'green']),
+}
+
+with ui.column().classes('w-full gap-3'):
+    widgets = {key: render_field(fi, values.get(key)) for key, fi in FIELDS.items()}
+
+def collect() -> dict:
+    return {key: field_value(w, FIELDS[key]) for key, w in widgets.items()}
+```
+
+**What render_field() does** — everything `ModelForm` does to build a widget, and nothing that
+needs a model: it creates the widget for `field_info.widget_type`, applies `label`,
+`placeholder`, `hint`, `options` (list, dict, or a sync/async callable),
+`min`/`max`/`step`/`multiple` and the other widget-specific attributes, then `props`, `classes`,
+`style`, `tooltip` and `editable=False` (disabled). Validation layer 1 is wired up as well:
+`required` appends the marker to the label and rejects an empty value, then
+`field_info.validation` runs. It sets the initial value — and stops there. There is no change
+event, no autosave, no validation against a model, no `widgets` registry: the caller owns the
+widget.
+
+**Differences to a `ModelForm` field:**
+
+| | `ModelForm` | `render_field()` |
+|---|---|---|
+| `widget_type` | inferred from the annotation | **required** — there is nothing to infer from |
+| `field_type` | from the annotation | set it explicitly (default `str`), see below |
+| `required` | from `is_required()` (no default) | set it explicitly |
+| Value | read from / written to the item | passed in, read back via `field_value()` |
+| Validation | layers 1–3 (model validation on top) | layers 1–2 (identical behaviour, no model) |
+| `'editgrid'`, `'modelselect'` | supported | `ValueError` — both need a model type and a repository |
+
+`field_type` drives the conversions in `field_value()` that depend on the target type:
+`Field(widget_type='ui.number', field_type=int)` reads back `int` instead of `float`,
+`field_type=list[str] | None` maps an empty multi-selection back to `None`, and
+`field_type=list[int], item_type=int` splits a comma-separated `ui.input`. Everything else
+works with the default.
+
+For `'date'`, `'time'`, `'datetime'` and `'timedelta'` the value may be passed either as the
+Python object or as the ISO string a JSON document already contains — both render; `field_value()`
+always returns the Python object. `local_tz=` on both functions controls the display timezone
+of `'datetime'`, exactly as `ModelForm`'s option of the same name.
+
+`required` needs no model here: `niceview.Field(required=True)` appends `' *'` to the label
+(`render_field(fi, value, required_marker=None)` switches that off) and rejects an empty value,
+which is what makes a JSON Schema `required` list directly usable.
+
+See `examples/14_render_field.py` for a runnable version that builds its fields from a
+schema-like dict instead of a model.

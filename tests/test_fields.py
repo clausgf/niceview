@@ -218,9 +218,21 @@ class TestLabels:
         fields = Fields(AnnotatedModel)
         assert fields['weight'].label == 'Weight (kg)'
 
-    def test_placeholder_from_pydantic_description(self):
+    def test_hint_from_pydantic_description(self):
         fields = Fields(TitledModel)
-        assert fields['first_name'].placeholder == 'Your first name'
+        assert fields['first_name'].hint == 'Your first name'
+
+    def test_description_does_not_fill_placeholder_or_tooltip(self):
+        # One source, one destination: a description is help text, so it becomes the hint.
+        fields = Fields(TitledModel)
+        assert fields['first_name'].placeholder is None
+        assert fields['first_name'].tooltip is None
+
+    def test_placeholder_from_pydantic_examples(self):
+        class M(pydantic.BaseModel):
+            name: str = pydantic.Field(default='', examples=['Alice', 'Bob'])
+
+        assert Fields(M)['name'].placeholder == 'Alice'
 
 
 # ---------------------------------------------------------------------------

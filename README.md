@@ -79,6 +79,7 @@ Components at a glance
 | [`EditGridWrapper` / `EditFormWrapper`](docs/components.md#editgridwrapper--editformwrapper) | Grid/form plus title, description and CRUD/action buttons |
 | [Card-based list editing](docs/components.md#card-based-list-editing) | One autosaving `ModelForm` per item, custom layout |
 | [`ModelList` / `DrillDownWrapper`](docs/components.md#modellist--drilldownwrapper) | Mobile-first list ↔ detail drill-down navigation |
+| [`render_field` / `field_value`](docs/components.md#render_field--a-single-widget-without-a-model) | One widget from one `Field()`, without a model |
 
 
 Screenshots
@@ -103,9 +104,10 @@ Screenshots
 Documentation
 -------------
 
-- **[Components](docs/components.md)** — `ModelForm`, `ModelGrid`, the edit wrappers, card lists, and `ModelList`/`DrillDownWrapper`
+- **[Components](docs/components.md)** — `ModelForm`, `ModelGrid`, the edit wrappers, card lists, `ModelList`/`DrillDownWrapper`, and the model-free `render_field`
 - **[Data Adapters](docs/adapters.md)** — storage backends, lenient loading, optimistic locking, reactive updates, adapter protocols
 - **[Field Types & Customization](docs/field-types.md)** — type→widget mapping, `niceview.Field()` options, `Meta` profiles, validation
+- **[Field Metadata Comparison](docs/field-metadata-comparison.md)** — how `niceview.Field()`, NiceGUI widget options, `pydantic.Field()` and JSON Schema correspond, and where they deviate
 - **[Dialogs](docs/dialogs.md)** — `confirm_dialog`, `input_dialog`, `submit_dialog`
 - **[DESIGN.md](DESIGN.md)** — design decisions and accepted technical debt
 - **[TODO.md](TODO.md)** — open questions and planned work
@@ -147,6 +149,7 @@ example open; no `sys.path` setup is needed because `niceview` is installed into
 | `11_tree_navigation.py` | Multi-level tree navigation — URL factory, `FilteredAdapter`, `Meta.profiles` |
 | `12_card_list.py` | Card-based list editing — autosaving `ModelForm` per item, `@model_validator`, `confirm_dialog` |
 | `13_directory_drilldown.py` | `DrillDownWrapper` over `DirectoryAdapter` — one file per item, rename via a "Name" field |
+| `14_render_field.py` | `render_field` / `field_value` — a form built from field metadata, without a model |
 
 Unit tests cover data adapters, field resolution, validation logic, and pure CRUD operations.
 Acceptance tests use the NiceGUI `User` fixture (headless, no browser) to verify render output and

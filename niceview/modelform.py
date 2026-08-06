@@ -1,21 +1,31 @@
 from dataclasses import dataclass
-import datetime
 import inspect
 import logging
-import types
-from typing import Any, Callable, Self, TypeVar, Unpack
+from typing import Any, Self, TypeVar, Unpack
 import typing
 from pathlib import Path
-from zoneinfo import ZoneInfo
 import typing_extensions
 from pydantic import BaseModel, TypeAdapter
 
-from nicegui import background_tasks, ui
+from nicegui import ui
 from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, handle_event
 
 from niceview.dataadapter import BoundItem, ConflictError, StorageError, JsonAdapter, CollectionAdapter, ItemAdapter
 from niceview.fieldinfo import FieldInfo, _FieldInfoInputs, _merge_field_infos
 from niceview.fields import Fields
+from niceview.widgets import (
+    REQUIRED_MARKER,
+    REQUIRED_MESSAGE,
+    TEXT_INPUT_WIDGETS,
+    VALIDATED_WIDGETS,
+    CheckboxGroup,
+    apply_field_info,
+    create_widget,
+    field_value,
+    required_error,
+    run_validation,
+    to_widget_value,
+)
 
 if typing.TYPE_CHECKING:
     # Only for the FormWidget type alias below; imported lazily elsewhere in this module
@@ -26,87 +36,12 @@ if typing.TYPE_CHECKING:
 log = logging.getLogger('niceview')
 
 
-def _pick_attrs(obj: Any, attrs: list[str]) -> dict[str, Any]:
-    """Return a dict of non-None attribute values from obj for the given attribute names."""
-    return {k: v for k in attrs if (v := getattr(obj, k)) is not None}
-
-
 @dataclass(kw_only=True, slots=True)
 class FieldChangeEventArguments(UiEventArguments):
     form: 'ModelForm'
     field_name: str
     previous_value: Any
     value: Any
-
-
-class CheckboxGroup:
-    """
-    Composite widget for list[Literal[...]] fields rendered as a row/column of ui.checkbox
-    elements. There is no built-in NiceGUI/Quasar multi-select checkbox-group widget, so this
-    composes plain ui.checkbox elements and exposes the .value / on_value_change() surface that
-    ModelForm's value-conversion and event-wiring code expects from a widget.
-
-    `checkboxes` (options -> ui.checkbox) and `widget` (the ui.row/ui.column holding them)
-    are public so callers can style individual checkboxes or the container after rendering,
-    e.g. `form.w('perms', CheckboxGroup).checkboxes['admin'].classes('text-negative')`.
-    """
-
-    def __init__(self, options: list[Any], checkboxes: dict[Any, ui.checkbox], widget: ui.element) -> None:
-        self.options = options
-        self.checkboxes = checkboxes
-        self.widget = widget
-        self._value_change_handlers: list[Handler[ValueChangeEventArguments]] = []
-        self._disabled = False
-        for checkbox in self.checkboxes.values():
-            checkbox.on_value_change(self._relay)
-
-    @property
-    def value(self) -> list[Any]:
-        return [opt for opt in self.options if self.checkboxes[opt].value]
-
-    @value.setter
-    def value(self, new_value: list[Any] | None) -> None:
-        selected = set(new_value or [])
-        for opt, checkbox in self.checkboxes.items():
-            checkbox.value = opt in selected
-
-    @property
-    def parent_slot(self) -> Any:
-        # nicegui.events.handle_event() needs this to run the handler in the right UI context.
-        return self.widget.parent_slot
-
-    @property
-    def client(self) -> Any:
-        return self.widget.client
-
-    def on_value_change(self, handler: Handler[ValueChangeEventArguments]) -> None:
-        self._value_change_handlers.append(handler)
-
-    def _relay(self, e: ValueChangeEventArguments) -> None:
-        vce = ValueChangeEventArguments(sender=self, client=e.client, value=self.value, previous_value=None)  # type: ignore[arg-type]
-        for handler in self._value_change_handlers:
-            handle_event(handler, vce)
-
-    def set_options(self, options: 'list | dict') -> None:
-        """Replace the checkboxes with a new option set, keeping the current selection where possible."""
-        items = list(options.items()) if isinstance(options, dict) else [(opt, opt) for opt in options]
-        selected = set(self.value)
-        self.widget.clear()
-        self.checkboxes = {}
-        with self.widget:
-            for opt, label in items:
-                # initial value in the constructor does not fire on_value_change
-                checkbox = ui.checkbox(text=str(label), value=opt in selected)
-                checkbox.on_value_change(self._relay)
-                self.checkboxes[opt] = checkbox
-        self.options = [opt for opt, _ in items]
-        if self._disabled:
-            self.disable()
-
-    def disable(self) -> None:
-        self._disabled = True
-        for checkbox in self.checkboxes.values():
-            checkbox.disable()
 
 
 # Any type ModelForm.widgets[field_name] / w() may return: a native NiceGUI element for most
@@ -140,6 +75,12 @@ class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
     on_change: Handler[FieldChangeEventArguments]
     """Callback to execute when value changes. To reduce the number of change events, fields like ui.input or ui.number also have to loose focus (blur)."""
 
+    required_marker: str | None
+    """Appended to the label of a required field. Defaults to ' *'; None renders no marker."""
+
+    required_message: str
+    """Validation message for an empty required field. Defaults to 'Required'."""
+
 
 class ModelForm():
     """
@@ -165,10 +106,13 @@ class ModelForm():
     _validation_error_messages: dict[str, str]
     _nonfield_validation_errors: list[str]
     _nonfield_error_element: ui.label | None
+    _warned_nonfield: bool
     widgets: dict[str, Any]
 
     autosave: bool
     local_tz: str | None
+    required_marker: str | None
+    required_message: str
 
     def __init__(self, item_type: type[BaseModel], **kwargs: Unpack[_ModelFormOptionInputs]) -> None:
         """
@@ -202,10 +146,13 @@ class ModelForm():
         self._validation_error_messages = {}
         self._nonfield_validation_errors = []
         self._nonfield_error_element = None
+        self._warned_nonfield = False
         self.widgets = {}
 
         self.autosave = _get_param('autosave', False)
         self.local_tz = _get_param('local_tz', None)
+        self.required_marker = _get_param('required_marker', REQUIRED_MARKER)
+        self.required_message = _get_param('required_message', REQUIRED_MESSAGE)
 
         if on_change_callback := kwargs.pop('on_change', None):
             self.on_change(on_change_callback)
@@ -284,8 +231,12 @@ class ModelForm():
     @property
     def item(self) -> BaseModel:
         """
-        Get the current (validated) item of the form.
-        This is the item that is currently being edited.
+        The last state of the edited item that validated as a whole — the state save() would
+        persist. While any validation error is present the item keeps its previous values; the
+        values currently in the widgets are available as `draft`.
+
+        The object identity is stable across edits (the form writes fields in place), so
+        NiceGUI bindings such as bind_text_from(form.item, 'name') keep working.
         """
         if self._validated_item is None:
             raise ValueError("No item set. Use from_item(), from_json(), from_adapter(), or load() first.")
@@ -305,12 +256,46 @@ class ModelForm():
             raise TypeError(f"item must be a BaseModel instance, got {type(value)}")
         self._set_item(value)
 
-    def _set_item(self, value: BaseModel) -> None:
-        """Internal item assignment — bypasses the adapter-bound guard."""
-        self._validated_item = value
-        self._current_item = value.model_copy()
-        self._validate()
+    @property
+    def draft(self) -> BaseModel:
+        """
+        The current widget values as a model instance — including values that fail validation
+        and are therefore not in `item` yet. A copy: mutating it does not affect the form.
+        """
+        if self._current_item is None:
+            raise ValueError("No item set. Use from_item(), from_json(), from_adapter(), or load() first.")
+        return self._current_item.model_copy()
+
+    def _set_item(self, value: BaseModel, in_place: bool = False) -> None:
+        """
+        Internal item assignment — bypasses the adapter-bound guard.
+
+        in_place=True copies the values into the existing item instead of replacing it, so that
+        NiceGUI bindings on form.item survive (used by refresh() and save(), which return the
+        same logical item; load() navigates to a different one and rebinds).
+        """
+        if not (in_place and self._copy_into_item(value)):
+            self._validated_item = value
+        self._current_item = self._validated_item.model_copy()  # type: ignore[union-attr]
         self._push_item_to_widgets()
+        self._validate()
+
+    def _copy_into_item(self, source: BaseModel) -> bool:
+        """
+        Copy source's field values into the existing item, keeping its identity.
+        Returns False when that is not possible (no item yet, different type, frozen model) —
+        the caller then falls back to replacing the item.
+        """
+        target = self._validated_item
+        if target is None or type(target) is not type(source):
+            return False
+        if type(target).model_config.get('frozen'):
+            return False
+        for name, field in type(target).model_fields.items():
+            if field.frozen:
+                continue  # pydantic raises on assignment to a frozen field
+            setattr(target, name, getattr(source, name))
+        return True
 
     # --- data adapter interaction ------------------------------------------
 
@@ -352,7 +337,10 @@ class ModelForm():
         notify=False suppresses the ui.notify popup (e.g. for programmatic refreshes)."""
         if not self.adapter_bound:
             raise ValueError("No adapter set. Use from_adapter(), from_json(), or load() first.")
-        self.load(self._item_adapter)  # type: ignore[arg-type]
+        item = self._item_adapter.read()  # type: ignore[union-attr]
+        if not isinstance(item, BaseModel):
+            raise TypeError(f"item must be a BaseModel instance, got {type(item)}")
+        self._set_item(item, in_place=True)  # same item reloaded: keep bindings alive
         if notify:
             ui.notify('Form refreshed', color='positive')
 
@@ -377,8 +365,11 @@ class ModelForm():
                 ui.notify(str(e), color='negative')
             return
         if updated is not None and updated is not self._validated_item:
-            self._validated_item = updated
-            self._current_item = updated.model_copy()
+            # Adapters may return a new instance (e.g. with generated ids). Copy the values in
+            # instead of rebinding, so bindings on form.item survive a save.
+            if not self._copy_into_item(updated):
+                self._validated_item = updated
+            self._current_item = self._validated_item.model_copy()  # type: ignore[union-attr]
         if notify:
             ui.notify('Form saved', color='positive')
 
@@ -441,123 +432,41 @@ class ModelForm():
 
     # --- widget rendering helpers ------------------------------------------
 
-    @staticmethod
-    def _resolve_options(field_name: str, field_info: FieldInfo) -> 'tuple[Any, typing.Awaitable | None]':
-        """
-        Resolve options for select/radio/toggle/checkbox_group widgets from field_info.
-        Resolution order: field_info.options, then literal_options (auto-extracted from
-        Literal[...] types). A callable source is invoked; it may be sync or async.
-        Returns (options, pending): for a sync source pending is None; for an async source
-        options is [] and pending is the awaitable — the caller schedules it via
-        _schedule_late_options().
-        """
-        raw = field_info.options or field_info.literal_options
-        if not raw:
-            raise ValueError(f"Field '{field_name}' has no options (or literal_options) defined in FieldInfo")
-        value = raw() if callable(raw) else raw
-        if inspect.isawaitable(value):
-            return [], value
-        return value, None
-
-    @staticmethod
-    def _schedule_late_options(field_name: str, pending: 'typing.Awaitable', apply: Callable[[Any], None]) -> None:
-        """Await an async options source in the background and apply the result to the widget."""
-        async def _later() -> None:
-            apply(await pending)
-        background_tasks.create(_later(), name=f'niceview options for {field_name}')
-
     def _wire_text_input(self, widget: Any, field_name: str) -> None:
         """Wire a text-input widget: validate on change, commit on blur."""
         widget.on_value_change(lambda vce, fn=field_name: self._handle_validate(fn, vce))
         widget.on('blur', lambda e, fn=field_name: self._handle_blur_event(fn, e))
-        widget.validation = lambda value, fn=field_name: self._get_field_error(fn, value)
 
     def _wire_immediate(self, widget: Any, field_name: str) -> None:
         """Wire an immediate widget: validate and commit on value change."""
         widget.on_value_change(lambda vce, fn=field_name: self._handle_validate_and_change(fn, vce))
 
-    def _apply_widget_field_info(self, widget: Any, field_info: FieldInfo) -> None:
-        """Apply disable, tooltip, classes, style, props from field_info to a native NiceGUI widget."""
-        if not field_info.editable and hasattr(widget, 'disable') and callable(widget.disable):
-            widget.disable()
-        if field_info.tooltip and hasattr(widget, 'tooltip') and callable(widget.tooltip):
-            widget.tooltip(field_info.tooltip)
-        if field_info.classes and hasattr(widget, 'classes') and callable(widget.classes):
-            widget.classes(field_info.classes)
-        if field_info.style and hasattr(widget, 'style') and callable(widget.style):
-            widget.style(field_info.style)
-        if field_info.props and hasattr(widget, 'props') and callable(widget.props):
-            widget.props(field_info.props)
+    def _wire_widget(self, field_name: str, widget_type: str, widget: Any) -> None:
+        """
+        Connect a widget created by niceview.widgets to the form: change events, and the
+        validation callback for the widget types that can show a message.
+        Wiring happens after the initial value has been set, so that pushing the item's
+        value into the widget does not fire a change event.
+        """
+        if widget_type in TEXT_INPUT_WIDGETS:
+            self._wire_text_input(widget, field_name)
+        else:
+            self._wire_immediate(widget, field_name)
+        if widget_type in VALIDATED_WIDGETS:
+            widget.validation = lambda value, fn=field_name: self._get_field_error(fn, value)
+            # return_result=False: NiceGUI refuses to return a result for an async validation
+            # function, and field_info.validation may well be one.
+            widget.validate(return_result=False)
 
     # --- widget rendering methods ------------------------------------------
 
-    def _render_select_widget(self, field_name: str, field_info: FieldInfo, kwargs: dict[str, Any], value_widget_type: str = 'ui.select') -> ui.select:
-        """Render a select widget. Options come from options/literal_options on field_info."""
-        kwargs['options'], pending = self._resolve_options(field_name, field_info)
-        widget = ui.select(**kwargs)
-        self._from_current_item_to_widget_value(field_name, value_widget_type, widget)
-        self._wire_immediate(widget, field_name)
-        widget.validation = lambda value, fn=field_name: self._get_field_error(fn, value)
-        if pending is not None:
-            self._schedule_late_options(field_name, pending, self._make_late_options_applier(field_name, value_widget_type, widget))
-        return widget
-
-    def _render_radio_widget(self, field_name: str, field_info: FieldInfo) -> ui.radio:
-        """Render a radio widget. Options come from options/literal_options on field_info."""
-        options, pending = self._resolve_options(field_name, field_info)
-        widget = ui.radio(options)
-        self._from_current_item_to_widget_value(field_name, 'ui.radio', widget)
-        self._wire_immediate(widget, field_name)
-        if pending is not None:
-            self._schedule_late_options(field_name, pending, self._make_late_options_applier(field_name, 'ui.radio', widget))
-        return widget
-
-    def _render_toggle_widget(self, field_name: str, field_info: FieldInfo) -> ui.toggle:
-        """Render a toggle widget. Options come from options/literal_options on field_info."""
-        options, pending = self._resolve_options(field_name, field_info)
-        widget = ui.toggle(options)
-        self._from_current_item_to_widget_value(field_name, 'ui.toggle', widget)
-        self._wire_immediate(widget, field_name)
-        if pending is not None:
-            self._schedule_late_options(field_name, pending, self._make_late_options_applier(field_name, 'ui.toggle', widget))
-        return widget
-
-    def _make_late_options_applier(self, field_name: str, widget_type: str, widget: Any) -> Callable[[Any], None]:
-        """Return a callback that sets late-arriving options and re-pushes the item's value."""
-        def apply(options: Any) -> None:
-            widget.set_options(options)
-            self._from_current_item_to_widget_value(field_name, widget_type, widget)
-        return apply
-
-    def _render_checkbox_group_widget(self, field_name: str, field_info: FieldInfo) -> CheckboxGroup:
+    def _prepare_modelselect(self, field_name: str, field_info: FieldInfo) -> 'ui.select | None':
         """
-        Render a row/column of ui.checkbox elements for a list[Literal[...]] field.
-        Options come from options/literal_options on field_info.
-        Layout is vertical by default; pass props='inline' (same convention as ui.radio) for a
-        horizontal row.
+        Resolve the repository of a modelselect field into field_info.options, so that the
+        field can be rendered as a plain select.
+        Returns None on success, or a disabled placeholder widget if no repository is
+        registered for the field's item type.
         """
-        raw_options, pending = self._resolve_options(field_name, field_info)
-        items = list(raw_options.items()) if isinstance(raw_options, dict) else [(opt, opt) for opt in raw_options]
-
-        inline = field_info.props is not None and 'inline' in field_info.props.split()
-        container = ui.row if inline else ui.column
-
-        checkboxes: dict[Any, ui.checkbox] = {}
-        with container().classes('gap-x-4 gap-y-1') as container_element:
-            for opt, label in items:
-                checkboxes[opt] = ui.checkbox(text=str(label))
-
-        widget = CheckboxGroup(list(checkboxes.keys()), checkboxes, container_element)
-        if not field_info.editable:
-            widget.disable()
-        self._from_current_item_to_widget_value(field_name, 'checkbox_group', widget)
-        self._wire_immediate(widget, field_name)
-        if pending is not None:
-            self._schedule_late_options(field_name, pending, self._make_late_options_applier(field_name, 'checkbox_group', widget))
-        return widget
-
-    def _render_modelselect_widget(self, field_name: str, field_info: FieldInfo, kwargs: dict[str, Any]) -> ui.select:
-        """Render a model-backed select widget using a CollectionAdapter from with_repositories()."""
         if not field_info.item_type:
             raise ValueError(f"Field {field_name} is a model select but no item type is specified in FieldInfo or as a pydantic model type")
 
@@ -569,11 +478,11 @@ class ModelForm():
             )
             widget = ui.select(options={}, label=field_info.label or field_name)
             widget.disable()
-            return widget  # type: ignore[return-value]
+            return widget
 
         repo = self._model_repositories[field_info.item_type]
         field_info.options = {repo.key_from_item(item): str(item) for item in repo}
-        return self._render_select_widget(field_name, field_info, kwargs, value_widget_type='modelselect')
+        return None
 
     def _get_fk_info(self, field_name: str) -> tuple[str, Any] | None:
         """
@@ -654,126 +563,36 @@ class ModelForm():
             return widget  # type: ignore[return-value]
 
     def _render_widget(self, field_name: str, field_info: FieldInfo) -> Any:
-        """Create and wire a widget for the given field, based on its widget_type."""
+        """
+        Create and wire a widget for the given field, based on its widget_type.
+
+        The widget itself is built by niceview.widgets — the same code path as the
+        model-free render_field(); this method adds what needs the model: the item's
+        value, change events, validation state and the model-backed widget types.
+        """
         if not field_info:
             raise ValueError(f"Field info for {field_name} not found")
         widget_type = field_info.widget_type
         if not widget_type:
             raise ValueError(f"Widget type for field {field_name} not found in field info")
 
-        # For native NiceGUI widgets, disable/tooltip/classes/style/props are applied after
-        # creation. Non-native widgets (editgrid) manage their own styling.
-        is_native_widget = True
-        widget: Any = None
+        # editgrid brings its own chrome, styling and change handling.
+        if widget_type == 'editgrid':
+            return self._render_editgrid_widget(field_name, field_info)
 
-        if widget_type == 'ui.input':
-            widget = ui.input(**_pick_attrs(field_info, ['label', 'placeholder', 'password', 'password_toggle_button', 'autocomplete']))
+        # modelselect is a select over a repository: resolve the options first, then let it
+        # fall through to the normal select rendering below.
+        if widget_type == 'modelselect':
+            placeholder = self._prepare_modelselect(field_name, field_info)
+            if placeholder is not None:
+                apply_field_info(placeholder, field_info)
+                return placeholder
+
+        def push_value(widget: Any) -> None:
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            self._wire_text_input(widget, field_name)
 
-        elif widget_type == 'ui.number':
-            widget = ui.number(**_pick_attrs(field_info, ['label', 'placeholder', 'min', 'max', 'precision', 'step', 'prefix', 'suffix', 'format']))
-            self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            self._wire_text_input(widget, field_name)
-
-        elif widget_type == 'ui.textarea':
-            widget = ui.textarea(**_pick_attrs(field_info, ['label', 'placeholder']))
-            self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            self._wire_text_input(widget, field_name)
-
-        elif widget_type == 'ui.checkbox':
-            widget = ui.checkbox(text=field_info.label)
-            self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            self._wire_immediate(widget, field_name)
-            # validation display is irrelevant for checkboxes
-
-        elif widget_type == 'ui.switch':
-            widget = ui.switch(text=field_info.label)
-            self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            self._wire_immediate(widget, field_name)
-            # validation display is irrelevant for switches
-
-        elif widget_type == 'ui.select':
-            widget = self._render_select_widget(field_name, field_info, _pick_attrs(field_info, ['label', 'with_input', 'multiple', 'clearable']))
-
-        elif widget_type == 'ui.radio':
-            widget = self._render_radio_widget(field_name, field_info)
-
-        elif widget_type == 'ui.toggle':
-            widget = self._render_toggle_widget(field_name, field_info)
-
-        elif widget_type == 'checkbox_group':
-            widget = self._render_checkbox_group_widget(field_name, field_info)
-            is_native_widget = False
-
-        elif widget_type == 'ui.color_input':
-            widget = ui.color_input(**_pick_attrs(field_info, ['label', 'placeholder']), preview=field_info.color_preview)
-            self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            self._wire_immediate(widget, field_name)
-
-        elif widget_type == 'ui.input_chips':
-            widget = ui.input_chips(**_pick_attrs(field_info, ['label', 'new_value_mode']))
-            self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            self._wire_text_input(widget, field_name)
-
-        elif widget_type == 'datetime':
-            widget = ui.input(**_pick_attrs(field_info, ['label', 'placeholder'])).props('type=datetime-local').props('step=1')
-            self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            self._wire_text_input(widget, field_name)
-
-        elif widget_type == 'date':
-            # Prefer the native HTML date input over NiceGUI/Quasar's date_input because it is
-            # more lightweight and has better browser support. Value format is YYYY-MM-DD.
-            widget = ui.input(**_pick_attrs(field_info, ['label', 'placeholder'])).props('type=date')
-            self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            self._wire_text_input(widget, field_name)
-
-        elif widget_type == 'time':
-            # Same rationale as 'date': prefer the native HTML time input over NiceGUI/Quasar.
-            widget = ui.input(**_pick_attrs(field_info, ['label', 'placeholder'])).props('type=time').props('step=1')
-            self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            self._wire_text_input(widget, field_name)
-
-        elif widget_type == 'timedelta':
-            widget = ui.input(**_pick_attrs(field_info, ['label', 'placeholder']))
-            self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            self._wire_text_input(widget, field_name)
-
-        elif widget_type == 'ui.slider':
-            slider_min = field_info.min if field_info.min is not None else 0.0
-            slider_max = field_info.max if field_info.max is not None else 100.0
-            slider_kwargs: dict[str, Any] = {'min': slider_min, 'max': slider_max}
-            if field_info.step is not None:
-                slider_kwargs['step'] = field_info.step
-            with ui.column().classes('w-full gap-1'):
-                if field_info.label:
-                    ui.label(field_info.label).classes('text-caption')
-                widget = ui.slider(**slider_kwargs).props('label-always')
-            self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            self._wire_immediate(widget, field_name)
-
-        elif widget_type == 'ui.rating':
-            rating_max = int(field_info.max) if field_info.max is not None else 5
-            with ui.column().classes('gap-1'):
-                if field_info.label:
-                    ui.label(field_info.label).classes('text-caption')
-                widget = ui.rating(max=rating_max)
-            self._from_current_item_to_widget_value(field_name, widget_type, widget)
-            self._wire_immediate(widget, field_name)
-
-        elif widget_type == 'editgrid':
-            widget = self._render_editgrid_widget(field_name, field_info)
-            is_native_widget = False
-
-        elif widget_type == 'modelselect':
-            widget = self._render_modelselect_widget(field_name, field_info, _pick_attrs(field_info, ['label', 'with_input', 'multiple', 'clearable']))
-
-        if widget is None:
-            raise ValueError(f"Invalid widget class: {widget_type}")
-
-        if is_native_widget:
-            self._apply_widget_field_info(widget, field_info)
-
+        widget = create_widget(field_info, field_name, push_value, self.required_marker)
+        self._wire_widget(field_name, widget_type, widget)
         return widget
 
     def render_field(self, field_name: str, **kwargs: Unpack[_FieldInfoInputs]) -> Any:
@@ -839,62 +658,21 @@ class ModelForm():
 
     # --- value conversion --------------------------------------------------
 
-    @staticmethod
-    def _field_allows_none(field_type: Any) -> bool:
-        """True if field_type is Optional / a Union that includes None."""
-        if typing.get_origin(field_type) is typing.Union or isinstance(field_type, types.UnionType):
-            return type(None) in typing.get_args(field_type)
-        return False
-
-    @staticmethod
-    def _unwrap_optional(field_type: Any) -> Any:
-        """Return the single non-None member of an Optional/Union, else field_type unchanged."""
-        if typing.get_origin(field_type) is typing.Union or isinstance(field_type, types.UnionType):
-            non_none = [t for t in typing.get_args(field_type) if t is not type(None)]
-            if len(non_none) == 1:
-                return non_none[0]
-        return field_type
-
     def _from_current_item_to_widget_value(self, field_name: str, widget_type: str, widget: Any) -> None:
         """Push the current item's field value into the widget."""
         value = getattr(self._current_item, field_name)
 
-        if widget_type == 'ui.select' and self._fields[field_name].multiple:
-            # A multi-select widget expects a list; map a None model value to [].
-            if value is None:
-                value = []
-
-        elif widget_type == 'checkbox_group':
-            # Always multi-valued by construction; map a None model value to [].
-            if value is None:
-                value = []
-
-        elif widget_type == 'modelselect':
+        if widget_type == 'modelselect':
+            # The widget holds the repository key of the related item, not the item itself.
             item_type = self._fields[field_name].item_type
             assert item_type is not None, f"item_type for field '{field_name}' must not be None"
             repository = self._model_repositories[item_type]
             if not repository:
                 raise ValueError(f"Model repository for {item_type.__name__} not found in form's model repositories")
-            value = repository.key_from_item(value) if value is not None else None
+            widget.value = repository.key_from_item(value) if value is not None else None
+            return
 
-        elif widget_type == 'datetime':
-            if value is not None:
-                tz = ZoneInfo(self.local_tz) if self.local_tz else None
-                value = value.astimezone(tz).replace(tzinfo=None, microsecond=0).isoformat()
-            else:
-                value = ''
-
-        elif widget_type == 'date':
-            value = value.isoformat() if value is not None else ''
-
-        elif widget_type == 'time':
-            value = value.replace(microsecond=0).isoformat() if value is not None else ''
-
-        elif widget_type == 'timedelta':
-            timedelta_adapter = TypeAdapter(datetime.timedelta)
-            value = timedelta_adapter.dump_python(value, mode="json")
-
-        widget.value = value  # type: ignore[attr-defined]
+        widget.value = to_widget_value(self._fields[field_name], value, local_tz=self.local_tz)  # type: ignore[attr-defined]
 
     def _from_widget_value_to_current_item(self, field_name: str) -> None:
         """
@@ -904,80 +682,16 @@ class ModelForm():
         if field_name not in self.widgets:
             raise ValueError(f"Widget for field {field_name} not found")
         widget = self.widgets[field_name]
-        widget_type = self._fields[field_name].widget_type
-        field_type = self._fields[field_name].field_type
-        value = widget.value  # type: ignore[attr-defined]
+        field_info = self._fields[field_name]
 
-        if widget_type == 'ui.select' and self._fields[field_name].multiple:
-            # Map an empty multi-select back to None when the field is Optional,
-            # so Optional[list[...]] round-trips without special-casing elsewhere.
-            if not value and self._field_allows_none(field_type):
-                value = None
-
-        elif widget_type == 'checkbox_group':
-            # Same None <-> [] interchangeability as the ui.select multi-select case.
-            if not value and self._field_allows_none(field_type):
-                value = None
-
-        elif widget_type == 'ui.input' and typing.get_origin(field_type) == list:
-            value = [item.strip() for item in value.split(',')]
-            item_type = self._fields[field_name].item_type
-            if item_type in (int, float, bool, str):
-                value = [item_type(item) for item in value]
-            else:
-                raise ValueError(f"Field '{field_name}' is a list but no allowed item type is specified")
-
-        elif widget_type == 'ui.number':
-            # A cleared number field yields None (or ''); map it back to None so
-            # Optional fields round-trip and required fields fail validation cleanly,
-            # instead of int(None)/float(None) raising and leaving a stale value.
-            if value is None or value == '':
-                value = None
-            elif self._unwrap_optional(field_type) == int:
-                value = int(value)
-            else:
-                value = float(value)
-
-        elif widget_type in ('ui.slider', 'ui.rating'):
-            if self._unwrap_optional(field_type) == int:
-                value = int(value) if value is not None else 0
-            else:
-                value = float(value) if value is not None else 0.0
-
-        elif widget_type == 'ui.input_chips':
-            expanded: list[Any] = []
-            for v in value:
-                if isinstance(v, str) and ',' in v:
-                    expanded.extend(item.strip() for item in v.split(','))
-                else:
-                    expanded.append(v)
-            value = expanded
-
-        elif widget_type == 'datetime':
-            if value:
-                dt = datetime.datetime.fromisoformat(value)
-                tz = ZoneInfo(self.local_tz) if self.local_tz else None
-                value = dt.replace(tzinfo=tz).astimezone(datetime.timezone.utc)
-            else:
-                value = None
-
-        elif widget_type == 'date':
-            value = datetime.date.fromisoformat(value) if value else None
-
-        elif widget_type == 'time':
-            value = datetime.time.fromisoformat(value) if value else None
-
-        elif widget_type == 'timedelta':
-            timedelta_adapter = TypeAdapter(datetime.timedelta)
-            value = timedelta_adapter.validate_python(value)
-
-        elif widget_type == 'modelselect':
-            item_type = self._fields[field_name].item_type
+        if field_info.widget_type == 'modelselect':
+            item_type = field_info.item_type
             assert item_type is not None, f"item_type for field '{field_name}' must not be None"
             repository = self._model_repositories[item_type]
             if not repository:
                 raise ValueError(f"Model repository for {item_type.__name__} not found in form's model repositories")
-            value = repository.read(value) if value is not None else None
+            key = widget.value  # type: ignore[attr-defined]
+            value = repository.read(key) if key is not None else None
             # Sync FK field (e.g. author -> author_id) so pydantic validation sees the selection.
             # Do NOT also set the relationship attribute: SQLAlchemy would cascade-insert the
             # detached related instance, violating UNIQUE constraints on the related table.
@@ -993,19 +707,72 @@ class ModelForm():
                     fk_val = None
                 setattr(self._current_item, fk_field, fk_val)
                 return  # FK synced; skip setting the relationship object
+        else:
+            try:
+                value = field_value(widget, field_info, local_tz=self.local_tz)
+            except ValueError as e:
+                raise ValueError(f"Field '{field_name}': {e}") from e
 
         setattr(self._current_item, field_name, value)
 
     # --- validation and event handling ------------------------------------
 
-    def _get_field_error(self, field_name: str, value: Any) -> str | None:
-        """NiceGUI validation callback: return the current error message for field_name, or None."""
-        return self._validation_error_messages.get(field_name, None)
+    def _own_field_error(self, field_name: str, value: Any) -> str | None:
+        """
+        Validation layer 1 for a field: `required` first, then field_info.validation — the
+        rules that need no model and behave exactly as they do in render_field().
+        An async validation function is displayed by the widget itself but skipped here: a
+        commit cannot wait for it. See docs/components.md.
+        """
+        field_info = self._fields[field_name]
+        error = required_error(field_info, value, self.required_message)
+        if error is not None:
+            return error
+        result = run_validation(field_info.validation, value)
+        if inspect.isawaitable(result):
+            if inspect.iscoroutine(result):
+                result.close()  # not awaited here — avoid "coroutine was never awaited"
+            return None
+        return result
 
-    def _validate(self) -> None:
+    def _get_field_error(self, field_name: str, value: Any) -> Any:
+        """
+        NiceGUI validation callback, in layer order: the field's own rules (required, then
+        field_info.validation) first, the model's error for this field second.
+        Returns an awaitable when field_info.validation is an async function; NiceGUI resolves
+        it in the background.
+        """
+        field_info = self._fields[field_name]
+        error = required_error(field_info, value, self.required_message)
+        if error is not None:
+            return error
+        result = run_validation(field_info.validation, value)
+        if inspect.isawaitable(result):
+            async def _combined() -> str | None:
+                return await result or self._validation_error_messages.get(field_name)
+            return _combined()
+        return result or self._validation_error_messages.get(field_name)
+
+    def _validate(self, extra_errors: 'dict[str, str] | None' = None) -> None:
+        """
+        Run all validation layers and refresh the error display.
+        Layer 1 (required / field_info.validation) is evaluated per rendered widget and takes
+        precedence over the model's message for the same field; `extra_errors` (conversion
+        failures) wins over both.
+        """
         if self._current_item is None:
             return
         field_errors, nonfield_errors = self._fields.validation_errors(self._current_item.model_dump())
+
+        for field_name, widget in self.widgets.items():
+            if not hasattr(widget, 'value'):
+                continue  # composite widgets (editgrid) are not validated per value
+            own_error = self._own_field_error(field_name, widget.value)
+            if own_error:
+                field_errors[field_name] = own_error
+        if extra_errors:
+            field_errors.update(extra_errors)
+
         self._validation_error_messages = field_errors
         self._nonfield_validation_errors = nonfield_errors
 
@@ -1015,10 +782,18 @@ class ModelForm():
                 self._nonfield_error_element.set_visibility(True)
             else:
                 self._nonfield_error_element.set_visibility(False)
+        elif nonfield_errors and self.widgets and not self._warned_nonfield:
+            self._warned_nonfield = True
+            log.warning(
+                "Model-level validation errors are blocking the form but are not displayed: "
+                "call render_nonfield_errors() to place the message. Errors: "
+                + ' | '.join(nonfield_errors)
+            )
 
         for widget in self.widgets.values():
             if hasattr(widget, 'validate') and callable(widget.validate):
-                widget.validate()
+                # return_result=False: NiceGUI refuses to return a result for async validations
+                widget.validate(return_result=False)
 
     @property
     def has_validation_errors(self) -> bool:
@@ -1045,60 +820,76 @@ class ModelForm():
         self._handle_value_change(field_name, vce)
 
     def _handle_validate(self, field_name: str, value_change_event: ValueChangeEventArguments) -> None:
-        old_value = getattr(self._current_item, field_name)
-        new_value = value_change_event.sender.value  # type: ignore[attr-defined]
+        """Layers 1 and 2: validate the raw widget value, then convert it into the draft."""
+        raw_value = value_change_event.sender.value  # type: ignore[attr-defined]
+        extra_errors: dict[str, str] = {}
 
-        if old_value != new_value:
-            error_msg = None
-            try:
-                self._from_widget_value_to_current_item(field_name)
-            except Exception:
-                error_msg = "Error interpreting widget value"
+        if self._own_field_error(field_name, raw_value) is None:
+            # Only a value the field itself accepts is converted and written to the draft, so
+            # the model never sees a value the user was already told is wrong.
+            if getattr(self._current_item, field_name, None) != raw_value:
+                try:
+                    self._from_widget_value_to_current_item(field_name)
+                except Exception:
+                    extra_errors[field_name] = "Error interpreting widget value"
 
-            self._validate()
+        self._validate(extra_errors)
 
-            # reflect conversion errors in the validation error messages
-            if error_msg is not None:
-                self._validation_error_messages[field_name] = error_msg
+    def _committed_attr(self, field_name: str) -> str:
+        """
+        The attribute that carries a field's value on the item.
+        For modelselect this is the FK field (e.g. author -> author_id): the draft holds the FK,
+        not the relationship object, so that SQLAlchemy does not cascade-insert a detached
+        instance on session.add().
+        """
+        if self._fields[field_name].widget_type == 'modelselect':
+            fk_field = f'{field_name}_id'
+            if fk_field in getattr(type(self._current_item), 'model_fields', {}):
+                return fk_field
+        return field_name
 
     def _handle_value_change(self, field_name: str, value_change_event: ValueChangeEventArguments) -> None:
-        if len(self._validation_error_messages.get(field_name, '')) > 0:
+        """
+        Layer 3: write the draft into the item — but only when the item validates as a whole.
+
+        All changed fields are committed together, not just the one that fired the event: an
+        edit made while a cross-field error stood must not be lost when that error clears.
+        The item is written in place, so NiceGUI bindings on form.item keep working.
+        """
+        if self._current_item is None or self._validated_item is None:
+            return
+        if self.has_validation_errors:
             return
 
-        fi = self._fields[field_name]
-        # For modelselect: _from_widget_value_to_current_item sets the hidden FK field
-        # (e.g. author_id) but intentionally does NOT set the relationship object on
-        # _current_item (to avoid SQLAlchemy cascade-inserting the detached related
-        # instance on session.add()). Compare and propagate the FK field instead.
-        if fi.widget_type == 'modelselect':
-            fk_field = f'{field_name}_id'
-            if fk_field not in getattr(type(self._current_item), 'model_fields', {}):
-                return
-            old_value = getattr(self._validated_item, fk_field, None)
-            new_value = getattr(self._current_item, fk_field, None)
-            if old_value == new_value:
-                return
-            setattr(self._validated_item, fk_field, new_value)
-        else:
-            old_value = getattr(self._validated_item, field_name)
-            new_value = getattr(self._current_item, field_name)
-            if old_value == new_value:
-                return
-            setattr(self._validated_item, field_name, new_value)
+        changes: list[tuple[str, str, Any, Any]] = []
+        for name in self._fields:
+            if self._fields[name].widget_type == 'editgrid':
+                continue  # the grid mutates the item's list in place; nothing to sync
+            attr = self._committed_attr(name)
+            old_value = getattr(self._validated_item, attr, None)
+            new_value = getattr(self._current_item, attr, None)
+            if old_value != new_value:
+                changes.append((name, attr, old_value, new_value))
+        if not changes:
+            return
+
+        for _, attr, _, new_value in changes:
+            setattr(self._validated_item, attr, new_value)
 
         if self.autosave and self._item_adapter is not None:
             self.save()
 
-        fce = FieldChangeEventArguments(
-            sender=value_change_event.sender,
-            client=value_change_event.client,
-            form=self,
-            field_name=field_name,
-            previous_value=old_value,
-            value=new_value,
-        )
-        for handler in self._change_handlers:
-            handle_event(handler, fce)
+        for name, _, old_value, new_value in changes:
+            fce = FieldChangeEventArguments(
+                sender=value_change_event.sender,
+                client=value_change_event.client,
+                form=self,
+                field_name=name,
+                previous_value=old_value,
+                value=new_value,
+            )
+            for handler in self._change_handlers:
+                handle_event(handler, fce)
 
     def _handle_validate_and_change(self, field_name: str, value_change_event: ValueChangeEventArguments) -> None:
         self._handle_validate(field_name, value_change_event)

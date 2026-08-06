@@ -28,6 +28,12 @@ One form showing all field types supported by NiceView:
 | `int` with `ge`/`le` + `widget_type='ui.slider'` | `ui.slider` |
 | `int` with `le` + `widget_type='ui.rating'` | `ui.rating` |
 | `list[BaseModel]` | Inline `EditGridWrapper` |
+| `pydantic.SecretStr` | `ui.input` (password with reveal button) |
+| `pydantic.Field(frozen=True)` | any widget, disabled |
+| field without a default | any widget, label marked `*`, empty value rejected |
+
+Texts come from the model, one source per destination: `title` becomes the label,
+`description` the hint below the widget, `examples[0]` the placeholder.
 
 This example also demonstrates how to customize the widgets, layout and style via `niceview.Field` metadata, ui.grid() and `ElementFilter`.
 """
@@ -49,6 +55,9 @@ class Tag(pydantic.BaseModel):
 
 
 class AllTypes(pydantic.BaseModel):
+    # required (no default): the label gets a ' *' marker and an empty value is rejected,
+    # with or without pydantic — see docs/components.md#validation
+    handle: Annotated[str, pydantic.Field(title='Handle (required)', description='Unique, lowercase', examples=['a-handle'])]
     text: str = pydantic.Field(default='hello', title='String')
     text_area: Annotated[str, niceview.Field(widget_type='ui.textarea', label='String in Textarea')] = 'hello\nworld'
     password: Annotated[str, pydantic.Field(title='Password'), niceview.Field(password=True, password_toggle_button=True)] = 'hunter2'
@@ -85,6 +94,8 @@ class AllTypes(pydantic.BaseModel):
         title='Chips (constrained items: lowercase, 2-10 chars)',
     )
     nums: list[int] = pydantic.Field(default_factory=lambda: [1, 2, 3], title='Numbers (list[int], comma-separated)')
+    secret: pydantic.SecretStr = pydantic.Field(default=pydantic.SecretStr('s3cret'), title='SecretStr (password input)')
+    created: str = pydantic.Field(default='2026-08-06', title='Frozen (disabled)', frozen=True)
     tags: list[Tag] = pydantic.Field(
         default_factory=lambda: [Tag(label='important')],
         title='Tags (list of BaseModel with __str__ method)',
@@ -107,7 +118,7 @@ def page():
 
         with ui.tab_panel(tab_all_types):
             with ui.grid().classes('w-full gap-4 grid-cols-1 lg:grid-cols-2').mark('my-form'):
-                ModelForm.from_item(AllTypes()).render()
+                ModelForm.from_item(AllTypes(handle='alice')).render()
 
     # Styling example: make all my-form elements outlined and dense
     ElementFilter().within(marker='my-form').props('outlined dense')

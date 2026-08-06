@@ -11,6 +11,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 (nothing yet)
 
 
+[0.12.0] - 2026-08-06
+---------------------
+
+Field metadata now mirrors NiceGUI's widget options, validation runs in documented layers, and
+the edited item is written only when it validates as a whole. See
+[Field Metadata Comparison](field-metadata-comparison.md) for the full mapping and
+[Validation](components.md#validation) for the layers.
+
+### Breaking changes
+
+- **`form.item` no longer updates while any validation error is present.** It is now, by
+  definition, the last state that validated as a whole — the state `save()` would persist.
+  What the widgets currently hold is `form.draft`. Previously a field was committed as soon as
+  that field alone was valid, which left `form.item` in states `save()` refused (a cross-field
+  `@model_validator` error did not block the write-back at all).
+- **`on_change` fires on commit, per changed field.** One interaction can emit several events,
+  and an edit blocked by a validation error is reported when the error clears. Only fields
+  whose value actually changed emit an event.
+- **`FieldInfo.validation` now runs inside a `ModelForm`**, before the model's message. It used
+  to be overwritten by the model-error lookup on every widget that could display a message,
+  i.e. it never ran.
+- **`FieldInfo.format` is now `number_format`** — JSON Schema's `format` corresponds to
+  `widget_type`, and the collision would have hit the planned schema-driven form first.
+  No alias; the old name raises `TypeError`.
+- **`FieldInfo.help_text` is replaced by `hint`**, which is actually rendered (Quasar's `hint`
+  prop, below the widget). `help_text` never rendered anything. No alias.
+- **`description` no longer fills `placeholder` and `tooltip`.** One source, one destination:
+  `title` -> `label`, `description` -> `hint`, `examples[0]` -> `placeholder`. `tooltip` is
+  opt-in. This changes the look of every form whose model uses `description`.
+- **`required` is rendered and enforced at the widget level**: the label gets a `' *'` marker
+  (`required_marker=None` to switch off) and an empty value (`None`, `''`, `[]` — never `False`
+  or `0`) is rejected with `'Required'` (`required_message=` to change). A field without a
+  default that legitimately held an empty string is now blocked.
+- **`pydantic.Field(frozen=True)` (and `model_config = ConfigDict(frozen=True)`) implies
+  `editable=False`.** Pydantic raises on every assignment to a frozen field, so such a field
+  used to render enabled and answer the first keystroke with "Error interpreting widget value".
+  An explicit `niceview.Field(editable=True)` still wins and logs a warning.
+- **`pydantic.SecretStr` renders as a password input** with a reveal button instead of plain
+  text, and `field_value()` returns a `SecretStr`.
+- **`ModelGridInlineEdit` honours `editable=False`**; it used to make every column editable.
+- **`save()` and `refresh()` write into the existing item** instead of replacing it, so
+  bindings on `form.item` survive them. `load(key)` still rebinds — it navigates to a
+  different item.
+
+### Added
+
+- **Model-free field rendering**: `niceview.render_field(field_info, value)` renders a single
+  widget from a `niceview.Field()` in the current NiceGUI context, and
+  `niceview.field_value(widget, field_info)` reads it back with the same value conversions
+  `ModelForm` applies (`niceview.to_widget_value()` is the other direction). No Pydantic model,
+  no `create_model()` — for callers that decide themselves what a field is, e.g. an interpreter
+  for an untrusted schema. `widget_type` is required; `'editgrid'` and `'modelselect'` raise
+  `ValueError` because both need a model type and a repository. Validation layers 1 and 2 work
+  there exactly as they do in a form. See
+  [Components](components.md#render_field--a-single-widget-without-a-model).
+- `field_type` is now a documented `niceview.Field()` argument. `ModelForm` still takes it from
+  the model annotation; setting it by hand drives `field_value()`'s type-dependent conversions
+  (e.g. `field_type=int` to read a `'ui.number'` back as `int` instead of `float`).
+- `ModelForm.draft`: the current widget values as a model instance, including values that fail
+  validation and are therefore not in `item` yet.
+- `ModelForm(required_marker=..., required_message=...)`, also available on
+  `render_field(..., required_marker=...)`.
+- `niceview.widgets.run_validation()`, `required_error()` and `is_empty()` — the widget-level
+  validation layer, shared by `ModelForm` and `render_field()`. Async validation functions are
+  supported for display (they cannot block the synchronous commit).
+- `FieldInfo.key_generator` (`ui.select`), plus the previously dropped forwards: `prefix`/
+  `suffix` on `ui.input`, `clearable` on `ui.toggle` and `ui.input_chips`, `new_value_mode` on
+  `ui.select`.
+- `FieldInfo.hint` renders on all QInput/QSelect based widgets; `label` renders as a caption
+  above the widgets that have no label parameter (`ui.radio`, `ui.toggle`, `checkbox_group` —
+  joining `ui.slider` and `ui.rating`, which already did).
+- `niceview.widgets.WIDGET_OPTIONS` declares, per widget, which NiceGUI constructor argument is
+  a `FieldInfo` attribute, owned by niceview, or left to `props=`.
+  `tests/test_widget_option_coverage.py` checks it against the installed NiceGUI, so an
+  upgrade that adds an argument fails the suite instead of drifting silently.
+- `ModelForm` logs a warning when model-level validation errors are blocking commits but no
+  `render_nonfield_errors()` label is on screen to show them.
+- `examples/14_render_field.py` covers the model-free path; `examples/02_field_types.py` now
+  shows hint, required, frozen and `SecretStr`.
+
+### Changed
+
+- `ModelForm` builds its widgets through the new `niceview/widgets.py` — the same code path as
+  `render_field()`, so both render identical widgets. `CheckboxGroup` moved there too and is
+  still importable from `niceview` and `niceview.modelform`.
+
+### Documentation
+
+- New [Field Metadata Comparison](field-metadata-comparison.md) page: a side-by-side table of
+  `niceview.Field()`, the NiceGUI widget options, `pydantic.Field()` / `annotated-types`
+  constraints and their JSON Schema equivalents, with `-` for everything unsupported and the
+  deviations between them spelled out.
+- [Components](components.md#validation) documents the validation layers, the commit policy and
+  the `item` / `draft` contract. The three principles behind this release are recorded in
+  [DESIGN.md](../DESIGN.md).
+
+
 [0.11.0] - 2026-08-05
 ---------------------
 

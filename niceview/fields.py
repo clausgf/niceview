@@ -142,7 +142,13 @@ class _FieldInfoResolver:
             else:
                 log.warning(f"Field '{field_name}' has a Union type with multiple non-None types, cannot determine widget type: {field_type=} {union_types=}")
 
-        if field_type in self._widget_lookup:
+        if field_type is pydantic.SecretStr:
+            nv_field_info.widget_type = 'ui.input'
+            for attr in ('password', 'password_toggle_button'):
+                if attr not in vars(nv_field_info):  # not explicitly set by the user
+                    setattr(nv_field_info, attr, True)
+            log.debug(f"_field_info_from_pydantic: {field_name=} SecretStr -> password input")
+        elif field_type in self._widget_lookup:
             nv_field_info.widget_type = self._widget_lookup[field_type]
             log.debug(f"_field_info_from_pydantic: {field_name=} widget_type from lookup: {nv_field_info.widget_type}")
         elif typing.get_origin(field_type) == typing.Literal:
@@ -201,14 +207,18 @@ class _FieldInfoResolver:
         log.debug(f"_field_info_from_pydantic: {field_name=} list field -> widget_type={nv_field_info.widget_type} item_type={nv_field_info.item_type}")
 
     def _apply_pydantic_metadata(self, field_name: str, nv_field_info: FieldInfo, py_field_info: pydantic.fields.FieldInfo) -> None:
+        # One source, one destination: title -> label, description -> hint (help text below
+        # the widget), examples[0] -> placeholder (an example of the expected input).
+        # tooltip stays opt-in: it would only repeat the hint on hover.
         if not nv_field_info.label:
             nv_field_info.label = py_field_info.title or self._label_from_name(field_name)
-        if nv_field_info.placeholder is None:
-            nv_field_info.placeholder = py_field_info.description
+        if nv_field_info.hint is None:
+            nv_field_info.hint = py_field_info.description
+        if nv_field_info.placeholder is None and py_field_info.examples:
+            nv_field_info.placeholder = str(py_field_info.examples[0])
         if nv_field_info.required is None:
             nv_field_info.required = py_field_info.is_required()
-        if nv_field_info.tooltip is None:
-            nv_field_info.tooltip = py_field_info.description
+        self._apply_frozen(field_name, nv_field_info, py_field_info)
 
         # unwrap Optional to check for numeric constraints (e.g. int | None still needs min/max)
         effective_type = nv_field_info.field_type
@@ -229,6 +239,24 @@ class _FieldInfoResolver:
                     nv_field_info.max = float(constraint.le)  # type: ignore[arg-type]
                 if nv_field_info.step is None and isinstance(constraint, annotated_types.MultipleOf):
                     nv_field_info.step = float(constraint.multiple_of)  # type: ignore[arg-type]
+
+    def _apply_frozen(self, field_name: str, nv_field_info: FieldInfo, py_field_info: pydantic.fields.FieldInfo) -> None:
+        """
+        A frozen field cannot be written: pydantic raises ValidationError on every assignment,
+        including on the model_copy() a form edits. Rendering it enabled produces a write error
+        on the first keystroke, so frozen implies editable=False.
+        """
+        frozen = bool(py_field_info.frozen) or bool(self._item_type.model_config.get('frozen'))
+        if not frozen:
+            return
+        if 'editable' in vars(nv_field_info):  # explicitly set by the user — explicit wins
+            if nv_field_info.editable:
+                log.warning(
+                    f"Field '{field_name}' is frozen in the model but was declared editable=True — "
+                    f"writing to it will fail. Remove editable=True or the frozen=True."
+                )
+            return
+        nv_field_info.editable = False
 
     def _resolve_type_string(self, type_str: str, field_name: str) -> type:
         """Resolve a forward-reference string to its class, using the model's module."""
