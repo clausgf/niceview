@@ -11,6 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 (nothing yet)
 
 
+[0.14.1] - 2026-08-07
+---------------------
+
+### Security
+
+- `aiohttp` 3.14.1 -> 3.14.3 in `uv.lock`, closing three advisories reported against the
+  locked version: an out-of-bounds heap read in the C HTTP response parser (high), HTTP
+  request smuggling via a WebSocket upgrade, and a WebSocket client accepting compressed
+  frames without a negotiated `permessage-deflate`. A transitive dependency through NiceGUI;
+  no declared requirement changed.
+
+### Changed
+
+- Internal: `_create_checkbox_group_widget()` no longer disables the group itself — since
+  0.14.0 `apply_field_info()` reaches composite widgets, so a non-editable checkbox group was
+  being disabled twice. No behaviour change.
+
+
 [0.14.0] - 2026-08-07
 ---------------------
 

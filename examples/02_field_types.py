@@ -113,7 +113,7 @@ def page():
         tab_home = ui.tab('Documentation')
         tab_all_types = ui.tab('All Types')
 
-    with ui.tab_panels(tabs, value=tab_home).classes('w-full') as panels:
+    with ui.tab_panels(tabs, value=tab_home).classes('w-full'):
 
         with ui.tab_panel(tab_home):
             ui.markdown(__doc__ or '')

@@ -682,8 +682,6 @@ def _create_checkbox_group_widget(field_info: FieldInfo, name: str, push_value: 
                 checkboxes[opt] = ui.checkbox(text=str(label))
 
     widget = CheckboxGroup(list(checkboxes.keys()), checkboxes, container_element)
-    if not field_info.editable:
-        widget.disable()
     push_value(widget)
     if pending is not None:
         _schedule_late_options(name, pending, _make_late_options_applier(widget, push_value))
