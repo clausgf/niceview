@@ -99,6 +99,11 @@ group = form.w('perms', CheckboxGroup)     # typed narrowing, raises TypeError i
 group.checkboxes['admin'].classes('text-negative')
 group.widget.classes('gap-x-8')
 ```
+`classes`, `style`, `props` and `tooltip` from the field's `FieldInfo` (and the form's
+`base_props` / `default_classes`) reach the group's container, exactly as they reach `ui.radio`
+for a radio field — `group.classes(...)` and the other three are forwarded to `widget`. `hint`
+is the exception: like radio, toggle, slider and rating, a checkbox group has no hint slot.
+The `inline` prop is consumed as a layout directive and is not passed on to the container.
 
 
 Field Customization
@@ -173,9 +178,27 @@ to override (an empty string counts as explicit and renders nothing):
 | Attribute | Comes from | Rendered as |
 |---|---|---|
 | `label` | `pydantic.Field(title=...)`, else the prettified field name | the widget's label; a caption above widgets that have none (radio, toggle, checkbox_group, slider, rating) |
-| `hint` | `pydantic.Field(description=...)` | Quasar's `hint`, below the widget |
+| `description` | `pydantic.Field(description=...)` | wherever `description_as` sends it — see below |
 | `placeholder` | `pydantic.Field(examples=[...])[0]` | the widget's placeholder |
+| `hint` | nothing — opt-in | Quasar's `hint`, below the widget |
 | `tooltip` | nothing — opt-in | on hover |
+
+`hint` and `tooltip` are the form author's: nothing is ever inferred into them. The model's
+`description` is separate — it is carried as metadata, and **where** it is shown is decided when
+the field is rendered:
+
+```python
+ModelForm.from_item(contact, description_as='tooltip').render()   # the default
+ModelForm.from_item(contact, description_as='hint').render()      # below the widget
+ModelForm.from_item(contact, description_as=None).render()        # not shown
+niceview.render_field(field_info, value, description_as='hint')   # same knob, no model
+```
+
+`description_as='tooltip'` is the default because every widget has a tooltip while a hint needs
+one of the hint-capable widget types (input, number, textarea, select, chips, color, the
+date/time family), and because a hint costs vertical space in every single row. `Meta.description_as`
+sets it on the model instead. A field that sets `hint` or `tooltip` itself always wins — the
+description then simply does not fill that slot, and never spills into the other one.
 
 **State** is resolved too: a field without a default is `required` (label marker `' *'`, empty
 values rejected — see [Validation](components.md#validation)), and `pydantic.Field(frozen=True)`

@@ -27,6 +27,17 @@ def _form(build) -> list:
     return captured
 
 
+def _tooltips_of(widget) -> list[str]:
+    """
+    The texts of the tooltips attached to a widget. NiceGUI's Element.tooltip() does not nest
+    the tooltip inside the element — it creates it in the current slot and links it back with a
+    'target' prop — so widget.descendants() would never find it.
+    """
+    target = f'#{widget.html_id}'
+    return [e.text for e in widget.client.elements.values()
+            if isinstance(e, ui.tooltip) and e.props.get('target') == target]
+
+
 # ---------------------------------------------------------------------------
 # layer order
 # ---------------------------------------------------------------------------
@@ -327,15 +338,43 @@ class TestModelMetadata:
         assert captured[0].w('created').enabled is True
         assert 'frozen' in caplog.text
 
-    async def test_description_renders_as_hint(self, user: User) -> None:
+    async def test_description_renders_as_tooltip(self, user: User) -> None:
         class Item(pydantic.BaseModel):
             name: str = pydantic.Field(default='Alice', description='Full legal name')
 
         captured = _form(lambda: ModelForm.from_item(Item()).render())
         await user.open('/')
         widget = captured[0].w('name')
-        assert widget._props['hint'] == 'Full legal name'
+        assert 'hint' not in widget._props
         assert 'placeholder' not in widget._props
+        assert _tooltips_of(widget) == ['Full legal name']
+
+    async def test_description_as_hint_restores_the_old_placement(self, user: User) -> None:
+        class Item(pydantic.BaseModel):
+            name: str = pydantic.Field(default='Alice', description='Full legal name')
+
+        captured = _form(lambda: ModelForm.from_item(Item(), description_as='hint').render())
+        await user.open('/')
+        assert captured[0].w('name')._props['hint'] == 'Full legal name'
+
+    async def test_description_as_none_shows_it_nowhere(self, user: User) -> None:
+        class Item(pydantic.BaseModel):
+            name: str = pydantic.Field(default='Alice', description='Full legal name')
+
+        captured = _form(lambda: ModelForm.from_item(Item(), description_as=None).render())
+        await user.open('/')
+        widget = captured[0].w('name')
+        assert 'hint' not in widget._props
+        assert _tooltips_of(widget) == []
+
+    async def test_explicit_hint_wins_over_the_description(self, user: User) -> None:
+        class Item(pydantic.BaseModel):
+            name: Annotated[str, niceview.Field(hint='Mine')] = pydantic.Field(
+                default='Alice', description='Full legal name')
+
+        captured = _form(lambda: ModelForm.from_item(Item(), description_as='hint').render())
+        await user.open('/')
+        assert captured[0].w('name')._props['hint'] == 'Mine'
 
     async def test_secret_str_renders_as_password(self, user: User) -> None:
         class Item(pydantic.BaseModel):

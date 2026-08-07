@@ -220,3 +220,80 @@ class TestRunValidation:
 
     def test_none_validation(self):
         assert niceview.widgets.run_validation(None, 'anything') is None
+
+
+class TestWithoutProp:
+    """
+    _without_prop() keeps a niceview layout directive from leaking into the widget as an HTML
+    attribute — 'inline' selects row vs column for a checkbox_group and means nothing to Quasar.
+    """
+
+    def test_removes_the_token(self):
+        fi = Field(widget_type='checkbox_group', props='inline dense')
+        assert niceview.widgets._without_prop(fi, 'inline').props == 'dense'
+
+    def test_leaves_the_original_untouched(self):
+        fi = Field(widget_type='checkbox_group', props='inline dense')
+        niceview.widgets._without_prop(fi, 'inline')
+        assert fi.props == 'inline dense'
+
+    def test_only_the_whole_token_matches(self):
+        fi = Field(widget_type='checkbox_group', props='inline-block')
+        assert niceview.widgets._without_prop(fi, 'inline').props == 'inline-block'
+
+    def test_no_props_is_passed_through(self):
+        fi = Field(widget_type='checkbox_group')
+        assert niceview.widgets._without_prop(fi, 'inline').props is None
+
+
+class TestResolveHelpTexts:
+    """
+    Where a field's `description` ends up. Explicit beats derived, and a description never
+    fills the slot it was not assigned to.
+    """
+    resolve = staticmethod(niceview.widgets.resolve_help_texts)
+
+    def test_description_becomes_the_tooltip_by_default(self):
+        fi = Field(widget_type='ui.input', description='what it means')
+        assert self.resolve(fi) == (None, 'what it means')
+
+    def test_description_becomes_the_hint_when_asked(self):
+        fi = Field(widget_type='ui.input', description='what it means')
+        assert self.resolve(fi, 'hint') == ('what it means', None)
+
+    def test_description_is_dropped_when_switched_off(self):
+        fi = Field(widget_type='ui.input', description='what it means')
+        assert self.resolve(fi, None) == (None, None)
+
+    def test_explicit_tooltip_wins_over_the_description(self):
+        fi = Field(widget_type='ui.input', description='derived', tooltip='mine')
+        assert self.resolve(fi, 'tooltip') == (None, 'mine')
+
+    def test_explicit_hint_wins_over_the_description(self):
+        fi = Field(widget_type='ui.input', description='derived', hint='mine')
+        assert self.resolve(fi, 'hint') == ('mine', None)
+
+    def test_a_description_never_fills_the_other_slot(self):
+        # hint is taken, but the description was assigned to the tooltip: it stays there
+        fi = Field(widget_type='ui.input', description='derived', hint='mine')
+        assert self.resolve(fi, 'tooltip') == ('mine', 'derived')
+
+    def test_both_explicit_are_both_kept(self):
+        fi = Field(widget_type='ui.input', description='derived', hint='h', tooltip='t')
+        assert self.resolve(fi, 'tooltip') == ('h', 't')
+
+    def test_empty_explicit_value_suppresses_the_description(self):
+        # '' is assigned, so the slot counts as taken — an explicit way to say 'nothing here'
+        fi = Field(widget_type='ui.input', description='derived', tooltip='')
+        assert self.resolve(fi, 'tooltip') == (None, '')
+
+    def test_no_description_leaves_both_alone(self):
+        fi = Field(widget_type='ui.input', hint='h')
+        assert self.resolve(fi, 'tooltip') == ('h', None)
+
+    def test_explicitness_survives_a_field_info_merge(self):
+        # a tooltip set in Meta.field_infos / ModelForm(field_infos=) must win just as one
+        # set on the model field does
+        base = Field(widget_type='ui.input', description='derived')
+        merged = niceview.fieldinfo._merge_field_infos(base, Field(tooltip='from meta'))
+        assert self.resolve(merged, 'tooltip') == (None, 'from meta')

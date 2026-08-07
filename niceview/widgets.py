@@ -28,7 +28,7 @@ from nicegui import background_tasks, ui
 from nicegui.elements.mixins.validation_element import ValidationDict, ValidationFunction
 from nicegui.events import Handler, ValueChangeEventArguments, handle_event
 
-from niceview.fieldinfo import FieldInfo
+from niceview.fieldinfo import FieldInfo, _merge_field_infos
 
 log = logging.getLogger('niceview')
 
@@ -41,6 +41,16 @@ REQUIRED_MARKER = ' *'
 
 REQUIRED_MESSAGE = 'Required'
 """Validation message for an empty required field. Per form: ModelForm(required_message=...)."""
+
+DescriptionTarget: typing.TypeAlias = typing.Literal['hint', 'tooltip'] | None
+"""Where a model's `description` is rendered: below the widget, on hover, or nowhere."""
+
+DESCRIPTION_AS: DescriptionTarget = 'tooltip'
+"""Default slot for a field's `description`. Per form: ModelForm(description_as=...); per call:
+render_field(..., description_as=...). 'tooltip' rather than 'hint' because every widget has a
+tooltip, while a hint needs one of HINT_WIDGETS — and because a hint costs vertical space in
+every row, whereas a description is supplementary by nature. A field that sets `hint` or
+`tooltip` explicitly is never touched by this."""
 
 HINT_WIDGETS: frozenset[str] = frozenset({
     'ui.input', 'ui.number', 'ui.textarea', 'ui.select', 'ui.input_chips', 'ui.color_input',
@@ -172,6 +182,25 @@ class CheckboxGroup:
 
     def on_value_change(self, handler: Handler[ValueChangeEventArguments]) -> None:
         self._value_change_handlers.append(handler)
+
+    # Styling is forwarded to the container, mirroring what apply_field_info() does to a native
+    # widget: ui.radio also gets the classes itself, not the caption column wrapping it.
+
+    def classes(self, add: str | None = None, **kwargs: Any) -> 'CheckboxGroup':
+        self.widget.classes(add, **kwargs)
+        return self
+
+    def style(self, add: str | None = None, **kwargs: Any) -> 'CheckboxGroup':
+        self.widget.style(add, **kwargs)
+        return self
+
+    def props(self, add: str | None = None, **kwargs: Any) -> 'CheckboxGroup':
+        self.widget.props(add, **kwargs)
+        return self
+
+    def tooltip(self, text: str) -> 'CheckboxGroup':
+        self.widget.tooltip(text)
+        return self
 
     def _relay(self, e: ValueChangeEventArguments) -> None:
         vce = ValueChangeEventArguments(sender=self, client=e.client, value=self.value, previous_value=None)  # type: ignore[arg-type]
@@ -448,17 +477,44 @@ def field_value(widget: Any, field_info: FieldInfo, *, local_tz: str | None = No
 
 # --- widget creation -------------------------------------------------------
 
-def apply_field_info(widget: Any, field_info: FieldInfo) -> None:
-    """Apply disable, hint, tooltip, classes, style, props and validation from field_info to a native NiceGUI widget."""
-    if field_info.hint and field_info.widget_type in HINT_WIDGETS:
-        # Set the prop directly instead of going through props('hint="..."'): the string form
-        # is parsed, so a quote inside the text would inject other props — and hints come from
-        # model descriptions, which in a schema-driven form are not ours to trust.
-        widget._props['hint'] = field_info.hint
+def resolve_help_texts(field_info: FieldInfo, description_as: DescriptionTarget = DESCRIPTION_AS) -> tuple[str | None, str | None]:
+    """
+    The (hint, tooltip) texts to render for a field.
+
+    What the field sets explicitly is used as-is. The model's `description` fills whichever of
+    the two `description_as` names — but only if the field left that one unset, and never the
+    other one. 'Unset' means the attribute was never assigned, so `Field(tooltip='')` is a way
+    to say 'no tooltip here, not even from the description'.
+    """
+    hint, tooltip = field_info.hint, field_info.tooltip
+    if field_info.description:
+        if description_as == 'hint' and 'hint' not in vars(field_info):
+            hint = field_info.description
+        elif description_as == 'tooltip' and 'tooltip' not in vars(field_info):
+            tooltip = field_info.description
+    return hint, tooltip
+
+
+def apply_field_info(widget: Any, field_info: FieldInfo, description_as: DescriptionTarget = DESCRIPTION_AS) -> None:
+    """
+    Apply disable, hint, tooltip, classes, style, props and validation from field_info to a
+    widget. Every step is guarded by hasattr, so this works for the composite widgets
+    (CheckboxGroup) as well: they forward the styling calls they support and simply miss the
+    rest — a hint or a validation message has nowhere to go on a group of checkboxes.
+    """
+    hint, tooltip = resolve_help_texts(field_info, description_as)
+    if hint:
+        if field_info.widget_type in HINT_WIDGETS:
+            # Set the prop directly instead of going through props('hint="..."'): the string
+            # form is parsed, so a quote inside the text would inject other props — and hints
+            # may come from model descriptions, which in a schema-driven form are not ours to trust.
+            widget._props['hint'] = hint
+        else:
+            log.debug(f"widget_type '{field_info.widget_type}' has no hint slot, dropping hint {hint!r}")
     if not field_info.editable and hasattr(widget, 'disable') and callable(widget.disable):
         widget.disable()
-    if field_info.tooltip and hasattr(widget, 'tooltip') and callable(widget.tooltip):
-        widget.tooltip(field_info.tooltip)
+    if tooltip and hasattr(widget, 'tooltip') and callable(widget.tooltip):
+        widget.tooltip(tooltip)
     if field_info.classes and hasattr(widget, 'classes') and callable(widget.classes):
         widget.classes(field_info.classes)
     if field_info.style and hasattr(widget, 'style') and callable(widget.style):
@@ -473,7 +529,8 @@ def apply_field_info(widget: Any, field_info: FieldInfo) -> None:
 
 
 def create_widget(field_info: FieldInfo, name: str, push_value: Callable[[Any], None],
-                  required_marker: str | None = REQUIRED_MARKER) -> Any:
+                  required_marker: str | None = REQUIRED_MARKER,
+                  description_as: DescriptionTarget = DESCRIPTION_AS) -> Any:
     """
     Create the widget for field_info.widget_type in the current NiceGUI context and apply
     field_info's styling. `push_value(widget)` is called to set the widget's value — right
@@ -486,9 +543,6 @@ def create_widget(field_info: FieldInfo, name: str, push_value: Callable[[Any], 
     """
     widget_type = field_info.widget_type
     label = _label(field_info, required_marker)
-
-    # Composite widgets (checkbox_group) manage their own styling and layout.
-    is_native_widget = True
     widget: Any = None
 
     if widget_type == 'ui.input':
@@ -522,7 +576,9 @@ def create_widget(field_info: FieldInfo, name: str, push_value: Callable[[Any], 
 
     elif widget_type == 'checkbox_group':
         widget = _create_checkbox_group_widget(field_info, name, push_value, required_marker)
-        is_native_widget = False
+        # 'inline' is a niceview layout directive consumed above, not a Quasar prop: keep it
+        # from reaching the container as an HTML attribute.
+        field_info = _without_prop(field_info, 'inline')
 
     elif widget_type == 'ui.color_input':
         widget = ui.color_input(label=label, **_pick_attrs(field_info, ['placeholder']), preview=field_info.color_preview)
@@ -570,10 +626,15 @@ def create_widget(field_info: FieldInfo, name: str, push_value: Callable[[Any], 
     if widget is None:
         raise ValueError(f"Invalid widget class: {widget_type}")
 
-    if is_native_widget:
-        apply_field_info(widget, field_info)
-
+    apply_field_info(widget, field_info, description_as)
     return widget
+
+
+def _without_prop(field_info: FieldInfo, prop: str) -> FieldInfo:
+    """A copy of field_info with one whitespace-separated token removed from its props."""
+    if not field_info.props:
+        return field_info
+    return _merge_field_infos(field_info, FieldInfo(props=' '.join(p for p in field_info.props.split() if p != prop)))
 
 
 def _create_select_widget(field_info: FieldInfo, name: str, push_value: Callable[[Any], None], label: str) -> ui.select:
@@ -632,7 +693,8 @@ def _create_checkbox_group_widget(field_info: FieldInfo, name: str, push_value: 
 # --- public model-free entry point -----------------------------------------
 
 def render_field(field_info: FieldInfo, value: Any = None, *, local_tz: str | None = None,
-                 required_marker: str | None = REQUIRED_MARKER) -> Any:
+                 required_marker: str | None = REQUIRED_MARKER,
+                 description_as: DescriptionTarget = DESCRIPTION_AS) -> Any:
     """
     Render a single widget from a FieldInfo in the current NiceGUI context, initialised to
     `value`, and return it.
@@ -657,6 +719,11 @@ def render_field(field_info: FieldInfo, value: Any = None, *, local_tz: str | No
 
     `required` also appends `required_marker` to the label; pass `required_marker=None` for none.
 
+    `field_info.description` is help text without a fixed place: `description_as` decides
+    whether it is rendered as the hint, as the tooltip, or not at all. It is the slot for text
+    that came from a schema rather than from the person laying out the form — an explicit
+    `hint` or `tooltip` on the FieldInfo always wins over it.
+
     Raises ValueError if widget_type is missing, unknown, or one of 'editgrid' / 'modelselect'
     (both need a model type and a repository — use ModelForm for those).
     """
@@ -671,7 +738,7 @@ def render_field(field_info: FieldInfo, value: Any = None, *, local_tz: str | No
     def push_value(widget: Any) -> None:
         widget.value = to_widget_value(field_info, value, local_tz=local_tz)
 
-    widget = create_widget(field_info, field_info.label or widget_type, push_value, required_marker)
+    widget = create_widget(field_info, field_info.label or widget_type, push_value, required_marker, description_as)
     if field_info.required and hasattr(widget, 'validation'):
         # Chain the required check in front of the caller's own validation, same order as
         # ModelForm's — apply_field_info() has already set field_info.validation.

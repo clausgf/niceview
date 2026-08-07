@@ -63,7 +63,9 @@ def hero() -> None:
     with ui.column().classes('w-full items-center q-pa-lg'):
         with ui.card().classes('shot-card w-full max-w-md'):
             ui.label('Deployment').classes('text-h6')
-            ModelForm.from_item(Deployment()).render()
+            # description_as='hint': the model's description belongs below the field here — a
+            # tooltip (the default) would not show up in a screenshot.
+            ModelForm.from_item(Deployment(), description_as='hint').render()
 
 
 @ui.page('/grid')

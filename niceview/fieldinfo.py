@@ -38,6 +38,11 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
     hidden: bool
     editable: bool
     hint: str
+    description: str
+    """Free-form help text about the field, resolved from pydantic's `description`. Where it is
+    shown is a rendering decision, not a property of the field: `ModelForm(description_as=...)`
+    or `render_field(..., description_as=...)` puts it in the hint or the tooltip. An explicit
+    `hint`/`tooltip` on the field always wins over it."""
     widget_type: WidgetType
 
     props: str
@@ -115,8 +120,12 @@ class FieldInfo():
     hidden: bool = False
     editable: bool = True
     hint: str | None = None
-    """Help text shown below the widget (Quasar's `hint` prop). Resolved from pydantic's
-    `description`; widgets without a hint slot ignore it."""
+    """Help text shown below the widget (Quasar's `hint` prop). Set explicitly; widgets without
+    a hint slot (see widgets.HINT_WIDGETS) ignore it."""
+    description: str | None = None
+    """What the model says the field means, resolved from pydantic's `description`. Carried as
+    metadata only — `description_as` decides at render time whether it becomes the hint, the
+    tooltip, or nothing at all, and an explicit `hint`/`tooltip` always wins over it."""
     # widget type for the field (default inferred from field type)
     widget_type: WidgetType | None = None
 

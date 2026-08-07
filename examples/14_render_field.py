@@ -15,6 +15,11 @@ becomes a Python class.
 `required` list is directly usable. `validation=` would add a rule per field, in the same order
 a `ModelForm` would run it — see docs/components.md#validation.
 
+A schema's `description` goes into `description=`, not into `hint=`: it is help text without a
+fixed place, and `description_as` decides at render time whether it becomes the hint, the
+tooltip or nothing — exactly the same knob a `ModelForm` has. `hint=`/`tooltip=` stay for what
+*this* code decides to show, and they win over the description.
+
 Note what is *not* here: no change events, no autosave, no model validation, no widget registry.
 The caller owns the widgets and reads them when it wants to — see `collect()`.
 """
@@ -58,7 +63,7 @@ def to_field_info(field: dict[str, Any]) -> FieldInfo:
     kind = field['kind']
     return Field(
         label=field.get('label', field['key']),
-        hint=field.get('description'),                                # -> Quasar hint
+        description=field.get('description'),                         # placed by description_as
         required=bool(field.get('required')),                         # -> ' *' marker + non-empty check
         widget_type=_WIDGETS[kind],                                  # type: ignore[typeddict-item]
         field_type=int if kind == 'integer' else str,                # drives field_value()
@@ -82,7 +87,10 @@ def page():
     with ui.card().classes('w-96'):
         with ui.column().classes('w-full gap-3'):
             for f in SCHEMA:
-                widgets[f['key']] = render_field(field_infos[f['key']], f['value'])
+                # description_as decides where the schema's `description` goes: 'hint' below the
+                # widget, 'tooltip' (the default) on hover, None nowhere.
+                widgets[f['key']] = render_field(field_infos[f['key']], f['value'],
+                                                 description_as='hint')
 
     result = ui.log(max_lines=12).classes('w-96 h-48 mt-4')
 

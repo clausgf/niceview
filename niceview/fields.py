@@ -208,13 +208,14 @@ class _FieldInfoResolver:
         log.debug(f"_field_info_from_pydantic: {field_name=} list field -> widget_type={nv_field_info.widget_type} item_type={nv_field_info.item_type}")
 
     def _apply_pydantic_metadata(self, field_name: str, nv_field_info: FieldInfo, py_field_info: pydantic.fields.FieldInfo) -> None:
-        # One source, one destination: title -> label, description -> hint (help text below
-        # the widget), examples[0] -> placeholder (an example of the expected input).
-        # tooltip stays opt-in: it would only repeat the hint on hover.
+        # One source, one destination: title -> label, description -> description,
+        # examples[0] -> placeholder (an example of the expected input). Where the description
+        # is *shown* is not decided here — it is a rendering choice (`description_as`), so the
+        # resolver carries the text and stays out of it. hint and tooltip stay the author's.
         if not nv_field_info.label:
             nv_field_info.label = py_field_info.title or self._label_from_name(field_name)
-        if nv_field_info.hint is None:
-            nv_field_info.hint = py_field_info.description
+        if nv_field_info.description is None:
+            nv_field_info.description = py_field_info.description
         if nv_field_info.placeholder is None and py_field_info.examples:
             nv_field_info.placeholder = str(py_field_info.examples[0])
         if nv_field_info.required is None:

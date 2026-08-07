@@ -14,8 +14,10 @@ from niceview.dataadapter import BoundItem, ConflictError, StorageError, JsonAda
 from niceview.fieldinfo import FieldInfo, _FieldInfoInputs, _merge_field_infos
 from niceview.fields import Fields, LayoutField, LayoutGroup
 from niceview.widgets import (
+    DESCRIPTION_AS,
     REQUIRED_MARKER,
     REQUIRED_MESSAGE,
+    DescriptionTarget,
     TEXT_INPUT_WIDGETS,
     VALIDATED_WIDGETS,
     CheckboxGroup,
@@ -72,13 +74,13 @@ class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
     the group a card, a leading ':classes' replaces the container's classes, and a field name
     may carry its own classes after a colon ('street:sm:w-2/3')."""
 
-    field_props: str
-    """Quasar props applied to every field of this form (e.g. 'outlined dense'), before the
-    props of the individual field."""
+    base_props: str
+    """Quasar props applied to every field of this form (e.g. 'outlined dense'). Additive: the
+    field's own props are merged on top, per key, so a field can add or change a single prop."""
 
-    field_classes: str
-    """CSS classes applied to every field of this form, before the field's own classes and
-    the layout's classes."""
+    default_classes: str
+    """CSS classes for every field of this form that brings none of its own (e.g. 'w-full').
+    A fallback, not a base: any classes on the field or in the layout replace it wholesale."""
 
     autosave: bool
     """Whether to automatically save the form on field change. Defaults to False (OFF)."""
@@ -94,6 +96,11 @@ class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
 
     required_message: str
     """Validation message for an empty required field. Defaults to 'Required'."""
+
+    description_as: 'DescriptionTarget'
+    """Where a field's `description` (from pydantic's `description=`) is shown: 'tooltip'
+    (default), 'hint' below the widget, or None to not show it at all. A field that sets `hint`
+    or `tooltip` explicitly always wins over this."""
 
 
 class ModelForm():
@@ -127,8 +134,9 @@ class ModelForm():
     local_tz: str | None
     required_marker: str | None
     required_message: str
-    field_props: str | None
-    field_classes: str | None
+    description_as: DescriptionTarget
+    base_props: str | None
+    default_classes: str | None
 
     def __init__(self, item_type: type[BaseModel], **kwargs: Unpack[_ModelFormOptionInputs]) -> None:
         """
@@ -170,8 +178,9 @@ class ModelForm():
         self.local_tz = _get_param('local_tz', None)
         self.required_marker = _get_param('required_marker', REQUIRED_MARKER)
         self.required_message = _get_param('required_message', REQUIRED_MESSAGE)
-        self.field_props = _get_param('field_props', None)
-        self.field_classes = _get_param('field_classes', None)
+        self.description_as = _get_param('description_as', DESCRIPTION_AS)
+        self.base_props = _get_param('base_props', None)
+        self.default_classes = _get_param('default_classes', None)
 
         if on_change_callback := kwargs.pop('on_change', None):
             self.on_change(on_change_callback)
@@ -604,13 +613,13 @@ class ModelForm():
         if widget_type == 'modelselect':
             placeholder = self._prepare_modelselect(field_name, field_info)
             if placeholder is not None:
-                apply_field_info(placeholder, field_info)
+                apply_field_info(placeholder, field_info, self.description_as)
                 return placeholder
 
         def push_value(widget: Any) -> None:
             self._from_current_item_to_widget_value(field_name, widget_type, widget)
 
-        widget = create_widget(field_info, field_name, push_value, self.required_marker)
+        widget = create_widget(field_info, field_name, push_value, self.required_marker, self.description_as)
         self._wire_widget(field_name, widget_type, widget)
         return widget
 
@@ -647,19 +656,25 @@ class ModelForm():
 
     def _styled(self, field_info: FieldInfo, layout_classes: str | None = None, in_row: bool = False) -> FieldInfo:
         """
-        Apply the styling cascade to a field: the form's field_props/field_classes first, then
-        the field's own props/classes from the model, then the layout's classes.
+        Apply the styling cascade to a field. Props and classes are handled differently, and
+        the difference is not arbitrary: a Quasar prop has a key, so props from two sources
+        merge per key and the later one wins. A CSS class has no key — 'w-full w-1/2' is
+        decided by stylesheet order, not by the order in the class list — so classes cannot be
+        merged meaningfully and the most specific source replaces the others wholesale.
 
-        In a row, a field without layout classes shares the width evenly ('flex-1 min-w-0').
-        A field that brings its own classes gets those instead — 'flex-1' sets flex-basis to 0
-        and would silently override any width the layout asked for.
+          props:   base_props + the field's own props   (additive, per key, field wins)
+          classes: layout classes, else the field's own classes, else default_classes
+
+        In a row, 'min-w-0' is always added — it is layout mechanics, not styling, and cannot
+        conflict with a width utility. 'flex-1' (equal share) is added only when no source
+        asked for a width of its own, because it sets flex-basis to 0 and would silently
+        override one.
         """
-        classes = [self.field_classes, field_info.classes]
-        if layout_classes:
-            classes.append(layout_classes)
+        explicit_classes = layout_classes or field_info.classes
+        classes = [explicit_classes or self.default_classes]
         if in_row:
-            classes.append('min-w-0' if layout_classes else 'flex-1 min-w-0')
-        props = [self.field_props, field_info.props]
+            classes.append('min-w-0' if explicit_classes else 'flex-1 min-w-0')
+        props = [self.base_props, field_info.props]
 
         overrides: dict[str, Any] = {}
         if any(classes):

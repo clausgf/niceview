@@ -7,10 +7,10 @@ which container a widget ends up in, and which classes and props it carries.
 import pydantic
 from nicegui import ui
 from nicegui.testing import User
-from typing import Annotated
+from typing import Annotated, Literal
 
 import niceview
-from niceview import ModelForm
+from niceview import CheckboxGroup, ModelForm
 
 
 class Address(pydantic.BaseModel):
@@ -111,48 +111,56 @@ class TestSections:
 
 
 class TestStylingCascade:
-    async def test_field_props_and_classes_reach_every_widget(self, user: User) -> None:
+    async def test_base_props_and_default_classes_reach_every_widget(self, user: User) -> None:
         class Mixed(pydantic.BaseModel):
             text: str = 'x'
             choice: Annotated[str, niceview.Field(widget_type='ui.select', options=['a', 'b'])] = 'a'
             tags: list[str] = pydantic.Field(default_factory=list)
+            # composite widget: skipped entirely by the styling before 0.14.0
+            perms: Annotated[list[Literal['read', 'write']],
+                             niceview.Field(widget_type='checkbox_group')] = []
 
-        captured = _form(lambda: ModelForm.from_item(Mixed(), field_props='outlined dense',
-                                                     field_classes='w-full').render())
+        captured = _form(lambda: ModelForm.from_item(Mixed(), base_props='outlined dense',
+                                                     default_classes='w-full').render())
         await user.open('/')
         form = captured[0]
-        for name in ('text', 'choice', 'tags'):
+        for name in ('text', 'choice', 'tags', 'perms'):
             widget = form.w(name)
-            assert widget._props.get('outlined') is True, name      # not just ui.input
-            assert widget._props.get('dense') is True, name
-            assert 'w-full' in widget._classes, name
+            el = widget.widget if isinstance(widget, CheckboxGroup) else widget
+            assert el._props.get('outlined') is True, name      # not just ui.input
+            assert el._props.get('dense') is True, name
+            assert 'w-full' in el._classes, name
 
-    async def test_field_info_wins_over_the_form_default(self, user: User) -> None:
+    async def test_base_props_merge_with_the_field_props(self, user: User) -> None:
         class Item(pydantic.BaseModel):
             a: Annotated[str, niceview.Field(props='filled')] = 'x'
 
-        captured = _form(lambda: ModelForm.from_item(Item(), field_props='outlined').render())
+        captured = _form(lambda: ModelForm.from_item(Item(), base_props='outlined').render())
         await user.open('/')
         widget = captured[0].w('a')
-        # both are applied, the field's own props last
+        # props have a key, so they merge: both are applied, the field's own last
         assert widget._props.get('filled') is True and widget._props.get('outlined') is True
 
-    async def test_cascade_order_form_then_field_then_layout(self, user: User) -> None:
+    async def test_classes_are_replaced_not_accumulated(self, user: User) -> None:
         class Item(pydantic.BaseModel):
             a: Annotated[str, niceview.Field(classes='text-right')] = 'x'
 
-        captured = _form(lambda: ModelForm.from_item(Item(), field_classes='w-full',
+        captured = _form(lambda: ModelForm.from_item(Item(), default_classes='w-full',
                                                      layout=[['a:sm:w-1/2']]).render())
         await user.open('/')
         classes = captured[0].w('a')._classes
-        assert classes.index('w-full') < classes.index('text-right') < classes.index('sm:w-1/2')
+        # the layout is the most specific source and replaces the other two: accumulating them
+        # would leave the winner to stylesheet order rather than to the cascade
+        assert 'sm:w-1/2' in classes
+        assert 'text-right' not in classes
+        assert 'w-full' not in classes
 
     async def test_render_field_honours_the_form_defaults(self, user: User) -> None:
         class Item(pydantic.BaseModel):
             a: str = 'x'
 
         def build():
-            form = ModelForm.from_item(Item(), field_props='outlined dense')
+            form = ModelForm.from_item(Item(), base_props='outlined dense')
             form.render_field('a')
             return form
 

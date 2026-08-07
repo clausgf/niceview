@@ -11,6 +11,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 (nothing yet)
 
 
+[0.14.0] - 2026-08-07
+---------------------
+
+### Added
+
+- `ModelForm(description_as=...)` / `Meta.description_as` / `render_field(..., description_as=...)`:
+  where a field's `description` is rendered — `'tooltip'` (the new default), `'hint'` below the
+  widget, or `None` for nowhere.
+
+### Changed
+
+- **Breaking:** a model's `description` no longer becomes the field's `hint`. It is resolved
+  into the new `FieldInfo.description` and rendered wherever `description_as` says — as a
+  **tooltip** by default. `hint` and `tooltip` are now purely the form author's: nothing is
+  inferred into them, and whatever a field sets explicitly always wins over the description,
+  which then neither fills that slot nor spills into the other one. The old behaviour is
+  `description_as='hint'`. Rationale: a hint costs vertical space in every row and only exists
+  on the hint-capable widget types, so a description silently vanished on radio, toggle,
+  slider, rating and checkbox_group — a tooltip works everywhere.
+- **Breaking:** `ModelForm(field_props=...)` is now `base_props`, `field_classes` is now
+  `default_classes` — in kwargs and in `Meta`. No alias: the semantics of the classes knob
+  changed with the name (see below), so an alias would keep the call working and quietly
+  change what it does.
+- **Breaking:** form-wide and per-field CSS classes no longer accumulate. `props` still merge
+  per key (a Quasar prop has a key, so a later source overrides that one prop and nothing else);
+  `classes` are now **replaced** wholesale by the most specific source, because `'w-full w-1/2'`
+  is resolved by stylesheet order rather than by the order in the class list — accumulating them
+  only looked like it worked. `default_classes` is therefore a fallback for fields that bring no
+  classes of their own, and a field's classes in the layout (`'zip_code:sm:w-1/3'`) replace the
+  ones on the model field instead of adding to them. To combine, write both in the winning
+  source; to remove, use the element API (`form.render_field('x').classes(replace='w-1/3')`).
+  See [Components](components.md#how-props-and-classes-travel-down-the-cascade).
+
+### Fixed
+
+- `checkbox_group` fields ignored `classes`, `style`, `props` and `tooltip` from their
+  `FieldInfo`, and with them the form-wide styling — the composite widget was skipped when the
+  field's styling was applied. `CheckboxGroup` now forwards those four to its container, so a
+  checkbox group is styled like every other field. `hint` remains unsupported there (no hint
+  slot, same as radio/toggle/slider/rating), and `props='inline'` is still consumed as a layout
+  directive rather than passed on.
+
+
 [0.13.0] - 2026-08-06
 ---------------------
 

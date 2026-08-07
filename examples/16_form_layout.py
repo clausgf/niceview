@@ -23,11 +23,14 @@ The layout also defines *which* fields are rendered, exactly like a profile — 
 where `notes` is missing on purpose. What the notation cannot express, `form.render_field()`
 still can: it places one field wherever you call it.
 
-Uniform styling is a separate knob: `field_props` and `field_classes` apply to **every** widget
+Uniform styling is a separate knob: `base_props` and `default_classes` apply to **every** widget
 of the form, whatever its type — `ui.select` and `ui.input_chips` included, which
-`ui.input.default_props()` would miss. They come first in the cascade
-(`field_classes` → the field's own `niceview.Field(classes=...)` → the layout's classes), so
-`field_classes='w-full'` sets the baseline and a layout hint refines it.
+`ui.input.default_props()` would miss. The two behave differently on purpose:
+
+- `base_props` is a **base**: the field's own props are merged on top, per key, so a field can
+  add or change one prop without repeating the rest.
+- `default_classes` is a **fallback**: classes cannot be merged meaningfully (`'w-full w-1/2'`
+  is decided by stylesheet order), so any classes on the field or in the layout replace it.
 """
 
 import pprint
@@ -75,9 +78,9 @@ ROWS = [
 
 
 # Applied to every widget of the form, whatever its type. 'w-full' makes a field fill its
-# container; inside a row 'flex-1' takes over, and a layout hint like 'sm:w-1/3' wins above the
-# breakpoint — which leaves 'w-full' as the sensible fallback on a narrow screen.
-FORM_STYLE = {'field_props': 'outlined dense', 'field_classes': 'w-full'}
+# container; inside a row 'flex-1' is added on top, and a layout hint like 'sm:w-1/3' replaces
+# 'w-full' entirely — which is exactly what a per-field width should do.
+FORM_STYLE = {'base_props': 'outlined dense', 'default_classes': 'w-full'}
 
 
 def show(title: str, description: str, source: object, render) -> None:

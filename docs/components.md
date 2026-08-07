@@ -143,9 +143,9 @@ excluded field names raise `ValueError` naming the position (`layout[1][0]`).
 
 Two rules exist to avoid fighting Tailwind, and both are worth knowing:
 
-- Fields in a row share the width evenly (`flex-1 min-w-0`). A field that brings its own
-  classes gets those **instead** — `flex-1` sets `flex-basis: 0` and would silently override
-  any width the layout asked for.
+- Fields in a row share the width evenly (`flex-1 min-w-0`). A field that brings classes of its
+  own gets those **instead** — `flex-1` sets `flex-basis: 0` and would silently override any
+  width that was asked for. (`min-w-0` is always added: it is layout mechanics, not styling.)
 - Container classes **replace** the defaults (`w-full items-start gap-4` for a row) rather than
   adding to them: `gap-4 gap-8` is resolved by stylesheet order, not by the order in the class
   list.
@@ -158,18 +158,68 @@ with ui.grid().classes('w-full grid-cols-1 lg:grid-cols-2'):
     ModelForm.from_item(contact).render()
 ```
 
-**Uniform styling** is a separate knob. `field_props` and `field_classes` apply to every widget
+**Uniform styling** is a separate knob. `base_props` and `default_classes` apply to every widget
 of the form, whatever its type — `ui.select`, `ui.input_chips` and `ui.color_input` included,
 which `ui.input.default_props()` would miss (`ui.textarea` inherits from `ui.input`, the others
 do not):
 
 ```python
-ModelForm.from_item(contact, field_props='outlined dense', field_classes='w-full').render()
+ModelForm.from_item(contact, base_props='outlined dense', default_classes='w-full').render()
 ```
 
-The cascade is `field_props`/`field_classes` → the field's own `niceview.Field(props=, classes=)`
-→ the layout's classes. What the notation cannot express, `render_field()` still can: it renders
-one field wherever you call it, and honours the same form-level defaults.
+#### How props and classes travel down the cascade
+
+Props and classes are **not** handled the same way, and the difference is not arbitrary: a
+Quasar prop has a key, a CSS class does not.
+
+| | `props` — additive | `classes` — replacing |
+|---|---|---|
+| How sources combine | merged **per key**, later source wins | the most specific source **replaces** the others |
+| Why | `props('outlined dense')` is a dict; `dense=false` from a later source simply overwrites the earlier `dense` | `'w-full w-1/2'` is decided by stylesheet order, not by the order in the class list — merging cannot mean anything |
+| Form-wide knob | `base_props` — a **base** every field builds on | `default_classes` — a **fallback** for fields that bring none |
+
+The chain, lowest priority first:
+
+| # | Source | `props` | `classes` |
+|---|---|---|---|
+| 1 | `ModelForm(base_props=…)` / `(default_classes=…)`, or the same names in `Meta` | base | used only if 2–5 set nothing |
+| 2 | `Annotated[str, niceview.Field(props=…, classes=…)]` on the model field | merged over 1 | replaces 1 |
+| 3 | `Meta.field_infos` | merged over 2 | replaces 2 |
+| 4 | `ModelForm(field_infos=…)` | merged over 3 | replaces 3 |
+| 5 | the layout's `'zip_code:sm:w-1/3'` | — | replaces 4 |
+| 6 | `form.render_field('zip_code', classes=…)` | merged over 4 | replaces 4 |
+
+Steps 2–4 are a `FieldInfo` merge, so a later source only overrides what it sets explicitly.
+Steps 5 and 6 never meet: the layout applies to `render()`, the kwargs to `render_field()`.
+
+```python
+class Contact(pydantic.BaseModel):
+    name: str
+    zip_code: Annotated[str, niceview.Field(classes='text-right')]
+
+ModelForm.from_item(contact, base_props='outlined dense', default_classes='w-full',
+                    layout=['name', ['zip_code:sm:w-1/3', 'city']]).render()
+# name      -> classes 'w-full'                  (the default; nothing more specific applies)
+# zip_code  -> classes 'sm:w-1/3 min-w-0'        (layout wins — 'text-right' is gone)
+# city      -> classes 'w-full flex-1 min-w-0'   (default + its even share of the row)
+# all three -> props 'outlined dense'
+```
+
+One consequence is worth stating plainly: because classes replace, `'zip_code:sm:w-1/3'` drops
+the field's own `text-right`. Put both in the layout (`'zip_code:sm:w-1/3 text-right'`) when you
+want them together.
+
+The other, from props being additive: a boolean prop from `base_props` cannot be taken back
+declaratively for a single field — `props='dense=false'` parses to the *string* `'false'`, which
+Quasar reads as truthy. Do it imperatively on the returned element instead:
+
+```python
+form.render_field('notes').props(remove='dense')
+form.w('notes').classes(replace='w-1/3')      # the only way to remove, for classes too
+```
+
+What the layout notation cannot express, `render_field()` still can: it renders one field
+wherever you call it, and honours the same form-level defaults.
 
 ### Validation
 
@@ -561,7 +611,9 @@ def collect() -> dict:
 needs a model: it creates the widget for `field_info.widget_type`, applies `label`,
 `placeholder`, `hint`, `options` (list, dict, or a sync/async callable),
 `min`/`max`/`step`/`multiple` and the other widget-specific attributes, then `props`, `classes`,
-`style`, `tooltip` and `editable=False` (disabled). Validation layer 1 is wired up as well:
+`style`, `tooltip` and `editable=False` (disabled). A `description` — help text that came from a
+schema rather than from whoever laid out the form — is placed by `description_as`, exactly as in
+a `ModelForm`: `render_field(fi, value, description_as='hint')`. Validation layer 1 is wired up as well:
 `required` appends the marker to the label and rejects an empty value, then
 `field_info.validation` runs. It sets the initial value — and stops there. There is no change
 event, no autosave, no validation against a model, no `widgets` registry: the caller owns the

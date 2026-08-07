@@ -184,13 +184,20 @@ Where the four vocabularies do not line up, this is what niceview actually does.
 allows `0`. Pydantic still rejects it — the value is refused on validation, not in the widget.
 
 **D2 — One text, one destination.** `title` becomes the `label`, `description` becomes the
-`hint` (help text below the widget), `examples[0]` becomes the `placeholder` (an example of the
-expected input). `tooltip` is opt-in: it would only repeat the hint on hover. Set any of them
-explicitly to override the inference — an empty string counts as explicit, so
+`description`, `examples[0]` becomes the `placeholder` (an example of the expected input). Set
+any of them explicitly to override the inference — an empty string counts as explicit, so
 `niceview.Field(placeholder='')` renders no placeholder at all.
 
+`hint` and `tooltip` are deliberately *not* in that list: nothing is inferred into them, they
+are the form author's. Instead, `description_as` decides at render time where the description is
+shown — `'tooltip'` (default), `'hint'`, or `None` for nowhere — per form
+(`ModelForm(description_as=...)`, `Meta.description_as`) or per call
+(`render_field(..., description_as=...)`). A field that sets `hint` or `tooltip` explicitly
+always wins: the description then does not fill that slot, and never spills into the other one.
+
 **D3 — Widgets without a hint slot ignore `hint`.** Checkbox, switch, radio, toggle, slider,
-rating and `checkbox_group` have nowhere to put it. Use the `label` or a `tooltip` there.
+rating and `checkbox_group` have nowhere to put it. Use the `label` or a `tooltip` there —
+which is also why `description_as` defaults to the tooltip, the one slot every widget has.
 
 **D4 — `required` is display *and* a rule, but not enforcement.** It appends `' *'` to the
 label (`required_marker=None` switches that off) and rejects an empty value — `None`, `''` or

@@ -33,7 +33,9 @@ One form showing all field types supported by NiceView:
 | field without a default | any widget, label marked `*`, empty value rejected |
 
 Texts come from the model, one source per destination: `title` becomes the label,
-`description` the hint below the widget, `examples[0]` the placeholder.
+`examples[0]` the placeholder, `description` the field's `description`. Where that one is shown
+is a rendering choice: `description_as='tooltip'` (the default) puts it on hover, `'hint'` below
+the widget, `None` nowhere. `hint` and `tooltip` set on a `niceview.Field` always win over it.
 
 This example also demonstrates how to customize the widgets, layout and style via `niceview.Field` metadata, ui.grid() and `ElementFilter`.
 """

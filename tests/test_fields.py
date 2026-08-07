@@ -218,15 +218,24 @@ class TestLabels:
         fields = Fields(AnnotatedModel)
         assert fields['weight'].label == 'Weight (kg)'
 
-    def test_hint_from_pydantic_description(self):
+    def test_description_from_pydantic_description(self):
         fields = Fields(TitledModel)
-        assert fields['first_name'].hint == 'Your first name'
+        assert fields['first_name'].description == 'Your first name'
 
-    def test_description_does_not_fill_placeholder_or_tooltip(self):
-        # One source, one destination: a description is help text, so it becomes the hint.
+    def test_description_does_not_fill_hint_placeholder_or_tooltip(self):
+        # One source, one destination. Where the description is *shown* is a rendering
+        # decision (description_as), so the resolver leaves hint and tooltip alone.
         fields = Fields(TitledModel)
+        assert fields['first_name'].hint is None
         assert fields['first_name'].placeholder is None
         assert fields['first_name'].tooltip is None
+
+    def test_explicit_description_wins_over_pydantic(self):
+        class M(pydantic.BaseModel):
+            a: Annotated[str, niceview.Field(description='mine')] = pydantic.Field(
+                default='', description='pydantic')
+
+        assert Fields(M)['a'].description == 'mine'
 
     def test_placeholder_from_pydantic_examples(self):
         class M(pydantic.BaseModel):

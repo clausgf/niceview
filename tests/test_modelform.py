@@ -9,6 +9,7 @@ from nicegui import ui
 
 import sqlmodel
 
+import niceview
 from niceview.dataadapter import BoundItem, ListAdapter, JsonAdapter, SqlModelAdapter
 from niceview.modelform import ModelForm
 
@@ -662,3 +663,74 @@ class TestNumberWidgetConversion:
         form._current_item.count = 7
         form._from_widget_value_to_current_item('count')
         assert form._current_item.count is None
+
+
+class StyledItem(pydantic.BaseModel):
+    plain: str = ''
+    styled: typing.Annotated[str, niceview.Field(classes='text-right', props='filled')] = ''
+
+
+class TestStylingCascade:
+    """
+    Unit-level view of _styled(). Props merge per key, classes replace wholesale — see the
+    method's docstring for why the two differ.
+    """
+
+    def _form(self, **kwargs):
+        return ModelForm.from_item(StyledItem(), **kwargs)
+
+    # --- props: additive --------------------------------------------------
+
+    def test_base_props_apply_to_a_field_without_props(self):
+        form = self._form(base_props='outlined dense')
+        assert form._styled(form._fields['plain']).props == 'outlined dense'
+
+    def test_base_props_and_field_props_are_merged(self):
+        form = self._form(base_props='outlined dense')
+        # the field's own props come last, so they win per key in NiceGUI's props dict
+        assert form._styled(form._fields['styled']).props == 'outlined dense filled'
+
+    def test_field_props_survive_without_base_props(self):
+        form = self._form()
+        assert form._styled(form._fields['styled']).props == 'filled'
+
+    # --- classes: replacing -----------------------------------------------
+
+    def test_default_classes_apply_to_a_field_without_classes(self):
+        form = self._form(default_classes='w-full')
+        assert form._styled(form._fields['plain']).classes == 'w-full'
+
+    def test_field_classes_replace_the_default(self):
+        form = self._form(default_classes='w-full')
+        assert form._styled(form._fields['styled']).classes == 'text-right'
+
+    def test_layout_classes_replace_the_field_classes(self):
+        form = self._form(default_classes='w-full')
+        assert form._styled(form._fields['styled'], 'sm:w-1/2').classes == 'sm:w-1/2'
+
+    def test_no_classes_anywhere_stays_none(self):
+        form = self._form()
+        assert form._styled(form._fields['plain']).classes is None
+
+    # --- row mechanics ----------------------------------------------------
+
+    def test_a_field_without_classes_shares_the_row(self):
+        form = self._form()
+        assert form._styled(form._fields['plain'], in_row=True).classes == 'flex-1 min-w-0'
+
+    def test_default_classes_alone_still_share_the_row(self):
+        # default_classes is a fallback, not a width the field asked for
+        form = self._form(default_classes='w-full')
+        assert form._styled(form._fields['plain'], in_row=True).classes == 'w-full flex-1 min-w-0'
+
+    def test_own_classes_keep_their_width_in_a_row(self):
+        form = self._form(default_classes='w-full')
+        assert form._styled(form._fields['styled'], in_row=True).classes == 'text-right min-w-0'
+
+    def test_layout_classes_keep_their_width_in_a_row(self):
+        form = self._form()
+        assert form._styled(form._fields['plain'], 'sm:w-1/3', in_row=True).classes == 'sm:w-1/3 min-w-0'
+
+    def test_unknown_kwarg_still_raises(self):
+        with pytest.raises(TypeError, match='Unexpected keyword arguments'):
+            self._form(field_props='outlined')

@@ -163,7 +163,7 @@ example open; no `sys.path` setup is needed because `niceview` is installed into
 | `13_directory_drilldown.py` | `DrillDownWrapper` over `DirectoryAdapter` — one file per item, rename via a "Name" field |
 | `14_render_field.py` | `render_field` / `field_value` — a form built from field metadata, without a model |
 | `15_validation.py` | Validation — the three layers, `item` vs `draft`, cross-field rules, `required`, `frozen` |
-| `16_form_layout.py` | Form layout — rows, titled sections, per-field classes, uniform `field_props` |
+| `16_form_layout.py` | Form layout — rows, titled sections, per-field classes, uniform `base_props` |
 
 Unit tests cover data adapters, field resolution, validation logic, and pure CRUD operations.
 Acceptance tests use the NiceGUI `User` fixture (headless, no browser) to verify render output and
