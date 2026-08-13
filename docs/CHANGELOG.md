@@ -11,6 +11,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 (nothing yet)
 
 
+[0.16.0] - 2026-08-13
+---------------------
+
+### Added
+
+- `niceview.ChromeStyle` plus `set_chrome_style()` / `get_chrome_style()`: the shared look of
+  everything the wrappers draw *around* a form, grid or list — title row classes, button props
+  per button kind, the button group, tooltips, the size of a section title inside a form, and
+  the props and classes of a `ModelList`'s list, rows, labels and chevron.
+  Set once for the application, or per widget with the new `chrome_style=` option on
+  `EditGridWrapper`, `EditFormWrapper`, `DrillDownWrapper` and `ModelList`:
+
+  ```python
+  set_chrome_style(button_props='dense outline', tooltips=False)
+  EditGridWrapper.from_list(User, users, chrome_style=get_chrome_style().replace(button_group=False))
+  ```
+
+  Props are additive and classes replace, the same rule as the field cascade. Until now the
+  three title rows were built from literals copied between the wrappers, and the only way to
+  change their look was styling each exposed element in every application. A `ModelList` had
+  no such way at all: its rows are rebuilt by `update_rows()`, so styling `.widget` after
+  `render()` never reached them. `list_chevron_icon=None` renders rows without the drill-down
+  chevron, for a list that is not one. A style set on a `DrillDownWrapper` also styles the
+  `ModelList` it renders.
+- `DrillDownWrapper(description=...)`, exposed as `wrapper.description` after `render()` —
+  markdown below the title row, as `EditGridWrapper`/`EditFormWrapper` already had.
+- `DrillDownWrapper(back_button=...)`: label the Back button, `''` for icon-only (the default),
+  `None` to hide it — the same `''`/label/`None` semantics as the other buttons.
+
+### Changed
+
+- `DrillDownWrapper`'s title row now looks like the other two wrappers: its buttons are joined
+  in a `ui.button_group` at the right edge, the row no longer wraps (`flex-nowrap` instead of
+  `gap-2`), and the buttons carry tooltips. The redundant `round` and `color=primary` props are
+  gone — `color=primary` was NiceGUI's own default for `ui.button`, and neither is set on the
+  equivalent buttons of `EditGridWrapper`.
+- `DrillDownWrapper(list_title=None)` shows no title in the list view (the detail view keeps
+  showing the current item's title). It previously rendered the string `'None'`.
+- Deleting a row in `EditGridWrapper` now asks through `util.confirm_dialog` with a red
+  **Delete** button, the same confirmation `DrillDownWrapper` already used, instead of a
+  neutral Cancel/OK `submit_dialog`.
+- The create/edit dialog of `EditGridWrapper` uses the same button row as `niceview.util`'s
+  dialogs: right-aligned, with the confirming button in the primary color.
+- The label of a read-only embedded grid (`editgrid` field) renders as `text-subtitle2`, like
+  every other section title inside a form — it was `text-h6`, the size of the page title.
+- `util.submit_dialog`'s title no longer carries the class `center`, which is neither a Quasar
+  nor a Tailwind class and never had an effect.
+
+
 [0.15.0] - 2026-08-13
 ---------------------
 

@@ -11,7 +11,8 @@ from nicegui.events import Handler, ClickEventArguments, handle_event
 from niceview.dataadapter import CollectionAdapter, ConflictError, StorageError, ItemAdapter, ReloadableAdapter
 from niceview.modelform import ModelForm, FieldChangeEventArguments, _ModelFormOptionInputs
 from niceview.modelgrid import ModelGridInlineEdit, ModelGrid, T, TableItemEventArguments, _InlineEditableModelGridOptionInputs
-from niceview.util import submit_dialog
+from niceview.style import ChromeStyle, chrome_button, chrome_button_group, chrome_row, chrome_title, get_chrome_style
+from niceview.util import confirm_dialog
 
 log = logging.getLogger('niceview')
 
@@ -23,6 +24,9 @@ class _EditGridWrapperInputs(typing_extensions.TypedDict, total=False):
     add_button: str | None
     edit_button: str | None
     refresh_button: str | None
+    chrome_style: ChromeStyle | None
+    """Look of the title row and its buttons. Replaces the application-wide default of
+    niceview.style.set_chrome_style() wholesale — derive it with get_chrome_style().replace()."""
 
 
 class _EditGridWrapperFactoryInputs(_EditGridWrapperInputs, _InlineEditableModelGridOptionInputs, total=False):
@@ -61,6 +65,7 @@ class EditGridWrapper():
     _add_button: str | None
     _edit_button: str | None
     _refresh_button: str | None
+    _chrome_style: ChromeStyle | None
 
     # Exposed NiceGUI elements (populated by render())
     title: ui.label | None
@@ -88,6 +93,7 @@ class EditGridWrapper():
         self._add_button = kwargs.pop('add_button', '')
         self._edit_button = kwargs.pop('edit_button', default_edit)
         self._refresh_button = kwargs.pop('refresh_button', '')
+        self._chrome_style = kwargs.pop('chrome_style', None)
 
         self._rendered = False
         self.title = None
@@ -195,32 +201,25 @@ class EditGridWrapper():
         self.edit_button = None
         self.refresh_button = None
 
+        style = self._chrome_style or get_chrome_style()
         has_buttons = any(b is not None for b in [self._refresh_button, self._delete_button, self._add_button, self._edit_button])
         has_chrome = bool(self._title) or has_buttons
         if has_chrome:
-            with ui.row().classes('w-full items-center flex-nowrap') as self.title_row:
+            with chrome_row(style) as self.title_row:
                 if self._title:
-                    self.title = ui.label(self._title).classes('text-h6 grow')
+                    self.title = chrome_title(self._title, style)
                 if has_buttons:
                     if not self._title:
                         ui.space()
-                    with ui.button_group().style('width: fit-content; flex: none'):
+                    with chrome_button_group(style):
                         if self._refresh_button is not None:
-                            self.refresh_button = ui.button(self._refresh_button, icon='refresh').props('dense flat').on_click(self._on_refresh_clicked)
-                            with self.refresh_button:
-                                ui.tooltip('Refresh').style('width: fit-content')
+                            self.refresh_button = chrome_button('refresh', self._refresh_button, 'refresh', 'Refresh', style, self._on_refresh_clicked)
                         if self._delete_button is not None:
-                            self.delete_button = ui.button(self._delete_button, icon='delete').props('color=negative dense flat').on_click(self._on_delete_clicked)
-                            with self.delete_button:
-                                ui.tooltip('Delete selected item').style('width: fit-content')
+                            self.delete_button = chrome_button('delete', self._delete_button, 'delete', 'Delete selected item', style, self._on_delete_clicked)
                         if self._add_button is not None:
-                            self.add_button = ui.button(self._add_button, icon='add').props('dense flat').on_click(self._on_create_clicked)
-                            with self.add_button:
-                                ui.tooltip('Add a new item').style('width: fit-content')
+                            self.add_button = chrome_button('add', self._add_button, 'add', 'Add a new item', style, self._on_create_clicked)
                         if self._edit_button is not None:
-                            self.edit_button = ui.button(self._edit_button, icon='edit').props('dense flat').on_click(self._on_update_clicked)
-                            with self.edit_button:
-                                ui.tooltip('Edit item').style('width: fit-content')
+                            self.edit_button = chrome_button('edit', self._edit_button, 'edit', 'Edit item', style, self._on_update_clicked)
 
         if self._description:
             self.description = ui.markdown(self._description)
@@ -326,7 +325,8 @@ class EditGridWrapper():
             ui.notify('Please select a row for deletion!', color='negative')
             return
 
-        confirm = await submit_dialog('Confirm Deletion', f'Are you sure you want to delete the selected item *{row_key}*?')
+        confirm = await confirm_dialog('Confirm Deletion', f'Are you sure you want to delete the selected item *{row_key}*?',
+                                       ok_label='Delete', ok_color='negative')
         if not confirm:
             ui.notify('Item deletion cancelled', color='negative')
             return
@@ -379,10 +379,11 @@ class EditGridWrapper():
             with ui.card().classes('w-full'):
                 form.render()
                 with ui.card_section().classes('w-full'):
-                    with ui.row():
-                        ui.space()
+                    # Same button row as niceview.util's dialogs: cancel first, confirm last
+                    # and in the primary color, aligned to the right edge.
+                    with ui.row().classes('w-full place-content-end'):
                         ui.button('Cancel', on_click=lambda: dialog.submit('cancel'))
-                        ui.button('Create' if do_create else 'Ok', on_click=confirm)
+                        ui.button('Create' if do_create else 'Ok', on_click=confirm).props('color=primary')
 
         success = ('confirm' == await dialog)
         dialog.clear()
@@ -394,6 +395,9 @@ class _EditFormWrapperInputs(typing_extensions.TypedDict, total=False):
     description: str | None
     save_button: str | None
     refresh_button: str | None
+    chrome_style: ChromeStyle | None
+    """Look of the title row and its buttons. Replaces the application-wide default of
+    niceview.style.set_chrome_style() wholesale — derive it with get_chrome_style().replace()."""
 
 
 class _EditFormWrapperFactoryInputs(_EditFormWrapperInputs, _ModelFormOptionInputs, total=False):
@@ -433,6 +437,7 @@ class EditFormWrapper():
     _description: str | None
     _save_button: str | None
     _refresh_button: str | None
+    _chrome_style: ChromeStyle | None
 
     # Exposed NiceGUI elements (populated by render())
     title: ui.label | None
@@ -454,6 +459,7 @@ class EditFormWrapper():
         default_refresh = '' if has_adapter else None
         self._save_button = kwargs.pop('save_button', default_save)
         self._refresh_button = kwargs.pop('refresh_button', default_refresh)
+        self._chrome_style = kwargs.pop('chrome_style', None)
 
         self._rendered = False
         self.title = None
@@ -544,25 +550,22 @@ class EditFormWrapper():
         self.title_row = None
         self.description = None
 
+        style = self._chrome_style or get_chrome_style()
         has_chrome = bool(self._title) or any(
             b is not None for b in [self._save_button, self._refresh_button]
         )
         if has_chrome:
-            with ui.row().classes('w-full items-center flex-nowrap') as self.title_row:
+            with chrome_row(style) as self.title_row:
                 if self._title:
-                    self.title = ui.label(self._title).classes('text-h6 grow')
+                    self.title = chrome_title(self._title, style)
                 if self._refresh_button is not None or self._save_button is not None:
                     if not self._title:
                         ui.space()
-                    with ui.button_group().style('width: fit-content; flex: none'):
+                    with chrome_button_group(style):
                         if self._refresh_button is not None:
-                            self.refresh_button = ui.button(self._refresh_button, icon='refresh').props('dense flat').on_click(lambda _: self.form.refresh())
-                            with self.refresh_button:
-                                ui.tooltip('Refresh').style('width: fit-content')
+                            self.refresh_button = chrome_button('refresh', self._refresh_button, 'refresh', 'Refresh', style, lambda _: self.form.refresh())
                         if self._save_button is not None:
-                            self.save_button = ui.button(self._save_button, icon='save').props('dense flat').on_click(lambda _: self.form.save())
-                            with self.save_button:
-                                ui.tooltip('Save').style('width: fit-content')
+                            self.save_button = chrome_button('save', self._save_button, 'save', 'Save', style, lambda _: self.form.save())
 
         if self._description:
             self.description = ui.markdown(self._description)

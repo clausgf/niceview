@@ -16,6 +16,7 @@ from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 from niceview.modelform import ModelForm
 from niceview.modellist import ModelList
+from niceview.style import ChromeStyle, chrome_button, chrome_button_group, chrome_row, chrome_title, get_chrome_style
 from niceview.util import confirm_dialog, maybe_await
 
 log = logging.getLogger('niceview')
@@ -62,11 +63,21 @@ def _slide_class(direction: str) -> str:
 
 class _DrillDownWrapperOptionInputs(typing_extensions.TypedDict, total=False):
     """Keyword options for DrillDownWrapper and its factory methods."""
-    list_title: str
+    list_title: str | None
+    """Title shown in the list view; None or '' shows none. The detail view always shows the
+    current item's title instead."""
+    description: str | None
+    """Markdown shown below the title row, in both views."""
     item_title_field: str | None
     item_subtitle_fields: list[str] | None
     add_button: str | None
     delete_button: str | None
+    back_button: str | None
+    """Label of the Back button, '' for icon-only (the default). None hides it — the detail
+    view then has no way back other than one you render yourself."""
+    chrome_style: ChromeStyle | None
+    """Look of the title row and its buttons. Replaces the application-wide default of
+    niceview.style.set_chrome_style() wholesale — derive it with get_chrome_style().replace()."""
     on_add: ActionHandler | None
     """Replaces the default Add action (create item_type() and open it). Sync or async — an
     async handler can ask for a name via util.input_dialog() before creating anything."""
@@ -105,9 +116,12 @@ class DrillDownWrapper:
     every list<->detail navigation, so styling applied here is not lost:
         wrapper.title_row     → ui.row | None
         wrapper.title         → ui.label | None (list title, or the current item's title in detail view)
+        wrapper.description   → ui.markdown | None (None entirely if description= is unset)
         wrapper.back_button   → ui.button | None (visible in detail always; in list only if on_back= is set)
         wrapper.add_button    → ui.button | None (visible in list view; None entirely if add_button=None)
         wrapper.delete_button → ui.button | None (visible in detail view; None entirely if delete_button=None)
+    For the shared look of the title row rather than a single instance of it, see
+    niceview.style.set_chrome_style() and the chrome_style= option.
     The body (list/detail content) is not exposed: unlike the title row, it is genuinely
     torn down and rebuilt on every navigation (list and detail are structurally different
     content, and the swap is where the slide animation lives), so any styling applied to it
@@ -119,7 +133,8 @@ class DrillDownWrapper:
     """
     _item_type: type[BaseModel]
     _adapter: CollectionAdapter
-    _list_title: str
+    _list_title: str | None
+    _description: str | None
     _item_title_field: str | None
     _item_subtitle_fields: list[str] | None
     _render_list_item: ListItemRenderer | None
@@ -129,6 +144,8 @@ class DrillDownWrapper:
     _on_back: ActionHandler | None
     _add_button: str | None
     _delete_button: str | None
+    _back_button: str | None
+    _chrome_style: ChromeStyle | None
     _list_kwargs: dict[str, Any]
     _state: dict[str, Any]
     _auto_update_registered: bool
@@ -138,6 +155,7 @@ class DrillDownWrapper:
     # (list/detail content) is not exposed -- see _body()'s docstring comment.
     title_row: ui.row | None
     title: ui.label | None
+    description: ui.markdown | None
     back_button: ui.button | None
     add_button: ui.button | None
     delete_button: ui.button | None
@@ -148,6 +166,7 @@ class DrillDownWrapper:
         self._item_type = item_type
         self._adapter = adapter
         self._list_title = kwargs.pop('list_title', item_type.__name__ + ' List')
+        self._description = kwargs.pop('description', None)
         self._item_title_field = kwargs.pop('item_title_field', None)
         self._item_subtitle_fields = kwargs.pop('item_subtitle_fields', None)
         self._render_list_item = kwargs.pop('render_list_item', None)
@@ -157,6 +176,8 @@ class DrillDownWrapper:
         self._on_back = kwargs.pop('on_back', None)
         self._add_button = kwargs.pop('add_button', '')
         self._delete_button = kwargs.pop('delete_button', '')
+        self._back_button = kwargs.pop('back_button', '')
+        self._chrome_style = kwargs.pop('chrome_style', None)
         self._list_kwargs = dict(kwargs)  # remainder forwarded to ModelList (include, exclude, ...) when render_list_item is unset
         allowed_list_keys = {'include', 'exclude', 'field_infos', 'profile'}
         if unknown := set(self._list_kwargs) - allowed_list_keys:
@@ -173,6 +194,7 @@ class DrillDownWrapper:
 
         self.title_row = None
         self.title = None
+        self.description = None
         self.back_button = None
         self.add_button = None
         self.delete_button = None
@@ -262,19 +284,26 @@ class DrillDownWrapper:
         # barely changes between list/detail -- just text and which buttons are visible -- so
         # keeping it persistent lets callers style it once after render() instead of every
         # element being wiped out on each list<->detail navigation.
-        with ui.row().classes('w-full items-center gap-2') as self.title_row:
-            self.back_button = ui.button(icon='arrow_back').props('round dense flat').on_click(self._handle_back_click)
-            self.title = ui.label('').classes('text-h6 grow')
-            if self._add_button is not None:
-                self.add_button = ui.button(self._add_button, icon='add').props('round dense flat color=primary').on_click(self._handle_add)
-            if self._delete_button is not None:
-                self.delete_button = ui.button(self._delete_button, icon='delete').props('round dense flat color=negative').on_click(self._handle_delete)
+        style = self._chrome_style or get_chrome_style()
+        with chrome_row(style) as self.title_row:
+            # Back sits left of the title: it navigates, it is not one of the actions on the
+            # item, which are grouped at the right edge like in the other wrappers.
+            if self._back_button is not None:
+                self.back_button = chrome_button('back', self._back_button, 'arrow_back', 'Back', style, self._handle_back_click)
+            self.title = chrome_title('', style)
+            if self._add_button is not None or self._delete_button is not None:
+                with chrome_button_group(style):
+                    if self._add_button is not None:
+                        self.add_button = chrome_button('add', self._add_button, 'add', 'Add a new item', style, self._handle_add)
+                    if self._delete_button is not None:
+                        self.delete_button = chrome_button('delete', self._delete_button, 'delete', 'Delete this item', style, self._handle_delete)
 
     def _update_title_row(self) -> None:
-        assert self.back_button is not None and self.title is not None
+        assert self.title is not None
         is_detail = self._state['view'] == 'detail'
-        self.back_button.set_visibility(is_detail or self._on_back is not None)
-        self.title.set_text(self._detail_title() if is_detail else self._list_title)
+        if self.back_button is not None:
+            self.back_button.set_visibility(is_detail or self._on_back is not None)
+        self.title.set_text(self._detail_title() if is_detail else (self._list_title or ''))
         if self.add_button is not None:
             self.add_button.set_visibility(not is_detail)
         if self.delete_button is not None:
@@ -314,6 +343,7 @@ class DrillDownWrapper:
             self._item_type, self._adapter,
             title_field=self._item_title_field,
             subtitle_fields=self._item_subtitle_fields,
+            chrome_style=self._chrome_style,  # a style set on the wrapper styles its rows too
             **self._list_kwargs,
         )
         # _render_list_view() runs again on every DrillDownWrapper._body refresh, creating a
@@ -375,6 +405,8 @@ class DrillDownWrapper:
         """Render the title row and list/detail body into the current NiceGUI context."""
         self._build_title_row()
         self._update_title_row()
+        if self._description:
+            self.description = ui.markdown(self._description)
         self._body()
         if not self._auto_update_registered and isinstance(self._adapter, ReactiveAdapter):
             self._adapter.on_change(self._on_adapter_change)

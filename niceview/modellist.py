@@ -17,6 +17,7 @@ from nicegui.events import Handler, ClickEventArguments, handle_event
 from niceview.dataadapter import CollectionAdapter, ListAdapter, JsonListAdapter, ReactiveAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
+from niceview.style import ChromeStyle, get_chrome_style
 
 log = logging.getLogger('niceview')
 
@@ -38,6 +39,9 @@ class _ModelListOptionInputs(typing_extensions.TypedDict, total=False):
     """Named field layout profile from Meta.profiles (e.g. 'summary', 'detail')."""
     title_field: str | None
     subtitle_fields: list[str] | None
+    chrome_style: ChromeStyle | None
+    """Look of the list and its rows. Replaces the application-wide default of
+    niceview.style.set_chrome_style() wholesale — derive it with get_chrome_style().replace()."""
 
 
 class ModelList:
@@ -55,6 +59,10 @@ class ModelList:
 
     After render(), the NiceGUI list element is available as .widget.
     Call update_rows() to refresh from the adapter.
+
+    The look of the list and its rows comes from the chrome style — application-wide via
+    niceview.style.set_chrome_style(), or for this list alone via chrome_style=. Styling
+    .widget directly is not enough: update_rows() rebuilds every row inside it.
     """
     _fields: Fields
     _data: CollectionAdapter
@@ -62,6 +70,7 @@ class ModelList:
     _subtitle_fields: list[str]
     _select_handlers: list[Handler[ListItemSelectEventArguments]]
     _auto_update_registered: bool
+    _chrome_style: ChromeStyle | None
     widget: ui.list | None
 
     def __init__(self, item_type: type[T], adapter: CollectionAdapter, **kwargs: Unpack[_ModelListOptionInputs]) -> None:
@@ -74,6 +83,7 @@ class ModelList:
         self._data = adapter
         self._select_handlers = []
         self._auto_update_registered = False
+        self._chrome_style = kwargs.pop('chrome_style', None)
         self.widget = None
 
         visible = [n for n in self._fields if not self._fields[n].hidden]
@@ -141,16 +151,18 @@ class ModelList:
         return ' · '.join(parts)
 
     def _render_items(self) -> None:
+        style = self._chrome_style or get_chrome_style()
         for item in self._data:
             key = self._data.key_from_item(item)
             subtitle = self._item_subtitle(item)
-            with ui.item(on_click=lambda k=key, i=item: self._handle_select(k, i)).classes('cursor-pointer'):
+            with ui.item(on_click=lambda k=key, i=item: self._handle_select(k, i)).classes(style.list_item_classes):
                 with ui.item_section():
-                    ui.item_label(self._item_title(item))
+                    ui.item_label(self._item_title(item)).props(style.list_title_props)
                     if subtitle:
-                        ui.item_label(subtitle).props('caption')
-                with ui.item_section().props('side'):
-                    ui.icon('chevron_right').classes('text-grey')
+                        ui.item_label(subtitle).props(style.list_subtitle_props)
+                if style.list_chevron_icon is not None:
+                    with ui.item_section().props('side'):
+                        ui.icon(style.list_chevron_icon).classes(style.list_chevron_classes)
 
     def update_rows(self) -> Self:
         """Refresh the displayed list from the adapter."""
@@ -163,7 +175,8 @@ class ModelList:
 
     def render(self) -> Self:
         """Render the list widget into the current NiceGUI context."""
-        with ui.list().props('dense separator') as self.widget:
+        style = self._chrome_style or get_chrome_style()
+        with ui.list().props(style.list_props) as self.widget:
             self._render_items()
 
         if not self._auto_update_registered and isinstance(self._data, ReactiveAdapter):

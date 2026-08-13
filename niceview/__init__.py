@@ -25,6 +25,7 @@ from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
 from niceview.editwrapper import EditFormWrapper, EditGridWrapper
 from niceview.modellist import ModelList
 from niceview.drilldown import DrillDownWrapper
+from niceview.style import ChromeStyle, get_chrome_style, set_chrome_style
 
 __all__ = [
     # Field customization
@@ -36,6 +37,8 @@ __all__ = [
     'ModelGrid', 'ModelGridInlineEdit',
     'EditFormWrapper', 'EditGridWrapper',
     'ModelList', 'DrillDownWrapper',
+    # Chrome styling
+    'ChromeStyle', 'get_chrome_style', 'set_chrome_style',
     # Data adapters
     'ItemAdapter', 'CollectionAdapter', 'ReloadableAdapter', 'ReactiveAdapter',
     'BoundItem', 'ListAdapter', 'JsonAdapter', 'JsonListAdapter',

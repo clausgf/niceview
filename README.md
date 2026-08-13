@@ -116,7 +116,7 @@ Screenshots
 Documentation
 -------------
 
-- **[Components](docs/components.md)** — `ModelForm` (layout, validation), `ModelGrid`, the edit wrappers, card lists, `ModelList`/`DrillDownWrapper`, and the model-free `render_field`
+- **[Components](docs/components.md)** — `ModelForm` (layout, validation), `ModelGrid`, the edit wrappers, card lists, `ModelList`/`DrillDownWrapper`, chrome styling, and the model-free `render_field`
 - **[Data Adapters](docs/adapters.md)** — storage backends, lenient loading, optimistic locking, reactive updates, adapter protocols
 - **[Field Types & Customization](docs/field-types.md)** — type→widget mapping, `niceview.Field()` options, `Meta` profiles, validation
 - **[Field Metadata Comparison](docs/field-metadata-comparison.md)** — how `niceview.Field()`, NiceGUI widget options, `pydantic.Field()` and JSON Schema correspond, and where they deviate

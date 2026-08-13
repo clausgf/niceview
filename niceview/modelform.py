@@ -13,6 +13,7 @@ from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments,
 from niceview.dataadapter import BoundItem, ConflictError, StorageError, JsonAdapter, CollectionAdapter, ItemAdapter
 from niceview.fieldinfo import FieldInfo, _FieldInfoInputs, _merge_field_infos
 from niceview.fields import Fields, LayoutField, LayoutGroup
+from niceview.style import get_chrome_style
 from niceview.widgets import (
     DESCRIPTION_AS,
     REQUIRED_MARKER,
@@ -578,15 +579,19 @@ class ModelForm():
             data = ListAdapter(field_info.item_type, getattr(self._validated_item, field_name))
 
         widget = ModelGrid(field_info.item_type, data)
+        # An embedded grid is a section of the form, not a page of its own: its title takes the
+        # chrome's section size, one step below the title of the wrapper around the form.
+        chrome = get_chrome_style()
+        section_style = chrome.replace(title_classes=f'{chrome.section_title_classes} grow')
         if field_info.editable:
-            edit_widget = EditGridWrapper(widget, title=field_info.label)
+            edit_widget = EditGridWrapper(widget, title=field_info.label, chrome_style=section_style)
             if self._model_repositories:
                 edit_widget.with_repositories(self._model_repositories)
             edit_widget.on_change(notify_change)
             edit_widget.render()
             return edit_widget  # type: ignore[return-value]
         else:
-            ui.label(field_info.label).classes('text-h6')
+            ui.label(field_info.label).classes(chrome.section_title_classes)
             widget.render()
             return widget  # type: ignore[return-value]
 
@@ -738,7 +743,7 @@ class ModelForm():
         if group.title is not None:
             card = ui.card().props('flat bordered').classes(group.classes or 'w-full')
             with card:
-                ui.label(group.title).classes('text-subtitle2')
+                ui.label(group.title).classes(get_chrome_style().section_title_classes)
             return card
         if group.row:
             return ui.row().classes(group.classes or 'w-full items-start gap-4')

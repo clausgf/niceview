@@ -492,7 +492,7 @@ class TestEditGridWrapperDeleteItemOnFailure:
         self.wrapper.on_change(handler)
         self.wrapper._apply_delete = MagicMock(side_effect=RuntimeError('DB error'))
 
-        with patch('niceview.editwrapper.submit_dialog', new=AsyncMock(return_value=True)), \
+        with patch('niceview.editwrapper.confirm_dialog', new=AsyncMock(return_value=True)), \
              patch.object(ui, 'notify'):
             asyncio.run(self.wrapper.delete_item())
 
@@ -501,7 +501,7 @@ class TestEditGridWrapperDeleteItemOnFailure:
     def test_update_rows_still_called_when_apply_raises(self):
         self.wrapper._apply_delete = MagicMock(side_effect=RuntimeError('DB error'))
 
-        with patch('niceview.editwrapper.submit_dialog', new=AsyncMock(return_value=True)), \
+        with patch('niceview.editwrapper.confirm_dialog', new=AsyncMock(return_value=True)), \
              patch.object(ui, 'notify'):
             asyncio.run(self.wrapper.delete_item())
 
@@ -514,7 +514,7 @@ class TestEditGridWrapperDeleteItemOnFailure:
         self.wrapper.grid.widget.client = MagicMock()
         self.wrapper._apply_delete = MagicMock()
 
-        with patch('niceview.editwrapper.submit_dialog', new=AsyncMock(return_value=True)), \
+        with patch('niceview.editwrapper.confirm_dialog', new=AsyncMock(return_value=True)), \
              patch.object(ui, 'notify'):
             asyncio.run(self.wrapper.delete_item())
 

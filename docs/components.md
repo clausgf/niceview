@@ -369,6 +369,58 @@ wrapper.save_button.props('color=green')   # ui.button | None
 wrapper.refresh_button                     # ui.button | None
 ```
 
+### Chrome styling
+
+Styling elements one by one is the fine adjustment. The *shared* look of the chrome — the title
+row of every wrapper, its buttons, the title of a section inside a form — is a `ChromeStyle`,
+set once for the whole application:
+
+```python
+from niceview import ChromeStyle, get_chrome_style, set_chrome_style
+
+set_chrome_style(button_props='dense outline', tooltips=False)   # change single attributes
+set_chrome_style(ChromeStyle(title_classes='text-h5 grow'))      # or replace it wholesale
+```
+
+Call it at startup, before the first page is built: wrappers read the style when they render.
+A single wrapper can opt out with `chrome_style=` — which *replaces* the default rather than
+adding to it, so derive it from the current one:
+
+```python
+EditGridWrapper.from_list(User, users,
+    chrome_style=get_chrome_style().replace(button_group=False),
+).render()
+```
+
+| Attribute | Default | Applies to |
+|---|---|---|
+| `title_row_classes` | `'w-full items-center flex-nowrap'` | the title row of every wrapper |
+| `title_classes` | `'text-h6 grow'` | the title label (`grow` pushes the buttons right) |
+| `section_title_classes` | `'text-subtitle2'` | a layout group's card title, an embedded grid's label |
+| `button_props` | `'dense flat'` | every chrome button |
+| `add_button_props` … `back_button_props` | `''`, `delete`: `'color=negative'` | merged on top of `button_props`, per button kind |
+| `button_group` | `True` | whether the buttons are joined in a `ui.button_group` |
+| `button_group_style` | `'width: fit-content; flex: none'` | inline style of that group |
+| `tooltips` | `True` | whether the buttons carry their default tooltips |
+| `list_props` | `'dense separator'` | a `ModelList`'s `ui.list` |
+| `list_item_classes` | `'cursor-pointer'` | one row (`ui.item`) |
+| `list_title_props` / `list_subtitle_props` | `''` / `'caption'` | the two `ui.item_label`s of a row |
+| `list_chevron_icon` | `'chevron_right'` | drill-down hint at the right edge; `None` renders none |
+| `list_chevron_classes` | `'text-grey'` | that icon |
+
+The `list_*` attributes are what a `ModelList` is made of — it has no title row, and styling
+`.widget` afterwards would not reach the rows, which `update_rows()` rebuilds. A style set on a
+`DrillDownWrapper` reaches the list it renders, so one `chrome_style=` covers both:
+
+```python
+ModelList.from_list(User, users, chrome_style=get_chrome_style().replace(list_chevron_icon=None))
+DrillDownWrapper.from_list(User, users, chrome_style=get_chrome_style().replace(list_props='separator'))
+```
+
+Props are additive and classes replace, the same rule as the [field cascade](#how-props-and-classes-travel-down-the-cascade)
+and for the same reason: a Quasar prop has a key, a CSS class does not. `ChromeStyle` is frozen —
+`replace()` returns a copy, so a style handed to one wrapper cannot be mutated by another.
+
 **`EditGridWrapper` options:**
 ```python
 wrapper = EditGridWrapper.from_list(User, users,
@@ -378,6 +430,7 @@ wrapper = EditGridWrapper.from_list(User, users,
     edit_button='',       # same
     delete_button='',     # same
     refresh_button=None,  # same
+    chrome_style=None,    # look of the title row (see Chrome styling)
 )
 wrapper.with_repositories({Author: authors_adapter})  # type → adapter; for modelselect fields in dialogs
 wrapper.render()
@@ -390,6 +443,7 @@ EditFormWrapper.from_item(user,
     description='...',           # markdown below the title row
     save_button='Save',          # label or '' for icon-only; None = hidden
     refresh_button='',           # same
+    chrome_style=None,           # look of the title row (see Chrome styling)
     repositories={Author: authors_adapter},  # modelselect FK fields
     # ModelForm options:
     include=['name', 'age'],
@@ -471,6 +525,7 @@ from niceview import ModelList, DrillDownWrapper
 list_view = ModelList.from_list(User, users,
     title_field='name',               # first visible field by default
     subtitle_fields=['email'],        # next two visible fields by default
+    chrome_style=None,                # look of the list and its rows (see Chrome styling)
 )
 list_view.on_select(lambda e: print(e.row_key, e.item))
 list_view.render()
@@ -491,11 +546,14 @@ DrillDownWrapper.from_adapter(User, adapter, list_title='Users').render()
 **`DrillDownWrapper` options:**
 ```python
 DrillDownWrapper.from_list(User, users,
-    list_title='Users',              # list view title
+    list_title='Users',              # list view title; None or '' = none (the detail view shows the item title)
+    description='...',               # markdown below the title row, in both views
     item_title_field='name',         # field shown as detail title (auto-detected if omitted)
     item_subtitle_fields=['email'],  # fields shown as subtitle (next two visible fields if omitted)
     add_button='',                   # '' = icon only; None = hidden
     delete_button='',                # same
+    back_button='',                  # same — None leaves the detail view without a way back
+    chrome_style=None,               # look of the title row (see Chrome styling)
     on_add=None,                     # override the Add click handler entirely, sync or async (see below)
     on_back=None,                    # if set, shows a Back button in the list view too (for nesting), sync or async
     render_list_item=None,           # override list row rendering (see below)
@@ -533,17 +591,19 @@ inside a refreshable body and must be synchronous. Load slow data before calling
 or render a placeholder and fill it from a task.
 
 **Styling after render():** like `EditGridWrapper`/`EditFormWrapper`, `DrillDownWrapper` exposes
-its title row elements — `wrapper.title_row`, `wrapper.title`, `wrapper.back_button`,
-`wrapper.add_button`, `wrapper.delete_button` (all `| None`; the two buttons are `None` only if
-disabled entirely via `add_button=None`/`delete_button=None`, never just because they're hidden
-in the current view). Unlike a naive refreshable, the title row is built exactly once in
+its title row elements — `wrapper.title_row`, `wrapper.title`, `wrapper.description`,
+`wrapper.back_button`, `wrapper.add_button`, `wrapper.delete_button` (all `| None`; the buttons
+are `None` only if disabled entirely via `add_button=None`/`delete_button=None`/`back_button=None`,
+never just because they're hidden in the current view). Its title row is built by the same
+[chrome style](#chrome-styling) as the other two wrappers. Unlike a naive refreshable, the title row is built exactly once in
 `render()` and only *updated* (text, visibility) on every list<->detail navigation, so styling
 applied once (`wrapper.title.classes(...)`) survives navigation instead of being wiped on the
 next swap. The body (list/detail content) is deliberately **not** exposed: it's genuinely torn
 down and rebuilt on every navigation — that's also where the slide animation lives — so any
 styling applied to it would be silently lost on the next swap; offering it would be misleading.
 `ModelList` exposes only `.widget` (the `ui.list`) — it has no title row of its own, so there's
-nothing else to expose.
+nothing else to expose. Its rows are styled through the [chrome style](#chrome-styling), not
+through `.widget`: `update_rows()` rebuilds them.
 
 **Custom list rows and detail layout.** Both are escape hatches for the two cases the generic
 defaults can't handle: hand-placed field layout, and heterogeneous item types.

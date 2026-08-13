@@ -116,7 +116,7 @@ async def submit_dialog(title: str, message: str, buttons: 'tuple[str, ...] | li
     dialog = ui.dialog().props(':maximized="$q.screen.lt.md" transition-show="slide-up" transition-hide="slide-down"').style('width: 400px')
     with dialog:
         with ui.card().classes('w-full'):
-            ui.label(title).classes('text-h6 center')
+            ui.label(title).classes('text-h6')
             ui.markdown(message)
             with ui.row().classes('w-full place-content-end'):
                 for button in buttons:
