@@ -11,6 +11,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 (nothing yet)
 
 
+[0.15.0] - 2026-08-13
+---------------------
+
+### Added
+
+- `DrillDownWrapper(on_add=..., on_back=...)` accept `async def` handlers. An async handler is
+  awaited inside the click, in the click's own slot context, so it can open a dialog and act on
+  the answer before returning — the reason `on_add` exists in the first place:
+
+  ```python
+  async def handle_add() -> None:
+      name = await input_dialog('New project', label='Name')
+      if name is None:
+          return  # cancelled — nothing created
+      item = adapter.create(Project(name=name))
+      wrapper.open(adapter.key_from_item(item))
+  ```
+
+  Previously the coroutine was dropped without being awaited: the button did nothing at all,
+  with a `RuntimeWarning` as the only trace. Sync handlers are unaffected.
+- `util.input_dialog(validator=...)` accepts an async validator, for checks whose answer is not
+  local ("is this name still free?"). It gates the OK button exactly as a sync one does. Async
+  validators cannot go into Quasar's sync-only validation dict, so they are wrapped in a
+  NiceGUI `ValidationFunction`; previously the coroutine object was truthy and every value
+  passed.
+- `util.maybe_await(result)`: awaits a value if it is awaitable, passes it through otherwise.
+  Used internally wherever niceview invokes a caller-supplied callback directly.
+
+### Changed
+
+- `DrillDownWrapper` now raises `TypeError` at construction when `render_detail`,
+  `render_list_item` or `render_list_container` is an `async def`. These run inside the
+  refreshable body and cannot be awaited; they used to fail silently with an empty body.
+- Internal: `DrillDownWrapper._handle_add()` and `_handle_back_click()` are coroutines. A
+  synchronous `on_add`/`on_back` therefore runs one event-loop tick after the click instead of
+  during it — invisible in a browser, but a `nicegui.testing.User` test that clicks Add and
+  asserts without an intervening `await` needs one now.
+
+Callbacks that already accepted async handlers and are unchanged: `ModelForm.on_change`,
+`ModelGrid.on_select` / `on_change`, `ModelList.on_select`, `EditGridWrapper.on_change` (all
+dispatched through NiceGUI's `handle_event`), a field's `options=` callable, and a field's
+`validation=` function. Deliberately left synchronous: the adapter protocol
+(`ReactiveAdapter.on_change`, `FilteredAdapter`'s predicate, `DirectoryAdapter`'s `name_filter`
+and `default_content`), which has no NiceGUI dependency at all, and the per-value mappers
+`cell_renderers` / `cell_readers` / `key_generator`, which run while building rows.
+
+
 [0.14.1] - 2026-08-07
 ---------------------
 

@@ -59,8 +59,19 @@ async def on_create():
 | `label` | `str` | — | Input field label (keyword-only) |
 | `placeholder` | `str` | `''` | Input placeholder |
 | `value` | `str` | `''` | Pre-filled value |
-| `validator` | `Callable[[str], bool] \| None` | `None` | Validation function; `True` = valid |
+| `validator` | `Callable[[str], bool \| Awaitable[bool]] \| None` | `None` | Validation function, sync or async; `True` = valid |
 | `error_message` | `str` | `'Invalid input'` | Error shown when validator fails |
+
+The validator may be `async def` — use it when the answer is not local, e.g. a uniqueness check
+against a database. It gates the OK button exactly as a sync one does:
+
+```python
+async def is_free(name: str) -> bool:
+    return await repo.count(name=name) == 0
+
+name = await input_dialog('Create Project', label='Project Name',
+                          validator=is_free, error_message='Name already taken')
+```
 
 **`submit_dialog`** — generic dialog with custom button list, returns the text of the
 pressed button (without prefixes), or `None` if the dialog was dismissed:

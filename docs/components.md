@@ -496,8 +496,8 @@ DrillDownWrapper.from_list(User, users,
     item_subtitle_fields=['email'],  # fields shown as subtitle (next two visible fields if omitted)
     add_button='',                   # '' = icon only; None = hidden
     delete_button='',                # same
-    on_add=None,                     # override the Add click handler entirely (see below)
-    on_back=None,                    # if set, shows a Back button in the list view too (for nesting)
+    on_add=None,                     # override the Add click handler entirely, sync or async (see below)
+    on_back=None,                    # if set, shows a Back button in the list view too (for nesting), sync or async
     render_list_item=None,           # override list row rendering (see below)
     render_list_container=None,      # wrap the rendered rows, e.g. for make_sortable (see below)
     render_detail=None,              # override detail rendering (see below)
@@ -509,6 +509,28 @@ DrillDownWrapper.from_list(User, users,
 By default, Add creates `item_type()` and navigates straight to its detail view for editing —
 no upfront dialog, matching the autosave-first pattern used throughout niceview. `wrapper.open(key)`
 navigates to a detail view programmatically, e.g. from a custom `on_add`.
+
+`on_add` and `on_back` may be written as `def` or as `async def`; an async handler is awaited
+before the click is done. That's what you want when the item needs an answer before it can
+exist — the dialogs in [Dialogs](dialogs.md) are all async:
+
+```python
+async def handle_add() -> None:
+    name = await input_dialog('New project', label='Name')
+    if name is None:
+        return  # cancelled — nothing created
+    item = adapter.create(Project(name=name))
+    wrapper.open(adapter.key_from_item(item))
+
+wrapper = DrillDownWrapper.from_adapter(Project, adapter, on_add=handle_add)
+```
+
+The same holds for the event callbacks elsewhere in niceview (`ModelForm.on_change`,
+`ModelGrid.on_select`, `ModelList.on_select`, `EditGridWrapper.on_change`), for a field's
+`options=` callable, and for a field's `validation=` function. The renderer callbacks
+(`render_detail`, `render_list_item`, `render_list_container`) are the exception: they run
+inside a refreshable body and must be synchronous. Load slow data before calling `render()`,
+or render a placeholder and fill it from a task.
 
 **Styling after render():** like `EditGridWrapper`/`EditFormWrapper`, `DrillDownWrapper` exposes
 its title row elements — `wrapper.title_row`, `wrapper.title`, `wrapper.back_button`,

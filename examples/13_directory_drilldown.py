@@ -10,16 +10,19 @@ opened lazily inside `render_detail`.
 Renaming is not a wrapper feature — it's just a "Name" input wired to
 `DirectoryAdapter.rename()`, reporting the new key back via the `set_key`
 callback so DrillDownWrapper's navigation state (title, Back target) stays in
-sync. Add is overridden via `on_add` too, since `DirectoryAdapter.create()`
-picks its own default name ("untitled-01", "untitled-02", ...) instead of
-taking a fully-formed item like the default Add flow expects.
+sync. Add is overridden via `on_add`, which here is `async def`: a note needs a
+filename, so the handler asks for one with `input_dialog()` and only creates the
+file once it has an answer. `on_add` and `on_back` may be written either way —
+a plain `def` when there is nothing to wait for, `async def` when there is.
 """
+import datetime
 from pathlib import Path
 
 import pydantic
 from nicegui import ui
 
 from niceview import DirectoryAdapter, FileEntry, JsonAdapter, ModelForm, DrillDownWrapper
+from niceview.util import input_dialog
 
 
 class Note(pydantic.BaseModel):
@@ -53,8 +56,20 @@ def page():
     ui.markdown(__doc__ or '')
     ui.separator()
 
-    def handle_add() -> None:
-        entry = directory.create()
+    async def handle_add() -> None:
+        # async on_add: the dialog is awaited inside the Add click, so nothing is created
+        # until the user answers -- and Cancel simply leaves the list untouched.
+        name = await input_dialog('New note', label='Name', placeholder='my-note',
+                                  validator=lambda v: bool(v) and '/' not in v,
+                                  error_message='Name must not be empty or contain "/"')
+        if name is None:
+            return  # cancelled
+        try:
+            # create() only reads .name off the item; mtime/size come from the file it writes.
+            entry = directory.create(FileEntry(name=name, mtime=datetime.datetime.now(), size=0))
+        except ValueError as e:  # name already taken, or not a usable file name
+            ui.notify(str(e), color='negative')
+            return
         wrapper.open(entry.name)
 
     with ui.card().classes('w-full max-w-2xl'):

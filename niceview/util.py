@@ -1,5 +1,20 @@
-from typing import Callable
-from nicegui import ui
+import inspect
+from typing import Any, Awaitable, Callable
+from nicegui import helpers, ui
+from nicegui.elements.mixins.validation_element import ValidationDict, ValidationFunction
+
+
+async def maybe_await(result: Any) -> Any:
+    """
+    Await `result` if it is awaitable, pass it through otherwise.
+
+    Calling an `async def` handler returns a coroutine; dropping it does nothing at all except
+    emit a RuntimeWarning, which is the worst way for a click handler to fail. Every place that
+    invokes a caller-supplied callback directly (rather than through NiceGUI's `handle_event`,
+    which does the same thing for callbacks that take an event argument) goes through here, so
+    `def` and `async def` are equally valid there.
+    """
+    return await result if inspect.isawaitable(result) else result
 
 
 async def confirm_dialog(
@@ -34,10 +49,13 @@ async def input_dialog(
     label: str,
     placeholder: str = '',
     value: str = '',
-    validator: Callable[[str], bool] | None = None,
+    validator: Callable[[str], bool | Awaitable[bool]] | None = None,
     error_message: str = 'Invalid input',
 ) -> str | None:
     """Show an input dialog. Returns the entered string, or None if cancelled.
+
+    The validator may be sync or async — async is what you want when the answer lives elsewhere
+    ("is this name still free?"), and it gates the OK button just as a sync one does.
 
     Usage:
         name = await input_dialog('Create Project', label='Project Name',
@@ -51,13 +69,25 @@ async def input_dialog(
     with dialog:
         with ui.card().classes('w-full'):
             ui.label(title).classes('text-h6')
-            validation = {error_message: validator} if validator is not None else None
+            # A sync validator goes into Quasar's validation dict unchanged. An async one cannot:
+            # NiceGUI's ValidationDict is sync-only, so it is wrapped in a ValidationFunction,
+            # which does accept awaitables.
+            validation: ValidationFunction | ValidationDict | None
+            if validator is None:
+                validation = None
+            elif helpers.is_coroutine_function(validator):
+                async def validation(value: str) -> str | None:  # type: ignore[no-redef]
+                    return None if await validator(value) else error_message  # type: ignore[misc, union-attr]
+            else:
+                validation = {error_message: validator}  # type: ignore[dict-item]
             inp = ui.input(label=label, placeholder=placeholder, value=value, validation=validation)
             with ui.row().classes('w-full place-content-end'):
                 ui.button('Cancel', on_click=lambda: dialog.submit(None))
-                def on_ok():
-                    if validator is not None and not validator(inp.value):
-                        inp.validate()
+                async def on_ok() -> None:
+                    if validator is not None and not await maybe_await(validator(inp.value)):
+                        # return_result=False: an async validation function has no synchronous
+                        # answer to give, and we only call this for the error message anyway.
+                        inp.validate(return_result=False)
                         return
                     dialog.submit(inp.value)
                 ui.button('OK', on_click=on_ok).props('color=primary')

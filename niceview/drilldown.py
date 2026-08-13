@@ -6,21 +6,26 @@ ui.page / ui.card / ui.column, same as any other niceview widget.
 """
 import logging
 from pathlib import Path
-from typing import Any, Callable, Self, TypeVar, Unpack
+from typing import Any, Awaitable, Callable, Self, TypeVar, Unpack
 import typing_extensions
 from pydantic import BaseModel
-from nicegui import ui
+from nicegui import helpers, ui
 
 from niceview.dataadapter import CollectionAdapter, ListAdapter, JsonListAdapter, ReactiveAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 from niceview.modelform import ModelForm
 from niceview.modellist import ModelList
-from niceview.util import confirm_dialog
+from niceview.util import confirm_dialog, maybe_await
 
 log = logging.getLogger('niceview')
 
 T = TypeVar('T', bound=BaseModel)
+
+ActionHandler = Callable[[], None | Awaitable[None]]
+"""A zero-argument handler for a title-row button, written as `def` or `async def`. An async
+handler is awaited, so it can open a dialog (niceview.util.confirm_dialog, input_dialog,
+submit_dialog) and act on the answer before returning."""
 
 DetailRenderer = Callable[[CollectionAdapter, str, Callable[[str], None]], None]
 """(adapter, key, set_key) -> render the detail body for the item at key. Call
@@ -62,8 +67,12 @@ class _DrillDownWrapperOptionInputs(typing_extensions.TypedDict, total=False):
     item_subtitle_fields: list[str] | None
     add_button: str | None
     delete_button: str | None
-    on_add: Callable[[], None] | None
-    on_back: Callable[[], None] | None
+    on_add: ActionHandler | None
+    """Replaces the default Add action (create item_type() and open it). Sync or async — an
+    async handler can ask for a name via util.input_dialog() before creating anything."""
+    on_back: ActionHandler | None
+    """Shows a Back button in the list view too (for nesting) and runs on its click. Sync or
+    async — an async handler can confirm via util.confirm_dialog() before leaving."""
     render_list_item: ListItemRenderer | None
     render_list_container: ListContainerRenderer | None
     render_detail: DetailRenderer | None
@@ -116,8 +125,8 @@ class DrillDownWrapper:
     _render_list_item: ListItemRenderer | None
     _render_list_container: ListContainerRenderer | None
     _render_detail: DetailRenderer | None
-    _on_add: Callable[[], None] | None
-    _on_back: Callable[[], None] | None
+    _on_add: ActionHandler | None
+    _on_back: ActionHandler | None
     _add_button: str | None
     _delete_button: str | None
     _list_kwargs: dict[str, Any]
@@ -152,6 +161,13 @@ class DrillDownWrapper:
         allowed_list_keys = {'include', 'exclude', 'field_infos', 'profile'}
         if unknown := set(self._list_kwargs) - allowed_list_keys:
             raise TypeError(f"Unexpected keyword arguments for DrillDownWrapper: {', '.join(sorted(unknown))}")
+        # on_add/on_back may be async, the renderers may not: they run inside the refreshable
+        # body, which builds its elements synchronously. Say so here rather than let the
+        # coroutine be dropped at render time, where an empty body is all you would see.
+        for option in ('render_list_item', 'render_list_container', 'render_detail'):
+            if helpers.is_coroutine_function(getattr(self, f'_{option}')):
+                raise TypeError(f"DrillDownWrapper's {option} must be synchronous; "
+                                f"load data before render() or fill a placeholder from a task.")
         self._state = {'view': 'list', 'key': None, 'direction': 'right'}
         self._auto_update_registered = False
 
@@ -235,11 +251,11 @@ class DrillDownWrapper:
         except (KeyError, ValueError):
             return key
 
-    def _handle_back_click(self) -> None:
+    async def _handle_back_click(self) -> None:
         if self._state['view'] == 'detail':
             self._back()
         elif self._on_back is not None:
-            self._on_back()
+            await maybe_await(self._on_back())
 
     def _build_title_row(self) -> None:
         # Built once (unlike _body) and updated in place by _update_title_row(): its structure
@@ -331,9 +347,9 @@ class DrillDownWrapper:
 
     # --- CRUD actions ------------------------------------------------------
 
-    def _handle_add(self) -> None:
+    async def _handle_add(self) -> None:
         if self._on_add is not None:
-            self._on_add()
+            await maybe_await(self._on_add())
             return
         item = self._adapter.create(self._item_type())
         self.open(self._adapter.key_from_item(item))

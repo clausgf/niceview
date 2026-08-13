@@ -1196,3 +1196,51 @@ class TestInputDialog:
         user.find('OK').click()
         await asyncio.sleep(0.1)
         assert results == ['hello']
+
+    async def test_async_validator_blocks_invalid_input(self, user: User) -> None:
+        # An async validator is what you need when the answer lives elsewhere ("is this name
+        # still free?"). It cannot go into Quasar's validation dict, which is sync-only, so
+        # input_dialog wraps it -- and OK must await it instead of treating the coroutine
+        # object as a truthy result.
+        results: list = []
+
+        async def is_free(value: str) -> bool:
+            await asyncio.sleep(0)
+            return value != 'taken'
+
+        @ui.page('/')
+        def page():
+            async def show():
+                results.append(await input_dialog('Title', label='Name', validator=is_free,
+                                                  error_message='Already taken'))
+            ui.button('Open', on_click=show)
+
+        await user.open('/')
+        user.find('Open').click()
+        await user.should_see('Name')  # wait for dialog
+        user.find('Name').type('taken')
+        user.find('OK').click()
+        await asyncio.sleep(0.1)
+        assert results == []  # blocked
+        await user.should_see('Already taken')
+
+    async def test_async_validator_accepts_valid_input(self, user: User) -> None:
+        results: list = []
+
+        async def is_free(value: str) -> bool:
+            await asyncio.sleep(0)
+            return value != 'taken'
+
+        @ui.page('/')
+        def page():
+            async def show():
+                results.append(await input_dialog('Title', label='Name', validator=is_free))
+            ui.button('Open', on_click=show)
+
+        await user.open('/')
+        user.find('Open').click()
+        await user.should_see('Name')  # wait for dialog
+        user.find('Name').type('free')
+        user.find('OK').click()
+        await asyncio.sleep(0.1)
+        assert results == ['free']

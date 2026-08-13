@@ -5,6 +5,8 @@ DrillDownWrapper is embeddable (render() draws into the current NiceGUI
 context, no page/route of its own), so its tests wrap render() in a plain
 @ui.page like any other niceview widget.
 """
+import asyncio
+
 import pydantic
 import pytest
 from nicegui import ui
@@ -13,6 +15,7 @@ from nicegui.testing import User
 from niceview.dataadapter import ListAdapter, DirectoryAdapter, FileEntry
 from niceview.modellist import ModelList
 from niceview.drilldown import DrillDownWrapper
+from niceview.util import input_dialog
 
 
 class Contact(pydantic.BaseModel):
@@ -350,6 +353,7 @@ class TestDrillDownWrapperActions:
 
         def custom_add():
             called.append(True)
+            ui.notify('custom add')
 
         @ui.page('/')
         def page():
@@ -357,9 +361,87 @@ class TestDrillDownWrapperActions:
 
         await user.open('/')
         user.find(content='add').click()
-        await user.should_see('Contact List')  # title still visible, still in list view
+        await user.should_see('custom add')  # the handler ran ...
+        await user.should_see('Contact List')  # ... and the title is still there: still in list view
         assert called == [True]
         assert len(list(adapter)) == 0
+
+    async def test_async_on_add_is_awaited(self, user: User) -> None:
+        # An async handler used to be dropped on the floor: calling it produced a coroutine that
+        # was never awaited, so the Add button silently did nothing.
+        adapter = ListAdapter(Contact, [])
+        called: list[bool] = []
+
+        async def custom_add():
+            await asyncio.sleep(0)
+            called.append(True)
+            ui.notify('async add')
+
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_adapter(Contact, adapter, on_add=custom_add).render()
+
+        await user.open('/')
+        user.find(content='add').click()
+        await user.should_see('async add')
+        assert called == [True]
+        assert len(list(adapter)) == 0
+
+    async def test_async_on_add_can_open_a_dialog_and_then_navigate(self, user: User) -> None:
+        # The reason on_add exists: ask first, create second. The dialog is awaited inside the
+        # click handler, so it runs in the click's slot context and wrapper.open() afterwards
+        # still lands in the right place.
+        adapter = ListAdapter(Contact, [])
+        holder: dict = {}
+
+        async def custom_add():
+            name = await input_dialog('New contact', label='Name')
+            if name is None:
+                return
+            item = adapter.create(Contact(name=name))
+            holder['wrapper'].open(adapter.key_from_item(item))
+
+        @ui.page('/')
+        def page():
+            holder['wrapper'] = DrillDownWrapper.from_adapter(Contact, adapter, on_add=custom_add).render()
+
+        await user.open('/')
+        user.find(content='add').click()
+        await user.should_see('New contact')
+        user.find('Name').type('Alice')
+        user.find('OK').click()
+        await asyncio.sleep(0.1)
+        assert [c.name for c in adapter] == ['Alice']
+        assert holder['wrapper']._state['view'] == 'detail'  # navigated after the dialog closed
+
+    async def test_async_on_back_is_awaited(self, user: User) -> None:
+        contacts = [Contact(name='Alice')]
+        adapter = ListAdapter(Contact, contacts)
+        called: list[bool] = []
+
+        async def custom_back():
+            await asyncio.sleep(0)
+            called.append(True)
+            ui.notify('async back')
+
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_adapter(Contact, adapter, on_back=custom_back).render()
+
+        await user.open('/')
+        user.find(marker=None, content='arrow_back').click()
+        await user.should_see('async back')
+        assert called == [True]
+
+    @pytest.mark.parametrize('option', ['render_list_item', 'render_list_container', 'render_detail'])
+    def test_async_renderer_is_rejected_at_construction(self, option: str) -> None:
+        # The renderers run inside the refreshable body and cannot be awaited. Rejecting them
+        # up front beats dropping the coroutine at render time and showing an empty body.
+        async def renderer(*args) -> None:
+            pass
+
+        with pytest.raises(TypeError, match='must be synchronous'):
+            DrillDownWrapper.from_adapter(Contact, ListAdapter(Contact, []), **{option: renderer})
 
     async def test_open_public_method_navigates(self, user: User) -> None:
         contacts = [Contact(name='Alice')]
