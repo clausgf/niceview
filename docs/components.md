@@ -398,7 +398,9 @@ EditGridWrapper.from_list(User, users,
 | `title_classes` | `'text-h6 grow'` | the title label (`grow` pushes the buttons right) |
 | `section_title_classes` | `'text-subtitle2'` | a layout group's card title, an embedded grid's label |
 | `button_props` | `'dense flat'` | every chrome button |
-| `add_button_props` … `back_button_props` | `''`, `delete`: `'color=negative'` | merged on top of `button_props`, per button kind |
+| `icon_button_props` / `labelled_button_props` | `'round'` / `''` | a button without / with a label |
+| `shape_in_group` | `False` | whether that shape also applies inside a button group |
+| `add_button_props` … `back_button_props` | `''`, `delete`: `'color=negative'` | merged on top of the two above, per button kind |
 | `button_group` | `True` | whether buttons that show together are joined in a `ui.button_group` |
 | `button_group_style` | `'width: fit-content; flex: none'` | inline style of that group |
 | `button_row_classes` | `'flex items-center gap-1 w-fit flex-none'` | the container used instead of the group |
@@ -408,6 +410,17 @@ EditGridWrapper.from_list(User, users,
 | `list_title_props` / `list_subtitle_props` | `''` / `'caption'` | the two `ui.item_label`s of a row |
 | `list_chevron_icon` | `'chevron_right'` | drill-down hint at the right edge; `None` renders none |
 | `list_chevron_classes` | `'text-grey'` | that icon |
+
+A button's props are layered **base → shape → role**: `button_props` is what every chrome button
+shares, the shape comes from whether it carries a label (icon-only is `round`, labelled is
+square), and the role (`delete_button_props` …) has the last word. Shape follows the button, not
+the place it is used — a lone Refresh looks the same in a form as in a grid.
+
+The one exception is Quasar's, not ours: a button group joins straight edges, and a circle has
+none. Inside a group the shape layer is therefore skipped, so grouped icon buttons stay square.
+It is *joined or round, not both* — `button_group=False` gives you round icon buttons
+everywhere, and `shape_in_group=True` lets a group-compatible shape through (Quasar's `rounded`
+survives being joined, `round` does not).
 
 A button group is only used when there is something to join: Quasar styles it as one control —
 squared-off inner edges, a shared border — so a group of one would be a button wearing a group's

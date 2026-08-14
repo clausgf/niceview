@@ -11,6 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 (nothing yet)
 
 
+[0.16.2] - 2026-08-14
+---------------------
+
+### Added
+
+- A chrome button's shape now follows the button itself: without a label it is round, with one
+  it stays square. The props of a chrome button are layered base → shape → role, with the two
+  new `ChromeStyle` attributes `icon_button_props` (default `'round'`) and
+  `labelled_button_props` (default `''`) in the middle; a role such as `delete_button_props`
+  still wins. Icon-only buttons outside a button group therefore look different than before —
+  `DrillDownWrapper`'s Back/Add/Delete, the lone Refresh of an autosaving `EditFormWrapper`,
+  and any toolbar with `button_group=False`. Set `icon_button_props=''` for the old look.
+- `ChromeStyle.shape_in_group` (default `False`): inside a `ui.button_group` the shape layer is
+  skipped, because a group joins straight edges and a circle has none — joined or round, not
+  both. `button_group=False` gives round icon buttons everywhere; `shape_in_group=True` lets a
+  group-compatible shape through (Quasar's `rounded` survives being joined, `round` does not).
+
+
 [0.16.1] - 2026-08-14
 ---------------------
 

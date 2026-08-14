@@ -170,7 +170,7 @@ class TestChromeConsistency:
         with user._client:
             assert 'Add a new item' in [t.text for t in _tooltips(user.client)]
 
-    async def test_the_two_add_buttons_look_the_same(self, user: User) -> None:
+    async def test_the_two_add_buttons_agree_apart_from_their_shape(self, user: User) -> None:
         buttons: dict[str, ui.button] = {}
 
         @ui.page('/')
@@ -179,7 +179,13 @@ class TestChromeConsistency:
             buttons['drilldown'] = DrillDownWrapper.from_list(Contact, [], list_title='List').render().add_button
 
         await user.open('/')
-        assert dict(buttons['grid'].props) == dict(buttons['drilldown'].props)
+        grid_props = dict(buttons['grid'].props)
+        drilldown_props = dict(buttons['drilldown'].props)
+        # The grid's Add is joined into a group and stays square; the drill-down's stands alone
+        # and is round. Everything that is not the shape has to match.
+        assert drilldown_props.pop('round', None) is True
+        assert 'round' not in grid_props
+        assert grid_props == drilldown_props
 
     async def test_all_three_title_rows_share_their_classes(self, user: User, tmp_path) -> None:
         rows: list[ui.row] = []
@@ -280,6 +286,108 @@ class TestButtonGrouping:
             containers = [e for e in user.client.layout.descendants() if 'my-buttons' in e.classes]
             assert len(containers) == 1
             assert len([e for e in containers[0].descendants() if isinstance(e, ui.button)]) == 4
+
+
+# ---------------------------------------------------------------------------
+# Shape: a button without a label is round
+# ---------------------------------------------------------------------------
+
+class TestButtonShape:
+    async def test_icon_only_button_is_round(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_list(Contact, [], list_title='Contacts').render()
+
+        await user.open('/')
+        with user._client:
+            assert all(b.props.get('round') for b in _buttons(user.client))
+
+    async def test_labelled_button_is_not_round(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_list(Contact, [], list_title='Contacts',
+                                       add_button='Add', delete_button='Delete').render()
+
+        await user.open('/')
+        with user._client:
+            labelled = [b for b in _buttons(user.client) if b.props.get('label')]
+            assert labelled and not any(b.props.get('round') for b in labelled)
+
+    async def test_shape_is_configurable(self, user: User) -> None:
+        set_chrome_style(icon_button_props='rounded outline', labelled_button_props='glossy')
+
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_list(Contact, [], list_title='Contacts',
+                                       add_button='Add', delete_button=None).render()
+
+        await user.open('/')
+        with user._client:
+            back = [b for b in _buttons(user.client) if b.props.get('icon') == 'arrow_back'][0]
+            add = [b for b in _buttons(user.client) if b.props.get('icon') == 'add'][0]
+            assert back.props.get('rounded') and back.props.get('outline')
+            assert add.props.get('glossy') and not add.props.get('rounded')
+
+    async def test_role_props_win_over_the_shape(self, user: User) -> None:
+        set_chrome_style(icon_button_props='round color=grey', delete_button_props='color=negative')
+
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_list(Contact, [], list_title='Contacts').render()
+
+        await user.open('/')
+        with user._client:
+            delete = [b for b in _buttons(user.client) if b.props.get('icon') == 'delete'][0]
+            assert delete.props.get('color') == 'negative'
+            assert delete.props.get('round')
+
+    async def test_grouped_icon_buttons_stay_square(self, user: User) -> None:
+        # A group joins straight edges — Quasar cannot join circles.
+        @ui.page('/')
+        def page():
+            EditGridWrapper.from_list(Contact, [], title='Contacts').render()
+
+        await user.open('/')
+        with user._client:
+            assert not any(b.props.get('round') for b in _buttons(user.client))
+
+    async def test_ungrouped_icon_buttons_are_round(self, user: User) -> None:
+        set_chrome_style(button_group=False)
+
+        @ui.page('/')
+        def page():
+            EditGridWrapper.from_list(Contact, [], title='Contacts').render()
+
+        await user.open('/')
+        with user._client:
+            buttons = _buttons(user.client)
+            assert len(buttons) == 4
+            assert all(b.props.get('round') for b in buttons)
+
+    async def test_shape_in_group_lets_the_shape_through(self, user: User) -> None:
+        set_chrome_style(icon_button_props='rounded', shape_in_group=True)
+
+        @ui.page('/')
+        def page():
+            EditGridWrapper.from_list(Contact, [], title='Contacts').render()
+
+        await user.open('/')
+        with user._client:
+            assert all(b.props.get('rounded') for b in _buttons(user.client))
+
+    async def test_the_group_does_not_leak_into_later_buttons(self, user: User, tmp_path) -> None:
+        # The context var has to be reset when the group closes: the form below renders a
+        # single, ungrouped Refresh button, which must be round again.
+        forms: list[EditFormWrapper] = []
+
+        @ui.page('/')
+        def page():
+            EditGridWrapper.from_list(Contact, [], title='Grid').render()
+            forms.append(EditFormWrapper.from_json(Contact, tmp_path / 'c.json',
+                                                   title='Form', autosave=True).render())
+
+        await user.open('/')
+        assert forms[0].refresh_button.props.get('round')
 
 
 # ---------------------------------------------------------------------------

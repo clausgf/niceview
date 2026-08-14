@@ -18,6 +18,7 @@ than from scratch if you only want to change one thing:
     EditGridWrapper.from_list(..., chrome_style=get_chrome_style().replace(tooltips=False))
 """
 import contextlib
+import contextvars
 import dataclasses
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator, Self
@@ -29,9 +30,10 @@ class ChromeStyle:
     """
     The look of the wrapper chrome. Instances are immutable — derive one with replace().
 
-    The per-button props are merged *on top of* button_props, so button_props is the base
-    every chrome button shares and e.g. delete_button_props only carries what makes a delete
-    button different.
+    A button's props are layered base → shape → role: button_props is what every chrome button
+    shares, the shape layer depends on whether the button carries a label, and e.g.
+    delete_button_props carries only what makes a delete button a delete button. Later layers
+    win per key, so a role can override the shape and the shape can override the base.
     """
     title_row_classes: str = 'w-full items-center flex-nowrap'
     """Classes of the title row (ui.row) of every wrapper."""
@@ -43,6 +45,17 @@ class ChromeStyle:
 
     button_props: str = 'dense flat'
     """Props shared by every chrome button."""
+    icon_button_props: str = 'round'
+    """Props of a button that shows only its icon (label ''). Its shape follows the button
+    itself, not where it sits — except inside a button group, see shape_in_group."""
+    labelled_button_props: str = ''
+    """Props of a button that carries a label."""
+    shape_in_group: bool = False
+    """Whether the shape layer applies inside a ui.button_group as well. Off, because a group
+    joins straight edges and a circle has none: 'round' children turn a group into circles with
+    a border segment glued on. Turn it on if your shape props survive being joined (Quasar's
+    'rounded' does, 'round' does not) — or set button_group=False to get round icon buttons
+    everywhere. Joined or round, not both."""
     add_button_props: str = ''
     edit_button_props: str = ''
     delete_button_props: str = 'color=negative'
@@ -114,6 +127,13 @@ def chrome_title(text: str, style: ChromeStyle) -> ui.label:
     return ui.label(text).classes(style.title_classes)
 
 
+_in_button_group: contextvars.ContextVar[bool] = contextvars.ContextVar('niceview_in_button_group', default=False)
+"""Set by chrome_buttons() for the buttons built inside it, read by chrome_button() to decide
+whether the shape layer applies. Not a parameter of chrome_button(): the buttons are built by
+the caller inside the `with`, and threading a flag through every call site would state the
+same fact four times per wrapper."""
+
+
 @contextlib.contextmanager
 def chrome_buttons(style: ChromeStyle, count: int) -> Iterator[ui.element]:
     """
@@ -125,21 +145,34 @@ def chrome_buttons(style: ChromeStyle, count: int) -> Iterator[ui.element]:
     is a button wearing a group's clothes. So one button, or button_group=False, goes into a
     plain flex container instead.
     """
-    if style.button_group and count > 1:
-        with ui.button_group().style(style.button_group_style) as group:
-            yield group
-    else:
-        with ui.element('div').classes(style.button_row_classes) as row:
-            yield row
+    grouped = style.button_group and count > 1
+    token = _in_button_group.set(grouped)
+    try:
+        if grouped:
+            with ui.button_group().style(style.button_group_style) as container:
+                yield container
+        else:
+            with ui.element('div').classes(style.button_row_classes) as container:
+                yield container
+    finally:
+        _in_button_group.reset(token)
 
 
 def chrome_button(kind: str, label: str, icon: str, tooltip: str, style: ChromeStyle,
                   on_click: Callable[..., Any] | None = None) -> ui.button:
     """
-    One chrome button: `kind` ('add', 'delete', …) selects the per-kind props merged on top of
-    the shared button_props, and label is the caller's '' (icon only) or its own text.
+    One chrome button, built from three layers of props: the shared button_props, the shape the
+    label asks for (round without one, plain with), and the props of this `kind` ('add',
+    'delete', …). `label` is the caller's '' (icon only) or its own text.
+
+    The shape depends on the button, not on where it is used — with the one exception Quasar
+    imposes: inside a button group there is nothing to round, so the layer is skipped there
+    unless the style says otherwise.
     """
-    props = ' '.join(p for p in (style.button_props, getattr(style, f'{kind}_button_props')) if p)
+    shape = style.labelled_button_props if label else style.icon_button_props
+    if _in_button_group.get() and not style.shape_in_group:
+        shape = ''
+    props = ' '.join(p for p in (style.button_props, shape, getattr(style, f'{kind}_button_props')) if p)
     button = ui.button(label, icon=icon).props(props)
     if on_click is not None:
         button.on_click(on_click)
