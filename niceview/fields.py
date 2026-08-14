@@ -282,14 +282,18 @@ class LayoutField:
 @dataclasses.dataclass(frozen=True, slots=True)
 class LayoutGroup:
     """
-    A container in a form layout: a row, a column, or — with a title — a card.
+    A container in a form layout: a row, a column, or — with a title — a section.
     Nesting alternates row and column; a titled group is always a column, so that a section
     reads the same wherever it sits.
+
+    A section comes in two shapes, told apart by `card`: '# Title' draws a card around its
+    fields, '## Title' only sets the heading above them. Both headings look the same.
     """
     children: tuple['LayoutField | LayoutGroup', ...]
     row: bool = False
     title: str | None = None
     classes: str | None = None
+    card: bool = False
 
 
 def parse_layout(spec: typing.Any, valid_names: typing.Container[str], *, row: bool = False, path: str = 'layout') -> LayoutGroup:
@@ -298,9 +302,9 @@ def parse_layout(spec: typing.Any, valid_names: typing.Container[str], *, row: b
 
     A list holds field names; a nested list opens a container (rows and columns alternate).
     Leading strings are metadata for their own group — '# Title' makes it a titled card,
-    ':classes' replaces the container's default CSS classes. A field name may carry classes
-    of its own after a colon: 'street:sm:w-2/3' (only the first colon separates, so Tailwind
-    prefixes stay intact).
+    '## Title' a section with the same heading but no card around it, ':classes' replaces the
+    container's default CSS classes. A field name may carry classes of its own after a colon:
+    'street:sm:w-2/3' (only the first colon separates, so Tailwind prefixes stay intact).
 
     Raises ValueError with the position of the offending element.
     """
@@ -308,6 +312,7 @@ def parse_layout(spec: typing.Any, valid_names: typing.Container[str], *, row: b
         raise ValueError(f"{path}: expected a list of field names, got {type(spec).__name__}")
 
     title: str | None = None
+    card = False
     classes: str | None = None
     first_field = 0
     for index, element in enumerate(spec):
@@ -317,9 +322,14 @@ def parse_layout(spec: typing.Any, valid_names: typing.Container[str], *, row: b
         if element.startswith('#'):
             if title is not None:
                 raise ValueError(f"{where}: the group already has a title ('{title}')")
+            level = len(element) - len(element.lstrip('#'))
+            if level > 2:
+                raise ValueError(f"{where}: '{'#' * level}' is not a heading level — "
+                                 f"'#' draws a card, '##' only the heading")
+            card = level == 1
             title = element.lstrip('#').strip()
             if not title:
-                raise ValueError(f"{where}: '#' needs a title")
+                raise ValueError(f"{where}: '{'#' * level}' needs a title")
         else:
             if classes is not None:
                 raise ValueError(f"{where}: the group already has classes ('{classes}')")
@@ -328,7 +338,7 @@ def parse_layout(spec: typing.Any, valid_names: typing.Container[str], *, row: b
                 raise ValueError(f"{where}: ':' needs at least one CSS class")
         first_field = index + 1
 
-    row = False if title is not None else row  # a titled group is a card, i.e. a column
+    row = False if title is not None else row  # a section stacks: its heading sits above it
 
     children: list[LayoutField | LayoutGroup] = []
     for index, element in enumerate(spec[first_field:], start=first_field):
@@ -348,7 +358,7 @@ def parse_layout(spec: typing.Any, valid_names: typing.Container[str], *, row: b
 
     if not children:
         raise ValueError(f"{path}: a layout group must contain at least one field")
-    return LayoutGroup(tuple(children), row=row, title=title, classes=classes)
+    return LayoutGroup(tuple(children), row=row, title=title, classes=classes, card=card)
 
 
 def layout_field_names(group: LayoutGroup) -> list[str]:
@@ -521,7 +531,7 @@ class Fields(typing.Mapping[str, FieldInfo]):
     @property
     def layout(self) -> LayoutGroup:
         """
-        The form layout: a tree of rows, columns and cards over the fields. Without an explicit
+        The form layout: a tree of rows, columns and sections over the fields. Without an explicit
         layout this is a flat group in field order, which renders exactly as before.
         Grids and lists ignore the tree and read the flattened `field_names`.
         """

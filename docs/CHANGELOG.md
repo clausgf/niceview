@@ -11,6 +11,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 (nothing yet)
 
 
+[0.18.0] - 2026-08-14
+---------------------
+
+### Added
+
+- A form layout section without a card: `'## Title'` as the first element of a group renders the
+  same heading as `'# Title'`, but stacks the fields in a plain `ui.column` instead of framing
+  them in a `ui.card`. The number of `#` picks the shape, everything else is unchanged — the
+  heading uses `ChromeStyle.section_title_classes` either way, the group still always stacks,
+  and `':classes'` still replaces the container's defaults.
+
+  ```python
+  profiles = {'detail': [
+      ['# Name', ['first_name', 'last_name']],    # card with a heading
+      ['## Address', 'street', ['zip_code', 'city']],   # heading only
+  ]}
+  ```
+
+### Changed
+
+- Three or more `#` in a layout title now raise `ValueError` (`'###' is not a heading level`).
+  They used to be stripped, so `'## Address'` and `'### Address'` were titled cards; `'##'` now
+  means the section without the card, and there is no third shape to spell.
+
+
 [0.17.0] - 2026-08-14
 ---------------------
 

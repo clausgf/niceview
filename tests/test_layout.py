@@ -45,7 +45,19 @@ class TestParsing:
     def test_title_makes_a_group(self):
         group = parse_layout(['# Address', 'a', 'b'], NAMES)
         assert group.title == 'Address'
+        assert group.card is True
         assert layout_field_names(group) == ['a', 'b']
+
+    def test_second_level_title_is_a_section_without_a_card(self):
+        group = parse_layout(['## Address', 'a', 'b'], NAMES)
+        assert (group.title, group.card) == ('Address', False)
+        assert layout_field_names(group) == ['a', 'b']
+
+    def test_a_section_without_a_card_is_a_column_too(self):
+        # Same rule as the card: the heading sits above its fields, wherever the group sits.
+        group = parse_layout(['a', ['## Section', 'b', 'c']], NAMES)
+        section = group.children[1]
+        assert isinstance(section, LayoutGroup) and section.row is False
 
     def test_container_classes(self):
         assert parse_layout([':gap-8 items-end', 'a'], NAMES).classes == 'gap-8 items-end'
@@ -53,6 +65,10 @@ class TestParsing:
     def test_title_and_classes_together(self):
         group = parse_layout(['# Address', ':gap-8', 'a'], NAMES)
         assert (group.title, group.classes) == ('Address', 'gap-8')
+
+    def test_classes_of_a_section_without_a_card(self):
+        group = parse_layout(['## Address', ':gap-8', 'a'], NAMES)
+        assert (group.title, group.card, group.classes) == ('Address', False, 'gap-8')
 
     def test_titled_group_is_always_a_column(self):
         # A section reads the same wherever it sits, so it does not follow the alternation.
@@ -87,6 +103,18 @@ class TestParsingErrors:
     def test_empty_title(self):
         with pytest.raises(ValueError, match='needs a title'):
             parse_layout(['#', 'a'], NAMES)
+
+    def test_empty_title_without_a_card(self):
+        with pytest.raises(ValueError, match='needs a title'):
+            parse_layout(['##', 'a'], NAMES)
+
+    def test_two_titles_of_different_levels(self):
+        with pytest.raises(ValueError, match='already has a title'):
+            parse_layout(['# One', '## Two', 'a'], NAMES)
+
+    def test_deeper_heading_levels(self):
+        with pytest.raises(ValueError, match='not a heading level'):
+            parse_layout(['### Address', 'a'], NAMES)
 
     def test_empty_classes(self):
         with pytest.raises(ValueError, match='needs at least one CSS class'):

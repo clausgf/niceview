@@ -10,6 +10,7 @@ field names — in `Meta.profiles` when it belongs to the model, or as `layout=`
 | `'zip_code:sm:w-1/3'` | the field, with CSS classes — only the **first** colon separates, so Tailwind prefixes (`sm:`, `hover:`) stay intact |
 | `['zip_code', 'city']` | a nested list opens a container: rows and columns alternate with each level |
 | `'# Address'` | as the **first** element: the group becomes a card with that title |
+| `'## Address'` | the same heading without the card — the group stays a plain column |
 | `':gap-8 items-end'` | as the **first** element: replaces the container's default classes |
 
 Two rules worth knowing, both about not fighting Tailwind:
@@ -64,6 +65,11 @@ class Contact(pydantic.BaseModel):
                 ['# Name', ['first_name', 'last_name']],
                 ['# Address', 'street', ['zip_code:sm:w-1/3', 'city'], 'country:sm:w-1/2'],
             ],
+            # Same sections, one '#' less: the headings stay, the frames go.
+            'headings': [
+                ['## Name', ['first_name', 'last_name']],
+                ['## Address', 'street', ['zip_code:sm:w-1/3', 'city'], 'country:sm:w-1/2'],
+            ],
         }
 
 
@@ -103,6 +109,7 @@ def page():
         tab_stacked = ui.tab('Stacked (default)')
         tab_rows = ui.tab('Rows')
         tab_sections = ui.tab('Sections (profile)')
+        tab_headings = ui.tab('Headings only')
 
     with ui.tab_panels(tabs, value=tab_stacked).classes('w-full'):
         with ui.tab_panel(tab_stacked):
@@ -119,6 +126,11 @@ def page():
             show("profile='card'", 'Titled groups render as flat bordered cards. Note that `notes` is not part of this profile.',
                  Contact.Meta.profiles['card'],
                  lambda: ModelForm.from_item(Contact(), profile='card', **FORM_STYLE).render())
+
+        with ui.tab_panel(tab_headings):
+            show("profile='headings'", "'##' keeps the section title and drops the card around it.",
+                 Contact.Meta.profiles['headings'],
+                 lambda: ModelForm.from_item(Contact(), profile='headings', **FORM_STYLE).render())
 
 
 ui.run(title='16 — Form Layout')

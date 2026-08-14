@@ -48,7 +48,8 @@ class ChromeStyle:
     title_classes: str = 'text-h6 grow'
     """Classes of the title label. 'grow' pushes the buttons to the right edge."""
     section_title_classes: str = 'text-subtitle2'
-    """Classes of a title *inside* a form: a layout group's card title, or the label of an
+    """Classes of a title *inside* a form: a layout section's title ('# …' and '## …' alike,
+    the card is the only difference between them), or the label of an
     embedded grid. One step below title_classes — it is a section, not the page heading."""
 
     button_props: str = ''

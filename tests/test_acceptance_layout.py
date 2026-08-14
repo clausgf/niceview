@@ -103,6 +103,35 @@ class TestSections:
         assert isinstance(row, ui.row)
         assert isinstance(_parent(row), ui.card)
 
+    async def test_a_second_level_title_renders_the_heading_without_a_card(self, user: User) -> None:
+        captured = _form(lambda: ModelForm.from_item(Address(), layout=[
+            'name', ['## Address', 'street', ['zip_code:sm:w-1/3', 'city']]]).render())
+        await user.open('/')
+        await user.should_see('Address')
+        form = captured[0]
+
+        section = _parent(form.w('street'))
+        assert isinstance(section, ui.column) and not isinstance(section, ui.card)
+        assert isinstance(_parent(form.w('zip_code')), ui.row)   # nesting alternates as usual
+        assert _parent(form.w('name')) is not section
+
+    async def test_both_section_headings_look_the_same(self, user: User) -> None:
+        def build():
+            card = ModelForm.from_item(Address(), layout=[['# Address', 'street']]).render()
+            plain = ModelForm.from_item(Address(), layout=[['## Address', 'street']]).render()
+            return card, plain
+
+        captured = _form(build)
+        await user.open('/')
+        card_form, plain_form = captured[0]
+
+        def heading(form) -> ui.label:
+            section = _parent(form.w('street'))
+            return next(c for c in section.default_slot.children if isinstance(c, ui.label))
+
+        assert heading(card_form)._classes == heading(plain_form)._classes
+        assert heading(plain_form).text == 'Address'
+
     async def test_fields_outside_the_section_stay_outside(self, user: User) -> None:
         captured = _form(lambda: ModelForm.from_item(Address(), profile='detail').render())
         await user.open('/')

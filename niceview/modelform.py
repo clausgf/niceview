@@ -72,8 +72,9 @@ class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
     layout: list
     """Inline field layout: a nested list of field names. Same notation as a Meta.profiles
     entry — a nested list opens a row (rows and columns alternate), a leading '# Title' makes
-    the group a card, a leading ':classes' replaces the container's classes, and a field name
-    may carry its own classes after a colon ('street:sm:w-2/3')."""
+    the group a card, '## Title' gives it the same heading without the card, a leading
+    ':classes' replaces the container's classes, and a field name may carry its own classes
+    after a colon ('street:sm:w-2/3')."""
 
     base_props: str
     """Quasar props applied to every field of this form (e.g. 'outlined dense'). Additive: the
@@ -736,15 +737,17 @@ class ModelForm():
     @staticmethod
     def _layout_container(group: LayoutGroup) -> ui.element:
         """
-        The container for a nested layout group: a card for a titled section, otherwise a row
-        or a column. `:classes` replaces the defaults rather than adding to them — Tailwind
-        resolves a duplicate utility by stylesheet order, not by the order in the class list.
+        The container for a nested layout group: a section for a titled group ('#' draws a card
+        around it, '##' only the heading), otherwise a row or a column. `:classes` replaces the
+        defaults rather than adding to them — Tailwind resolves a duplicate utility by
+        stylesheet order, not by the order in the class list.
         """
         if group.title is not None:
-            card = ui.card().props('flat bordered').classes(group.classes or 'w-full')
-            with card:
+            section = (ui.card().props('flat bordered').classes(group.classes or 'w-full')
+                       if group.card else ui.column().classes(group.classes or 'w-full gap-4'))
+            with section:
                 ui.label(group.title).classes(get_chrome_style().section_title_classes)
-            return card
+            return section
         if group.row:
             return ui.row().classes(group.classes or 'w-full items-start gap-4')
         return ui.column().classes(group.classes or 'w-full gap-4')

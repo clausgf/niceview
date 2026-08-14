@@ -134,7 +134,15 @@ ModelForm.from_item(contact, layout=['name', ['zip_code', 'city']]).render()
 | `'zip_code:sm:w-1/3'` | the field, with CSS classes — only the **first** colon separates, so Tailwind prefixes (`sm:`, `hover:`) survive |
 | `['zip_code', 'city']` | a nested list opens a container; rows and columns alternate with each level |
 | `'# Address'` | as the **first** element of a group: it becomes a `ui.card` (flat, bordered) with that title, and always stacks |
+| `'## Address'` | the same section heading, but no card around it — a plain `ui.column` that stacks just as well |
 | `':gap-8 items-end'` | as the **first** element of a group: replaces the container's default classes |
+
+A **section** is a group with a title. The number of `#` picks its shape, not its heading:
+`'# Address'` draws the flat bordered card, `'## Address'` leaves the frame away and renders
+only the heading above the fields. Both use `section_title_classes`, so the two look alike
+wherever they sit; both always stack, and both take a `':classes'` of their own for their
+container (`'w-full'` for the card, `'w-full gap-4'` for the plain column). Three or more `#`
+raise `ValueError` — there is no third shape.
 
 A layout is a profile with an arrangement: it defines **which** fields are rendered, in which
 order — `Meta.field_order` does not apply on top of it. Grids and lists read the same entry and
@@ -396,7 +404,7 @@ EditGridWrapper.from_list(User, users,
 |---|---|---|
 | `title_row_classes` | `'w-full items-center flex-nowrap'` | the title row of every wrapper |
 | `title_classes` | `'text-h6 grow'` | the title label (`grow` pushes the buttons right) |
-| `section_title_classes` | `'text-subtitle2'` | a layout group's card title, an embedded grid's label |
+| `section_title_classes` | `'text-subtitle2'` | a layout section's title (`'# …'` and `'## …'` alike), an embedded grid's label |
 | `button_props` | `''` | every chrome button |
 | `icon_button_props` / `labelled_button_props` | `''` / `''` | a button without / with a label |
 | `shape_in_group` | `False` | whether that shape also applies inside a button group |
