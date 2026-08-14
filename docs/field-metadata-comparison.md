@@ -78,7 +78,7 @@ Choices
 | `literal_options` | as above | `Literal[...]` args | `enum` | Resolved automatically, not user-settable; fallback when `options` is unset |
 | `multiple` | `ui.select(multiple=)` | `list[Literal[...]]` | `type: array` + `items.enum` | `None` and `[]` are interchangeable |
 | `with_input` | `ui.select(with_input=)` | `-` | `-` | Searchable select |
-| `clearable` | `ui.select`, `ui.toggle`, `ui.input_chips` | `-` | `-` | Not derived from `Optional` → [D11](#deviations) |
+| `clearable` | `ui.select`, `ui.toggle`, `ui.input_chips` (argument); every text input incl. `ui.color_input` (prop) | `-` | `-` | Not derived from `Optional` → [D11](#deviations) |
 | `new_value_mode` | `ui.input_chips`, `ui.select` | `-` | `uniqueItems` (loosely) | `'add-unique'` by default |
 | `key_generator` | `ui.select(key_generator=)` | `-` | `-` | |
 | `item_type` | `-` | `list[T]` argument, relationship target | `items`, `$ref` | Drives `editgrid` / `modelselect` and comma-separated `ui.input` lists |
@@ -238,7 +238,7 @@ with a reveal button, and `field_value()` wraps the text back into a `SecretStr`
 
 **D11 — `clearable` is not derived from `Optional`.** Whether a field may be cleared in the UI
 is a UI decision; `Optional[T]` only says the model accepts `None`. Set `clearable=True`
-explicitly.
+explicitly — and make the field accept `None`, because that is what clearing writes.
 
 **D12 — Not every NiceGUI option is a `FieldInfo` attribute.** `ui.rating`'s `icon`, `color` and
 `size` are plain Quasar props and stay reachable through `props=`. Which option lives where is

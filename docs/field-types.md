@@ -87,6 +87,15 @@ class User(pydantic.BaseModel):
 `None` and `[]` are interchangeable for `Optional[list[Literal[...]]]`, same as with the
 multi-select `ui.select`.
 
+**Widget options (clearing):** `niceview.Field(clearable=True)` adds a clear button to the
+select-like widgets (`ui.select`, `ui.toggle`, `ui.input_chips`, `modelselect`) and to every text
+input — `ui.input`, `ui.number`, `ui.textarea`, `ui.color_input` and the `date`/`time`/`datetime`/
+`timedelta` family. NiceGUI has a constructor argument for it only on the first group; on the
+others niceview sets the Quasar prop, which the `q-input` underneath honours just the same.
+Widgets without a clear affordance (`ui.checkbox`, `ui.switch`, `ui.radio`, `ui.slider`,
+`ui.rating`, `checkbox_group`) ignore it. Clearing writes `None` into the field, so the model has
+to accept it (`str | None`); `clearable` is a UI decision and is never inferred from `Optional`.
+
 `'checkbox_group'` fields render as `CheckboxGroup` — not a `ui.element` subclass
 (there is no native NiceGUI/Quasar equivalent), but public and importable like `ModelGrid` /
 `EditGridWrapper` for the same reason: `form.widgets[field_name]` and `form.w(field_name, ...)`

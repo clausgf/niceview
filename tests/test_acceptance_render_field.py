@@ -213,6 +213,29 @@ class TestFieldInfoApplied:
         await user.open('/')
         assert all(not cb.enabled for cb in captured[0].checkboxes.values())
 
+    @pytest.mark.parametrize('widget_type', ['ui.input', 'ui.number', 'ui.textarea', 'ui.color_input',
+                                             'date', 'time', 'datetime', 'timedelta'])
+    async def test_clearable_reaches_the_text_inputs(self, user: User, widget_type: str) -> None:
+        # NiceGUI has a clearable argument only on select/toggle/input_chips; the q-input under
+        # these widgets takes the prop instead, so niceview sets it there.
+        captured = _page(lambda: render_field(Field(label='X', widget_type=widget_type, clearable=True)))
+
+        await user.open('/')
+        assert captured[0]._props.get('clearable') is True
+
+    async def test_clearable_stays_off_unless_asked_for(self, user: User) -> None:
+        captured = _page(lambda: render_field(Field(label='Color', widget_type='ui.color_input'), '#ff0000'))
+
+        await user.open('/')
+        assert 'clearable' not in captured[0]._props
+
+    async def test_clearable_reaches_the_select_like_widgets(self, user: User) -> None:
+        fi = Field(label='Color', widget_type='ui.select', options=['red', 'green'], clearable=True)
+        captured = _page(lambda: render_field(fi, 'red'))
+
+        await user.open('/')
+        assert captured[0]._props.get('clearable') is True
+
     async def test_validation_from_field_info_applied(self, user: User) -> None:
         fi = Field(label='Name', widget_type='ui.input',
                    validation=lambda v: 'too short' if len(v or '') < 3 else None)

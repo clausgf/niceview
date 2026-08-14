@@ -258,6 +258,11 @@ class ColorItem(pydantic.BaseModel):
     bg: Annotated[str, niceview.Field(widget_type='ui.color_input', label='Background', color_preview=True)] = '#ffffff'
 
 
+class ClearableColorItem(pydantic.BaseModel):
+    # clearable writes None, so the model has to accept it — the flag is a UI decision, not a type
+    bg: Annotated[str | None, niceview.Field(widget_type='ui.color_input', label='Background', clearable=True)] = '#ffffff'
+
+
 class TestModelFormRadioWidget:
     async def test_radio_widget_present(self, user: User) -> None:
         @ui.page('/')
@@ -321,6 +326,33 @@ class TestModelFormColorInputWidget:
 
         await user.open('/')
         assert item.bg == '#123456'
+
+    async def test_clearable_color_input_carries_the_prop(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(ClearableColorItem())
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        assert captured[0].widgets['bg']._props.get('clearable') is True
+
+    async def test_cleared_color_input_sets_none_on_model(self, user: User) -> None:
+        captured = []
+
+        @ui.page('/')
+        def page():
+            form = ModelForm.from_item(ClearableColorItem(bg='#123456'))
+            form.render()
+            captured.append(form)
+
+        await user.open('/')
+        form = captured[0]
+        form.widgets['bg'].value = None      # what Quasar's clear button sends
+        form._from_widget_value_to_current_item('bg')
+        assert form._current_item.bg is None
 
 
 class TestModelFormToggleWidget:

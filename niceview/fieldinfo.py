@@ -68,10 +68,12 @@ class _FieldInfoInputs(typing_extensions.TypedDict, total=False):
     suffix: str
     number_format: str
 
+    # a clear button, on the select-like widgets and on every text input
+    clearable: bool
+
     # additional options when field is rendered as ui.select
     with_input: bool
     multiple: bool
-    clearable: bool
     key_generator: Callable[[Any], Any]
     # validation same as in ui.input
 
@@ -160,10 +162,15 @@ class FieldInfo():
     """Display format of ui.number, e.g. '%.2f'. Named number_format, not format, to keep it
     apart from JSON Schema's `format`, which corresponds to widget_type."""
 
+    # a clear button, on the select-like widgets and on every text input
+    clearable: bool = False
+    """Offer a clear button. Honoured by the select-like widgets and by every text input,
+    ui.color_input included; a widget without a clear affordance (checkbox, switch, radio,
+    slider, rating, checkbox_group) ignores it. Clearing writes None into the field."""
+
     # additional options when field is rendered as ui.select
     with_input: bool = False
     multiple: bool = False
-    clearable: bool = False
     key_generator: Callable[[Any], Any] | None = None
 
     # additional options when field is rendered as ui.color_input

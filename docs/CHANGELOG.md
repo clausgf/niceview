@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 (nothing yet)
 
 
+[0.18.1] - 2026-08-14
+---------------------
+
+### Fixed
+
+- `clearable=True` had no effect on `ui.color_input`, `ui.input`, `ui.number`, `ui.textarea` and
+  the `date`/`time`/`datetime`/`timedelta` widgets: NiceGUI has a `clearable` argument only on
+  `ui.select`, `ui.toggle` and `ui.input_chips`, and the flag was silently dropped everywhere
+  else. It is now set as a Quasar prop on the `q-input` those widgets are built from, so the
+  clear button appears wherever a widget has somewhere to put it. Clearing writes `None`, so the
+  field has to accept it (`str | None`) — as before, `clearable` is never inferred from
+  `Optional`. Widgets without a clear affordance (checkbox, switch, radio, slider, rating,
+  checkbox_group) still ignore the flag.
+
+
 [0.18.0] - 2026-08-14
 ---------------------
 

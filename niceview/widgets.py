@@ -69,6 +69,15 @@ TEXT_INPUT_WIDGETS: frozenset[str] = frozenset({
 })
 """Widget types that edit text: validate while typing, commit on blur (ModelForm wiring)."""
 
+CLEARABLE_PROP_WIDGETS: frozenset[str] = frozenset({
+    'ui.input', 'ui.number', 'ui.textarea', 'ui.color_input',
+    'datetime', 'date', 'time', 'timedelta',
+})
+"""Widget types that take `clearable` as a Quasar prop rather than as a NiceGUI argument.
+ui.select, ui.toggle and ui.input_chips have a constructor argument for it; the QInput based
+ones here do not, but the q-input underneath honours the prop just the same. Clearing writes
+None into the field, so the model has to accept it — `clearable` says nothing about the type."""
+
 VALIDATED_WIDGETS: frozenset[str] = TEXT_INPUT_WIDGETS | frozenset({'ui.select', 'modelselect'})
 """Widget types with a visible validation message. For the rest (checkbox, switch, radio,
 toggle, slider, rating, ...) an error message has nowhere to go."""
@@ -81,6 +90,9 @@ WIDGET_OPTIONS: dict[str, dict[str, frozenset[str]]] = {
     #   via_props  — deliberately not a FieldInfo attribute; reachable through props=
     # tests/test_widget_option_coverage.py checks this against the installed NiceGUI, so an
     # upgrade that adds an argument fails loudly instead of drifting silently.
+    # The table reads from NiceGUI's side: a FieldInfo attribute may reach a widget that has no
+    # argument for it as a Quasar prop instead, and then appears in no bucket here — see
+    # CLEARABLE_PROP_WIDGETS.
     'ui.input': {'field_info': frozenset({'label', 'placeholder', 'password', 'password_toggle_button', 'autocomplete', 'prefix', 'suffix', 'validation'}),
                  'owned': frozenset({'value', 'on_change'}), 'via_props': frozenset()},
     'ui.number': {'field_info': frozenset({'label', 'placeholder', 'min', 'max', 'precision', 'step', 'prefix', 'suffix', 'format', 'validation'}),
@@ -625,6 +637,9 @@ def create_widget(field_info: FieldInfo, name: str, push_value: Callable[[Any], 
 
     if widget is None:
         raise ValueError(f"Invalid widget class: {widget_type}")
+
+    if field_info.clearable and widget_type in CLEARABLE_PROP_WIDGETS:
+        widget.props('clearable')
 
     apply_field_info(widget, field_info, description_as)
     return widget
