@@ -11,7 +11,7 @@ from nicegui.events import Handler, ClickEventArguments, handle_event
 from niceview.dataadapter import CollectionAdapter, ConflictError, StorageError, ItemAdapter, ReloadableAdapter
 from niceview.modelform import ModelForm, FieldChangeEventArguments, _ModelFormOptionInputs
 from niceview.modelgrid import ModelGridInlineEdit, ModelGrid, T, TableItemEventArguments, _InlineEditableModelGridOptionInputs
-from niceview.style import ChromeStyle, chrome_button, chrome_button_group, chrome_row, chrome_title, get_chrome_style
+from niceview.style import ChromeStyle, chrome_button, chrome_buttons, chrome_row, chrome_title, get_chrome_style
 from niceview.util import confirm_dialog
 
 log = logging.getLogger('niceview')
@@ -202,16 +202,16 @@ class EditGridWrapper():
         self.refresh_button = None
 
         style = self._chrome_style or get_chrome_style()
-        has_buttons = any(b is not None for b in [self._refresh_button, self._delete_button, self._add_button, self._edit_button])
-        has_chrome = bool(self._title) or has_buttons
+        button_count = sum(b is not None for b in [self._refresh_button, self._delete_button, self._add_button, self._edit_button])
+        has_chrome = bool(self._title) or button_count > 0
         if has_chrome:
             with chrome_row(style) as self.title_row:
                 if self._title:
                     self.title = chrome_title(self._title, style)
-                if has_buttons:
+                if button_count:
                     if not self._title:
                         ui.space()
-                    with chrome_button_group(style):
+                    with chrome_buttons(style, button_count):
                         if self._refresh_button is not None:
                             self.refresh_button = chrome_button('refresh', self._refresh_button, 'refresh', 'Refresh', style, self._on_refresh_clicked)
                         if self._delete_button is not None:
@@ -551,17 +551,16 @@ class EditFormWrapper():
         self.description = None
 
         style = self._chrome_style or get_chrome_style()
-        has_chrome = bool(self._title) or any(
-            b is not None for b in [self._save_button, self._refresh_button]
-        )
+        button_count = sum(b is not None for b in [self._save_button, self._refresh_button])
+        has_chrome = bool(self._title) or button_count > 0
         if has_chrome:
             with chrome_row(style) as self.title_row:
                 if self._title:
                     self.title = chrome_title(self._title, style)
-                if self._refresh_button is not None or self._save_button is not None:
+                if button_count:
                     if not self._title:
                         ui.space()
-                    with chrome_button_group(style):
+                    with chrome_buttons(style, button_count):
                         if self._refresh_button is not None:
                             self.refresh_button = chrome_button('refresh', self._refresh_button, 'refresh', 'Refresh', style, lambda _: self.form.refresh())
                         if self._save_button is not None:

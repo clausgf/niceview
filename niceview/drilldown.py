@@ -16,7 +16,7 @@ from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 from niceview.modelform import ModelForm
 from niceview.modellist import ModelList
-from niceview.style import ChromeStyle, chrome_button, chrome_button_group, chrome_row, chrome_title, get_chrome_style
+from niceview.style import ChromeStyle, chrome_button, chrome_buttons, chrome_row, chrome_title, get_chrome_style
 from niceview.util import confirm_dialog, maybe_await
 
 log = logging.getLogger('niceview')
@@ -292,7 +292,9 @@ class DrillDownWrapper:
                 self.back_button = chrome_button('back', self._back_button, 'arrow_back', 'Back', style, self._handle_back_click)
             self.title = chrome_title('', style)
             if self._add_button is not None or self._delete_button is not None:
-                with chrome_button_group(style):
+                # count=1: Add belongs to the list view and Delete to the detail view, so however
+                # many are configured, only ever one of them is on screen — never a group.
+                with chrome_buttons(style, count=1):
                     if self._add_button is not None:
                         self.add_button = chrome_button('add', self._add_button, 'add', 'Add a new item', style, self._handle_add)
                     if self._delete_button is not None:

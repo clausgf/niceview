@@ -196,6 +196,93 @@ class TestChromeConsistency:
 
 
 # ---------------------------------------------------------------------------
+# A button group needs something to join
+# ---------------------------------------------------------------------------
+
+def _groups(client) -> list[ui.button_group]:
+    return [e for e in client.layout.descendants() if isinstance(e, ui.button_group)]
+
+
+class TestButtonGrouping:
+    async def test_several_grid_buttons_are_grouped(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            EditGridWrapper.from_list(Contact, [], title='Contacts').render()
+
+        await user.open('/')
+        with user._client:
+            assert len(_groups(user.client)) == 1
+            assert len(_buttons(user.client)) == 4
+
+    async def test_a_lone_grid_button_is_not_grouped(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            EditGridWrapper.from_list(Contact, [], title='Contacts',
+                                      add_button=None, edit_button=None, delete_button=None).render()
+
+        await user.open('/')
+        with user._client:
+            assert _groups(user.client) == []
+            assert len(_buttons(user.client)) == 1
+
+    async def test_a_lone_form_button_is_not_grouped(self, user: User, tmp_path) -> None:
+        # autosave suppresses Save, leaving Refresh on its own.
+        @ui.page('/')
+        def page():
+            EditFormWrapper.from_json(Contact, tmp_path / 'c.json', title='Contact', autosave=True).render()
+
+        await user.open('/')
+        with user._client:
+            assert _groups(user.client) == []
+            assert len(_buttons(user.client)) == 1
+
+    async def test_both_form_buttons_are_grouped(self, user: User, tmp_path) -> None:
+        @ui.page('/')
+        def page():
+            EditFormWrapper.from_json(Contact, tmp_path / 'c.json', title='Contact').render()
+
+        await user.open('/')
+        with user._client:
+            assert len(_groups(user.client)) == 1
+
+    async def test_drilldown_never_groups_add_and_delete(self, user: User) -> None:
+        # Both are configured by default, but Add belongs to the list view and Delete to the
+        # detail view — only one of them is ever on screen.
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_list(Contact, [], list_title='Contacts').render()
+
+        await user.open('/')
+        with user._client:
+            assert _groups(user.client) == []
+
+    async def test_button_group_can_be_turned_off(self, user: User) -> None:
+        set_chrome_style(button_group=False)
+
+        @ui.page('/')
+        def page():
+            EditGridWrapper.from_list(Contact, [], title='Contacts').render()
+
+        await user.open('/')
+        with user._client:
+            assert _groups(user.client) == []
+            assert len(_buttons(user.client)) == 4
+
+    async def test_ungrouped_buttons_share_a_container(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            EditGridWrapper.from_list(Contact, [], title='Contacts',
+                                      chrome_style=get_chrome_style().replace(
+                                          button_group=False, button_row_classes='my-buttons')).render()
+
+        await user.open('/')
+        with user._client:
+            containers = [e for e in user.client.layout.descendants() if 'my-buttons' in e.classes]
+            assert len(containers) == 1
+            assert len([e for e in containers[0].descendants() if isinstance(e, ui.button)]) == 4
+
+
+# ---------------------------------------------------------------------------
 # ModelList rows
 # ---------------------------------------------------------------------------
 

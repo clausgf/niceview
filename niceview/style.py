@@ -51,9 +51,13 @@ class ChromeStyle:
     back_button_props: str = ''
 
     button_group: bool = True
-    """Whether the chrome buttons are joined in a ui.button_group."""
+    """Whether chrome buttons that show at the same time are joined in a ui.button_group."""
     button_group_style: str = 'width: fit-content; flex: none'
     """Inline style of that group — it must not stretch or shrink with the title."""
+    button_row_classes: str = 'flex items-center gap-1 w-fit flex-none'
+    """Classes of the container used instead of the group: for a single button, or when
+    button_group is off. Same job as button_group_style — hold the buttons at their own width
+    at the right edge — plus the gap the group does not need."""
 
     tooltips: bool = True
     """Whether the chrome buttons carry their default tooltips."""
@@ -111,16 +115,22 @@ def chrome_title(text: str, style: ChromeStyle) -> ui.label:
 
 
 @contextlib.contextmanager
-def chrome_button_group(style: ChromeStyle) -> Iterator[ui.element | None]:
+def chrome_buttons(style: ChromeStyle, count: int) -> Iterator[ui.element]:
     """
-    The container for the chrome buttons: a ui.button_group, or nothing at all when the style
-    turns it off — in which case the buttons land in the enclosing row, spaced by its gap.
+    The container for the chrome buttons.
+
+    `count` is how many of them are visible *at the same time* — not how many the wrapper
+    builds. Quasar styles a button group as one joined control (squared-off inner edges, a
+    shared border), which only says something with a second button to join: a group of one
+    is a button wearing a group's clothes. So one button, or button_group=False, goes into a
+    plain flex container instead.
     """
-    if not style.button_group:
-        yield None
-        return
-    with ui.button_group().style(style.button_group_style) as group:
-        yield group
+    if style.button_group and count > 1:
+        with ui.button_group().style(style.button_group_style) as group:
+            yield group
+    else:
+        with ui.element('div').classes(style.button_row_classes) as row:
+            yield row
 
 
 def chrome_button(kind: str, label: str, icon: str, tooltip: str, style: ChromeStyle,

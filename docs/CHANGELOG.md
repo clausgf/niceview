@@ -11,6 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 (nothing yet)
 
 
+[0.16.1] - 2026-08-14
+---------------------
+
+### Changed
+
+- Chrome buttons are only joined in a `ui.button_group` when more than one of them is on
+  screen at the same time. Quasar styles a group as one joined control — squared-off inner
+  edges, a shared border — so a group of one made a lone button look like part of something
+  that was not there. Affected, all with a single visible button: `EditFormWrapper` with
+  `autosave=True` (Save is suppressed, Refresh remains), an `EditGridWrapper` with all but one
+  button hidden, and `DrillDownWrapper`, whose Add belongs to the list view and Delete to the
+  detail view — configured together, never shown together. The new `ChromeStyle` attribute
+  `button_row_classes` (default `'flex items-center gap-1 w-fit flex-none'`) styles the
+  container used instead of the group; `button_group=False` now goes through it as well,
+  rather than dropping the buttons loose into the title row without a gap.
+
+
 [0.16.0] - 2026-08-13
 ---------------------
 

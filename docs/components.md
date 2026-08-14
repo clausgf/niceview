@@ -399,14 +399,22 @@ EditGridWrapper.from_list(User, users,
 | `section_title_classes` | `'text-subtitle2'` | a layout group's card title, an embedded grid's label |
 | `button_props` | `'dense flat'` | every chrome button |
 | `add_button_props` … `back_button_props` | `''`, `delete`: `'color=negative'` | merged on top of `button_props`, per button kind |
-| `button_group` | `True` | whether the buttons are joined in a `ui.button_group` |
+| `button_group` | `True` | whether buttons that show together are joined in a `ui.button_group` |
 | `button_group_style` | `'width: fit-content; flex: none'` | inline style of that group |
+| `button_row_classes` | `'flex items-center gap-1 w-fit flex-none'` | the container used instead of the group |
 | `tooltips` | `True` | whether the buttons carry their default tooltips |
 | `list_props` | `'dense separator'` | a `ModelList`'s `ui.list` |
 | `list_item_classes` | `'cursor-pointer'` | one row (`ui.item`) |
 | `list_title_props` / `list_subtitle_props` | `''` / `'caption'` | the two `ui.item_label`s of a row |
 | `list_chevron_icon` | `'chevron_right'` | drill-down hint at the right edge; `None` renders none |
 | `list_chevron_classes` | `'text-grey'` | that icon |
+
+A button group is only used when there is something to join: Quasar styles it as one control —
+squared-off inner edges, a shared border — so a group of one would be a button wearing a group's
+clothes. What counts is how many buttons are on screen *together*, not how many are configured:
+an `EditFormWrapper` with `autosave=True` shows only Refresh, and a `DrillDownWrapper` shows Add
+in the list view and Delete in the detail view, never both. Those go into `button_row_classes`
+instead.
 
 The `list_*` attributes are what a `ModelList` is made of — it has no title row, and styling
 `.widget` afterwards would not reach the rows, which `update_rows()` rebuilds. A style set on a
