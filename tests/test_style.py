@@ -39,11 +39,19 @@ def _tooltips(client) -> list[ui.tooltip]:
 # ---------------------------------------------------------------------------
 
 class TestChromeStyle:
+    def test_button_props_ship_empty(self):
+        # The chrome decides where a button goes and what it means; how it looks is the
+        # application's call. Only the role layer carries a default.
+        assert ChromeStyle().button_props == ''
+        assert ChromeStyle().icon_button_props == ''
+        assert ChromeStyle().labelled_button_props == ''
+        assert ChromeStyle().delete_button_props == 'color=negative'
+
     def test_replace_returns_a_copy(self):
-        style = ChromeStyle()
+        style = ChromeStyle(button_props='flat')
         derived = style.replace(button_props='dense')
         assert derived.button_props == 'dense'
-        assert style.button_props == 'dense flat'  # the original is untouched
+        assert style.button_props == 'flat'  # the original is untouched
 
     def test_replace_keeps_the_other_attributes(self):
         derived = ChromeStyle(title_classes='text-h5 grow').replace(tooltips=False)
@@ -171,6 +179,7 @@ class TestChromeConsistency:
             assert 'Add a new item' in [t.text for t in _tooltips(user.client)]
 
     async def test_the_two_add_buttons_agree_apart_from_their_shape(self, user: User) -> None:
+        set_chrome_style(icon_button_props='round')
         buttons: dict[str, ui.button] = {}
 
         @ui.page('/')
@@ -293,7 +302,18 @@ class TestButtonGrouping:
 # ---------------------------------------------------------------------------
 
 class TestButtonShape:
-    async def test_icon_only_button_is_round(self, user: User) -> None:
+    async def test_nothing_is_shaped_by_default(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_list(Contact, [], list_title='Contacts').render()
+
+        await user.open('/')
+        with user._client:
+            assert not any(b.props.get('round') for b in _buttons(user.client))
+
+    async def test_icon_only_button_takes_the_icon_shape(self, user: User) -> None:
+        set_chrome_style(icon_button_props='round')
+
         @ui.page('/')
         def page():
             DrillDownWrapper.from_list(Contact, [], list_title='Contacts').render()
@@ -303,6 +323,8 @@ class TestButtonShape:
             assert all(b.props.get('round') for b in _buttons(user.client))
 
     async def test_labelled_button_is_not_round(self, user: User) -> None:
+        set_chrome_style(icon_button_props='round')
+
         @ui.page('/')
         def page():
             DrillDownWrapper.from_list(Contact, [], list_title='Contacts',
@@ -343,6 +365,8 @@ class TestButtonShape:
 
     async def test_grouped_icon_buttons_stay_square(self, user: User) -> None:
         # A group joins straight edges — Quasar cannot join circles.
+        set_chrome_style(icon_button_props='round')
+
         @ui.page('/')
         def page():
             EditGridWrapper.from_list(Contact, [], title='Contacts').render()
@@ -352,7 +376,7 @@ class TestButtonShape:
             assert not any(b.props.get('round') for b in _buttons(user.client))
 
     async def test_ungrouped_icon_buttons_are_round(self, user: User) -> None:
-        set_chrome_style(button_group=False)
+        set_chrome_style(icon_button_props='round', button_group=False)
 
         @ui.page('/')
         def page():
@@ -378,6 +402,7 @@ class TestButtonShape:
     async def test_the_group_does_not_leak_into_later_buttons(self, user: User, tmp_path) -> None:
         # The context var has to be reset when the group closes: the form below renders a
         # single, ungrouped Refresh button, which must be round again.
+        set_chrome_style(icon_button_props='round')
         forms: list[EditFormWrapper] = []
 
         @ui.page('/')

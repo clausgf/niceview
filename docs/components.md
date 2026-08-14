@@ -397,8 +397,8 @@ EditGridWrapper.from_list(User, users,
 | `title_row_classes` | `'w-full items-center flex-nowrap'` | the title row of every wrapper |
 | `title_classes` | `'text-h6 grow'` | the title label (`grow` pushes the buttons right) |
 | `section_title_classes` | `'text-subtitle2'` | a layout group's card title, an embedded grid's label |
-| `button_props` | `'dense flat'` | every chrome button |
-| `icon_button_props` / `labelled_button_props` | `'round'` / `''` | a button without / with a label |
+| `button_props` | `''` | every chrome button |
+| `icon_button_props` / `labelled_button_props` | `''` / `''` | a button without / with a label |
 | `shape_in_group` | `False` | whether that shape also applies inside a button group |
 | `add_button_props` … `back_button_props` | `''`, `delete`: `'color=negative'` | merged on top of the two above, per button kind |
 | `button_group` | `True` | whether buttons that show together are joined in a `ui.button_group` |
@@ -412,15 +412,24 @@ EditGridWrapper.from_list(User, users,
 | `list_chevron_classes` | `'text-grey'` | that icon |
 
 A button's props are layered **base → shape → role**: `button_props` is what every chrome button
-shares, the shape comes from whether it carries a label (icon-only is `round`, labelled is
-square), and the role (`delete_button_props` …) has the last word. Shape follows the button, not
-the place it is used — a lone Refresh looks the same in a form as in a grid.
+shares, the shape comes from whether the button carries a label, and the role
+(`delete_button_props` …) has the last word. Shape follows the button, not the place it is used —
+a lone Refresh looks the same in a form as in a grid.
 
-The one exception is Quasar's, not ours: a button group joins straight edges, and a circle has
-none. Inside a group the shape layer is therefore skipped, so grouped icon buttons stay square.
-It is *joined or round, not both* — `button_group=False` gives you round icon buttons
-everywhere, and `shape_in_group=True` lets a group-compatible shape through (Quasar's `rounded`
-survives being joined, `round` does not).
+The base and shape layers ship **empty**: the chrome decides where a button goes and what it
+means, the application decides what it looks like. Only the role layer has an opinion of its
+own, and only where it is meaning rather than taste (a delete button is `color=negative`). The
+common setup is one line at startup:
+
+```python
+set_chrome_style(button_props='dense flat', icon_button_props='round')  # icon-only → circles
+```
+
+Rounding icon buttons has one limit, and it is Quasar's rather than ours: a button group joins
+straight edges, and a circle has none. Inside a group the shape layer is therefore skipped, so
+grouped icon buttons stay square. It is *joined or round, not both* — `button_group=False` gives
+you round icon buttons everywhere, and `shape_in_group=True` lets a group-compatible shape
+through (Quasar's `rounded` survives being joined, `round` does not).
 
 A button group is only used when there is something to join: Quasar styles it as one control —
 squared-off inner edges, a shared border — so a group of one would be a button wearing a group's

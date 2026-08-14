@@ -11,6 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 (nothing yet)
 
 
+[0.17.0] - 2026-08-14
+---------------------
+
+### Changed
+
+- `ChromeStyle.button_props` and `icon_button_props` ship **empty**. The chrome decides where a
+  button goes and what it means; what it looks like is the application's call. Only the role
+  layer keeps a default, and only where it carries meaning rather than taste
+  (`delete_button_props='color=negative'`).
+
+  This changes how every wrapper's buttons look: they are plain Quasar buttons now, where they
+  used to be `dense flat` — a look that predates `ChromeStyle` and was never a decision anyone
+  made. One line at startup brings it back, `round` included:
+
+  ```python
+  set_chrome_style(button_props='dense flat', icon_button_props='round')
+  ```
+
+
 [0.16.2] - 2026-08-14
 ---------------------
 

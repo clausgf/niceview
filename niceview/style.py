@@ -9,8 +9,13 @@ default_classes): a field is configured per field, chrome is configured per appl
 Two levels, same rule as the field cascade — props are additive (NiceGUI parses them into a
 dict, so a later source overwrites a single key), classes replace wholesale:
 
-    set_chrome_style(button_props='dense')                 # application-wide default
+    set_chrome_style(button_props='dense flat')            # application-wide default
     EditGridWrapper.from_list(..., chrome_style=my_style)  # this wrapper only
+
+The button props ship empty: the chrome decides *where* a button goes and *what it means*
+(add, delete, …), the application decides what a button looks like. 'dense flat' for
+button_props and 'round' for icon_button_props are the look niceview used before this was
+configurable, if you want it back.
 
 `chrome_style=` replaces the default wholesale, so build it from the current default rather
 than from scratch if you only want to change one thing:
@@ -34,6 +39,9 @@ class ChromeStyle:
     shares, the shape layer depends on whether the button carries a label, and e.g.
     delete_button_props carries only what makes a delete button a delete button. Later layers
     win per key, so a role can override the shape and the shape can override the base.
+
+    Only the role layer carries a default (a delete button is negative — that is meaning, not
+    taste). Base and shape are empty until the application fills them in.
     """
     title_row_classes: str = 'w-full items-center flex-nowrap'
     """Classes of the title row (ui.row) of every wrapper."""
@@ -43,11 +51,13 @@ class ChromeStyle:
     """Classes of a title *inside* a form: a layout group's card title, or the label of an
     embedded grid. One step below title_classes — it is a section, not the page heading."""
 
-    button_props: str = 'dense flat'
-    """Props shared by every chrome button."""
-    icon_button_props: str = 'round'
+    button_props: str = ''
+    """Props shared by every chrome button. Empty: the chrome brings no look of its own, the
+    buttons are Quasar's. Set it once for the application, e.g. 'dense flat'."""
+    icon_button_props: str = ''
     """Props of a button that shows only its icon (label ''). Its shape follows the button
-    itself, not where it sits — except inside a button group, see shape_in_group."""
+    itself, not where it sits — except inside a button group, see shape_in_group. Empty;
+    'round' is the usual choice."""
     labelled_button_props: str = ''
     """Props of a button that carries a label."""
     shape_in_group: bool = False
