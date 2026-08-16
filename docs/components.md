@@ -254,12 +254,12 @@ ModelForm.from_item(cfg,
 | `FormAction` | Meaning |
 |---|---|
 | `label` | the button's text; `''` makes it icon-only. A callable is resolved when it renders, like every `ChromeText` slot |
-| `on_click` | handler for a `FormActionEventArguments` — sync or async |
+| `on_click` | handler for the event arguments of the place the button sits in (see below) — sync or async |
 | `icon` | Material icon name |
 | `tooltip` | shown on hover, unless `ChromeStyle(tooltips=False)` |
 | `props` | Quasar props, merged on top of the chrome's place and shape layers |
 | `classes` | CSS classes; in a row they replace the alignment niceview picks (see below) |
-| `requires_valid` | disable the button while the form has validation errors |
+| `requires_valid` | disable the button while the form has validation errors — only where there is a form (see below) |
 
 The event carries the form, which is the point of it — `e.form.item` is the last fully valid
 state, `e.form.draft` what the widgets hold right now:
@@ -302,8 +302,8 @@ one in a title row is `toolbar`), so it sits among the others and styles itself 
 For a layout built by hand, `render_action('test')` places one wherever it is called, exactly as
 `render_field()` does for a field.
 
-The title row takes the same `FormAction` under `chrome_actions=`, so the naturally-placed
-button — *Test all* next to Save — is not the one left out:
+**Every wrapper's title row** takes the same `FormAction` under `chrome_actions=`, so the
+naturally-placed button — *Test all* next to Save — is not the one left out:
 
 ```python
 EditFormWrapper.from_json(Connection, path, title='Connection',
@@ -313,9 +313,35 @@ EditFormWrapper.from_json(Connection, path, title='Connection',
 wrapper.action_buttons['check']    # ui.button
 ```
 
-The application's actions come first in that row, so Refresh and Save keep the right edge they
-have in every other wrapper. `chrome_actions` and `actions` are separate on purpose: the first
-belongs to the wrapper's row, the second to the layout, and a factory call sets both.
+The application's actions come first in that row, so niceview's own buttons keep the right edge
+they have everywhere. `chrome_actions` and `actions` are separate on purpose: the first belongs
+to the wrapper's row, the second to the layout, and a factory call sets both.
+
+A title row without a form has no item to hand over, so each place sends the event arguments of
+what it is about — plus `e.name`, `e.action`, and `e.wrapper` outside a form:
+
+| Title row of | Event arguments (exported from `niceview`) | The event names |
+|---|---|---|
+| `ModelForm`, `EditFormWrapper` | `FormActionEventArguments` | `e.form`, as above |
+| `EditGridWrapper` | `GridActionEventArguments` | `e.row_key`, `e.item` — the selected row, both `None` when nothing is selected |
+| `DrillDownWrapper` | `DrillDownActionEventArguments` | `e.key`, `e.item` — the item on screen; these buttons sit left of Delete and show in the detail view only |
+
+```python
+EditGridWrapper.from_adapter(User, adapter, title='Users',
+    chrome_actions={'mail': FormAction('', icon='mail', tooltip='Write to the selected user',
+                                       on_click=lambda e: write_to(e.item) if e.item else
+                                                          ui.notify('Select a row first'))},
+).render()
+```
+
+An empty selection is a case a grid's action has to answer, exactly as Edit and Delete do. A
+drill-down's never sees one — there is no item to act on in the list view, and that is where its
+buttons are hidden.
+
+`requires_valid` needs a form to ask, so the two places that have one accept it: a form, and the
+detail view a `DrillDownWrapper` builds itself (where the flag follows whichever item is open).
+An `EditGridWrapper`, or a `DrillDownWrapper` with a `render_detail` of its own, raises instead
+of leaving the button enabled without a word.
 
 ### Validation
 
@@ -455,6 +481,7 @@ wrapper.add_button.props('color=primary')  # ui.button | None
 wrapper.edit_button                        # ui.button | None
 wrapper.delete_button                      # ui.button | None
 wrapper.refresh_button                     # ui.button | None
+wrapper.action_buttons                     # dict[str, ui.button] — from chrome_actions=
 
 # EditFormWrapper
 wrapper = EditFormWrapper.from_adapter(User, adapter, key, title='Edit User').render()
@@ -466,7 +493,7 @@ wrapper.refresh_button                     # ui.button | None
 wrapper.action_buttons                     # dict[str, ui.button] — from chrome_actions=
 ```
 
-`EditFormWrapper` also takes `chrome_actions={'name': FormAction(...)}` for the application's own
+Every wrapper also takes `chrome_actions={'name': FormAction(...)}` for the application's own
 buttons in that row — see [Actions](#actions).
 
 ### Chrome styling
@@ -647,6 +674,7 @@ wrapper = EditGridWrapper.from_list(User, users,
     edit_button='',       # same
     delete_button='',     # same
     refresh_button=None,  # same
+    chrome_actions={},    # the application's own buttons, left of niceview's (see Actions)
     chrome_style=None,    # look of the title row (see Chrome styling)
 )
 wrapper.with_repositories({Author: authors_adapter})  # type → adapter; for modelselect fields in dialogs
@@ -660,6 +688,7 @@ EditFormWrapper.from_item(user,
     description='...',           # markdown below the title row
     save_button='Save',          # label or '' for icon-only; None = hidden
     refresh_button='',           # same
+    chrome_actions={},           # the application's own buttons, left of niceview's (see Actions)
     chrome_style=None,           # look of the title row (see Chrome styling)
     repositories={Author: authors_adapter},  # modelselect FK fields
     # ModelForm options:
@@ -770,6 +799,7 @@ DrillDownWrapper.from_list(User, users,
     add_button='',                   # '' = icon only; None = hidden
     delete_button='',                # same
     back_button='',                  # same — None leaves the detail view without a way back
+    chrome_actions={},               # the application's own buttons, in the detail view left of Delete (see Actions)
     chrome_style=None,               # look of the title row (see Chrome styling)
     on_add=None,                     # override the Add click handler entirely, sync or async (see below)
     on_back=None,                    # if set, shows a Back button in the list view too (for nesting), sync or async
@@ -811,7 +841,8 @@ or render a placeholder and fill it from a task.
 its title row elements — `wrapper.title_row`, `wrapper.title`, `wrapper.description`,
 `wrapper.back_button`, `wrapper.add_button`, `wrapper.delete_button` (all `| None`; the buttons
 are `None` only if disabled entirely via `add_button=None`/`delete_button=None`/`back_button=None`,
-never just because they're hidden in the current view). Its title row is built by the same
+never just because they're hidden in the current view), plus `wrapper.action_buttons` from
+`chrome_actions=`. Its title row is built by the same
 [chrome style](#chrome-styling) as the other two wrappers. Unlike a naive refreshable, the title row is built exactly once in
 `render()` and only *updated* (text, visibility) on every list<->detail navigation, so styling
 applied once (`wrapper.title.classes(...)`) survives navigation instead of being wiped on the

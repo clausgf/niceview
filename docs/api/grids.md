@@ -13,6 +13,10 @@ chrome wrapper that adds create, edit and delete to either. See
 
 ::: niceview.editwrapper.EditGridWrapper
 
+::: niceview.editwrapper.GridActionEventArguments
+
 ::: niceview.modellist.ModelList
 
 ::: niceview.drilldown.DrillDownWrapper
+
+::: niceview.drilldown.DrillDownActionEventArguments

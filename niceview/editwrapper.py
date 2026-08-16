@@ -1,16 +1,17 @@
 import logging
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Self, Unpack
+from typing import Any, Self, Unpack, cast
 from fastapi import HTTPException
 import typing_extensions
 from pydantic import BaseModel
 from nicegui import ui
-from nicegui.events import Handler, ClickEventArguments, handle_event
+from nicegui.events import Handler, ClickEventArguments, UiEventArguments, handle_event
 
 from niceview.dataadapter import CollectionAdapter, ConflictError, StorageError, ItemAdapter, ReloadableAdapter
 from niceview.modelform import (FieldChangeEventArguments, FormAction, ModelForm,
-                                _ModelFormOptionInputs)
+                                _ModelFormOptionInputs, render_action_button)
 from niceview.modelgrid import ModelGridInlineEdit, ModelGrid, T, TableItemEventArguments, _InlineEditableModelGridOptionInputs
 from niceview.style import (ChromeStyle, NotifyKind, Place, chrome_button, chrome_buttons,
                             chrome_dialog, chrome_dialog_buttons, chrome_notify, chrome_row,
@@ -21,6 +22,22 @@ from niceview.util import confirm_dialog
 log = logging.getLogger('niceview')
 
 
+@dataclass(kw_only=True, slots=True)
+class GridActionEventArguments(UiEventArguments):
+    """
+    What an action's `on_click` receives in an EditGridWrapper's title row.
+
+    A grid has no item of its own, it has a selection: `row_key` and `item` are the selected
+    row, or None when nothing is selected — which an action that works on one has to check,
+    the same way Edit and Delete do.
+    """
+    wrapper: 'EditGridWrapper'
+    name: str
+    action: FormAction
+    row_key: str | None
+    item: BaseModel | None
+
+
 class _EditGridWrapperInputs(typing_extensions.TypedDict, total=False):
     title: str | None
     description: str | None
@@ -28,6 +45,9 @@ class _EditGridWrapperInputs(typing_extensions.TypedDict, total=False):
     add_button: str | None
     edit_button: str | None
     refresh_button: str | None
+    chrome_actions: dict[str, FormAction]
+    """The application's own buttons in the title row, by name, left of niceview's own. Same
+    FormAction as a form's `actions` — its `on_click` gets a GridActionEventArguments here."""
     chrome_style: ChromeStyle | None
     """Look of the title row and its buttons. Replaces the application-wide default of
     niceview.style.set_chrome_style() wholesale — derive it with ChromeStyle.derived()."""
@@ -56,6 +76,11 @@ class EditGridWrapper():
     Button semantics ('' and None differ from the title!): '' → icon-only
     button (the default), a string → labeled button, None → button hidden.
 
+    `chrome_actions` adds the application's own buttons to that row — the same `FormAction` a
+    form places between its fields, here left of niceview's own so those keep the right edge
+    they have everywhere. Their `on_click` receives a `GridActionEventArguments`, with the
+    selected row rather than a form's item.
+
     After render(), the NiceGUI elements are exposed for further styling:
         wrapper.title          → ui.label | None
         wrapper.description    → ui.markdown | None
@@ -64,6 +89,7 @@ class EditGridWrapper():
         wrapper.edit_button    → ui.button | None
         wrapper.delete_button  → ui.button | None
         wrapper.refresh_button → ui.button | None
+        wrapper.action_buttons → dict[str, ui.button] — from chrome_actions=
     """
     grid: ModelGrid
 
@@ -75,6 +101,7 @@ class EditGridWrapper():
     _add_button: str | None
     _edit_button: str | None
     _refresh_button: str | None
+    _chrome_actions: dict[str, FormAction]
     _chrome_style: ChromeStyle | None
     _chrome_text: ChromeText | None
     _place: Place
@@ -87,6 +114,7 @@ class EditGridWrapper():
     add_button: ui.button | None
     edit_button: ui.button | None
     refresh_button: ui.button | None
+    action_buttons: dict[str, ui.button]
 
     _change_handlers: list[Handler[TableItemEventArguments]]
     _model_repositories: dict[type[BaseModel], CollectionAdapter]
@@ -105,6 +133,8 @@ class EditGridWrapper():
         self._add_button = kwargs.pop('add_button', '')
         self._edit_button = kwargs.pop('edit_button', default_edit)
         self._refresh_button = kwargs.pop('refresh_button', '')
+        self._chrome_actions = ModelForm._checked_actions(kwargs.pop('chrome_actions', {}),
+                                                          no_form="a grid's title row has none")
         self._chrome_style = kwargs.pop('chrome_style', None)
         self._chrome_text = kwargs.pop('chrome_text', None)
         self._place = kwargs.pop('place', 'toolbar')
@@ -117,6 +147,7 @@ class EditGridWrapper():
         self.add_button = None
         self.edit_button = None
         self.refresh_button = None
+        self.action_buttons = {}
 
         self._change_handlers = []
         self._model_repositories = {}
@@ -226,9 +257,10 @@ class EditGridWrapper():
         self.add_button = None
         self.edit_button = None
         self.refresh_button = None
+        self.action_buttons = {}
 
         style, text, place = self._style, self._text, self._place
-        button_count = sum(b is not None for b in [self._refresh_button, self._delete_button, self._add_button, self._edit_button])
+        button_count = sum(b is not None for b in [self._refresh_button, self._delete_button, self._add_button, self._edit_button]) + len(self._chrome_actions)
         has_chrome = bool(self._title) or button_count > 0
         if has_chrome:
             with chrome_row(style) as self.title_row:
@@ -238,6 +270,10 @@ class EditGridWrapper():
                     if not self._title:
                         ui.space()
                     with chrome_buttons(style, button_count):
+                        for name, action in self._chrome_actions.items():
+                            self.action_buttons[name] = render_action_button(
+                                action, style, place, None,
+                                lambda event, n=name, a=action: self._handle_chrome_action(n, a, event))
                         if self._refresh_button is not None:
                             self.refresh_button = chrome_button('refresh', self._refresh_button, 'refresh', text_of(text.refresh_tooltip), style, self._on_refresh_clicked, place)
                         if self._delete_button is not None:
@@ -372,6 +408,22 @@ class EditGridWrapper():
 
     async def _on_delete_clicked(self, event: ClickEventArguments) -> None:
         await self.delete_item()
+
+    async def _handle_chrome_action(self, name: str, action: FormAction, event: ClickEventArguments) -> None:
+        """Call one of the application's own title-row actions with the current selection."""
+        if action.on_click is None:
+            return
+        row_key = await self._get_selected_row_key()  # async: the selection lives in the browser
+        item: BaseModel | None = None
+        if row_key is not None:
+            try:
+                item = self.grid.adapter.read(row_key)
+            except (KeyError, ValueError):
+                item = None  # deleted between the click and the answer — the action sees no item
+        handle_event(cast('Handler[GridActionEventArguments]', action.on_click),
+                     GridActionEventArguments(sender=event.sender, client=event.client,
+                                              wrapper=self, name=name, action=action,
+                                              row_key=row_key, item=item))
 
     async def default_edit_create_handler(self, item: BaseModel, do_create: bool) -> bool:
         """

@@ -11,6 +11,8 @@ this page is [Components](../components.md#modelform).
 
 ::: niceview.modelform.FormActionEventArguments
 
+::: niceview.modelform.render_action_button
+
 ::: niceview.modelform.FieldChangeEventArguments
 
 ::: niceview.editwrapper.EditFormWrapper

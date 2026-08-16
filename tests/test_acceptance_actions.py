@@ -1,10 +1,11 @@
 """
 Acceptance tests for form actions: buttons that are not fields.
 
-The notation is '@name' in the layout plus an `actions` table; on an EditFormWrapper the same
-FormAction goes into the title row as `chrome_actions`. What is checked here is what it renders
-and what a click does.
+The notation is '@name' in the layout plus an `actions` table; every wrapper takes the same
+FormAction into its title row as `chrome_actions`. What is checked here is what it renders and
+what a click does.
 """
+import asyncio
 from pathlib import Path
 
 import pydantic
@@ -12,7 +13,8 @@ import pytest
 from nicegui import ui
 from nicegui.testing import User
 
-from niceview import EditFormWrapper, FormAction, ModelForm
+from niceview import DrillDownWrapper, EditFormWrapper, EditGridWrapper, FormAction, ModelForm
+from niceview.dataadapter import ListAdapter
 from niceview.style import ChromeStyle
 
 
@@ -359,3 +361,155 @@ class TestErrors:
         form = ModelForm.from_item(Connection(), actions={'test': FormAction('Test')})
         with pytest.raises(ValueError, match="Unknown action 'nope'"):
             form.render_action('nope')
+
+
+def _selection(row_key: str | None):
+    """
+    Stand in for the browser's answer to 'which row is selected?'.
+
+    A grid selection cannot be made in the User fixture — the AG Grid lives in the client — so
+    the tests replace the one await that asks for it and drive the rest of the real click path.
+    """
+    async def get_selected_row_key() -> str | None:
+        return row_key
+    return get_selected_row_key
+
+
+class TestGridWrapperActions:
+    """EditGridWrapper's title row: the same FormAction, answered with the selection."""
+
+    async def test_an_action_joins_the_title_row(self, user: User) -> None:
+        captured = _form(lambda: EditGridWrapper.from_list(
+            Connection, [Connection()], title='Connections',
+            chrome_actions={'export': FormAction('Export', icon='download')},
+        ).render())
+        await user.open('/')
+        wrapper = captured[0]
+
+        button = wrapper.action_buttons['export']
+        assert _parent(_parent(button)) is wrapper.title_row
+        await user.should_see('Export')
+
+    async def test_the_applications_action_comes_first(self, user: User) -> None:
+        captured = _form(lambda: EditGridWrapper.from_list(
+            Connection, [Connection()], title='Connections',
+            chrome_actions={'export': FormAction('Export')},
+        ).render())
+        await user.open('/')
+        wrapper = captured[0]
+
+        # niceview's own buttons keep the right edge they have in every other wrapper.
+        order = _buttons(_parent(wrapper.action_buttons['export']))
+        assert order[0] is wrapper.action_buttons['export']
+        assert order[1] is wrapper.refresh_button
+
+    async def test_a_click_carries_the_selected_row(self, user: User) -> None:
+        seen: list = []
+        items = [Connection(host='alpha'), Connection(host='beta')]
+        captured = _form(lambda: EditGridWrapper.from_list(
+            Connection, items, title='Connections',
+            chrome_actions={'ping': FormAction('Ping', on_click=lambda e: seen.append(e))},
+        ).render())
+        await user.open('/')
+        wrapper = captured[0]
+        key = wrapper.grid.adapter.key_from_item(items[1])
+        wrapper._get_selected_row_key = _selection(key)
+
+        user.find('Ping').click()
+        await asyncio.sleep(0.1)  # a grid's action asks the client for the selection first
+        assert seen[0].row_key == key
+        assert seen[0].item.host == 'beta'
+        assert seen[0].wrapper is wrapper
+        assert seen[0].name == 'ping'
+
+    async def test_a_click_without_a_selection_says_so(self, user: User) -> None:
+        seen: list = []
+        captured = _form(lambda: EditGridWrapper.from_list(
+            Connection, [Connection()], title='Connections',
+            chrome_actions={'ping': FormAction('Ping', on_click=lambda e: seen.append(e))},
+        ).render())
+        await user.open('/')
+        captured[0]._get_selected_row_key = _selection(None)
+
+        user.find('Ping').click()
+        await asyncio.sleep(0.1)  # a grid's action asks the client for the selection first
+        assert seen[0].row_key is None and seen[0].item is None
+
+    def test_requires_valid_is_refused_without_a_form(self) -> None:
+        with pytest.raises(ValueError, match='requires_valid needs a form'):
+            EditGridWrapper.from_list(Connection, [], chrome_actions={'go': FormAction('Go', requires_valid=True)})
+
+
+class TestDrillDownWrapperActions:
+    """DrillDownWrapper's title row: the actions belong to the detail view, left of Delete."""
+
+    async def test_an_action_is_hidden_in_the_list_view(self, user: User) -> None:
+        captured = _form(lambda: DrillDownWrapper.from_list(
+            Connection, [Connection()], list_title='Connections',
+            chrome_actions={'ping': FormAction('Ping')},
+        ).render())
+        await user.open('/')
+        assert captured[0].action_buttons['ping'].visible is False
+
+    async def test_an_action_shows_in_the_detail_view(self, user: User) -> None:
+        items = [Connection(host='alpha')]
+        adapter = ListAdapter(Connection, items)
+        key = adapter.key_from_item(items[0])
+        captured = _form(lambda: DrillDownWrapper.from_adapter(
+            Connection, adapter, chrome_actions={'ping': FormAction('Ping')},
+        ).render().open(key))
+        await user.open('/')
+
+        assert captured[0].action_buttons['ping'].visible is True
+        await user.should_see('Ping')
+
+    async def test_the_applications_actions_sit_left_of_delete(self, user: User) -> None:
+        items = [Connection(host='alpha')]
+        adapter = ListAdapter(Connection, items)
+        key = adapter.key_from_item(items[0])
+        captured = _form(lambda: DrillDownWrapper.from_adapter(
+            Connection, adapter, chrome_actions={'ping': FormAction('Ping')},
+        ).render().open(key))
+        await user.open('/')
+        wrapper = captured[0]
+
+        order = _buttons(_parent(wrapper.action_buttons['ping']))
+        assert order[0] is wrapper.action_buttons['ping']
+        assert order[-1] is wrapper.delete_button
+
+    async def test_a_click_names_the_item_on_screen(self, user: User) -> None:
+        seen: list = []
+        items = [Connection(host='alpha'), Connection(host='beta')]
+        adapter = ListAdapter(Connection, items)
+        key = adapter.key_from_item(items[1])
+        captured = _form(lambda: DrillDownWrapper.from_adapter(
+            Connection, adapter,
+            chrome_actions={'ping': FormAction('Ping', on_click=lambda e: seen.append(e))},
+        ).render().open(key))
+        await user.open('/')
+
+        user.find('Ping').click()
+        await user.should_see('Ping')
+        assert seen[0].key == key
+        assert seen[0].item.host == 'beta'
+        assert seen[0].wrapper is captured[0]
+
+    async def test_requires_valid_follows_the_detail_form(self, user: User) -> None:
+        items = [Pair()]
+        adapter = ListAdapter(Pair, items)
+        key = adapter.key_from_item(items[0])
+        captured = _form(lambda: DrillDownWrapper.from_adapter(
+            Pair, adapter, chrome_actions={'go': FormAction('Go', requires_valid=True)},
+        ).render().open(key))
+        await user.open('/')
+        button = captured[0].action_buttons['go']
+        assert button.enabled is True
+
+        user.find('First').clear().type('b').trigger('blur')
+        await user.should_see('first and second must differ')
+        assert button.enabled is False
+
+    def test_requires_valid_is_refused_with_a_detail_view_of_your_own(self) -> None:
+        with pytest.raises(ValueError, match='requires_valid needs a form'):
+            DrillDownWrapper.from_list(Connection, [], render_detail=lambda adapter, key, set_key: None,
+                                       chrome_actions={'go': FormAction('Go', requires_valid=True)})

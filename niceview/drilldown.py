@@ -5,16 +5,18 @@ between a list view and a per-item detail view. Call render() inside your own
 ui.page / ui.card / ui.column, same as any other niceview widget.
 """
 import logging
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Self, TypeVar, Unpack
+from typing import Any, Awaitable, Callable, Self, TypeVar, Unpack, cast
 import typing_extensions
 from pydantic import BaseModel
 from nicegui import helpers, ui
+from nicegui.events import ClickEventArguments, Handler, UiEventArguments, handle_event
 
 from niceview.dataadapter import CollectionAdapter, ListAdapter, JsonListAdapter, ReactiveAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
-from niceview.modelform import ModelForm
+from niceview.modelform import FormAction, ModelForm, render_action_button
 from niceview.modellist import ModelList
 from niceview.style import (ChromeStyle, NotifyKind, Place, chrome_button, chrome_buttons,
                             chrome_notify, chrome_row, chrome_title, get_chrome_style)
@@ -24,6 +26,21 @@ from niceview.util import confirm_dialog, maybe_await
 log = logging.getLogger('niceview')
 
 T = TypeVar('T', bound=BaseModel)
+
+@dataclass(kw_only=True, slots=True)
+class DrillDownActionEventArguments(UiEventArguments):
+    """
+    What an action's `on_click` receives in a DrillDownWrapper's title row.
+
+    Those buttons belong to the detail view — `key` and `item` are the item on screen, never
+    None, because there is nothing to click them on in the list view.
+    """
+    wrapper: 'DrillDownWrapper'
+    name: str
+    action: FormAction
+    key: str
+    item: BaseModel
+
 
 ActionHandler = Callable[[], None | Awaitable[None]]
 """A zero-argument handler for a title-row button, written as `def` or `async def`. An async
@@ -77,6 +94,11 @@ class _DrillDownWrapperOptionInputs(typing_extensions.TypedDict, total=False):
     back_button: str | None
     """Label of the Back button, '' for icon-only (the default). None hides it — the detail
     view then has no way back other than one you render yourself."""
+    chrome_actions: dict[str, FormAction]
+    """The application's own buttons in the title row, by name, right-aligned just left of
+    Delete. Same FormAction as a form's `actions`; they belong to the detail view and are
+    hidden in the list, so their `on_click` gets a DrillDownActionEventArguments with the item
+    on screen."""
     chrome_style: ChromeStyle | None
     """Look of the title row, its buttons and the list rows. Replaces the application-wide
     default of niceview.style.set_chrome_style() wholesale — derive it with ChromeStyle.derived()."""
@@ -114,6 +136,12 @@ class DrillDownWrapper:
       - list view:   ModelList-style rows (title/subtitle from field values)
       - detail view: an autosaving ModelForm.from_adapter(item_type, adapter, key)
 
+    `chrome_actions` adds the application's own buttons to the title row of the *detail* view —
+    the same `FormAction` a form places between its fields, here right-aligned just left of
+    Delete, so niceview's own button keeps the right edge it has everywhere. They are hidden in
+    the list view, which is about no single item, and their `on_click` receives a
+    `DrillDownActionEventArguments` naming the one on screen.
+
     Override render_list_item / render_detail for custom layout, heterogeneous
     item types (resolve the concrete pydantic type per item inside
     render_detail), or non-form content — e.g. rendering a nested
@@ -128,6 +156,7 @@ class DrillDownWrapper:
         wrapper.back_button   → ui.button | None (visible in detail always; in list only if on_back= is set)
         wrapper.add_button    → ui.button | None (visible in list view; None entirely if add_button=None)
         wrapper.delete_button → ui.button | None (visible in detail view; None entirely if delete_button=None)
+        wrapper.action_buttons → dict[str, ui.button] (visible in detail view; from chrome_actions=)
     For the shared look of the title row rather than a single instance of it, see
     niceview.style.set_chrome_style() and the chrome_style= option.
     The body (list/detail content) is not exposed: unlike the title row, it is genuinely
@@ -153,6 +182,7 @@ class DrillDownWrapper:
     _add_button: str | None
     _delete_button: str | None
     _back_button: str | None
+    _chrome_actions: dict[str, FormAction]
     _chrome_style: ChromeStyle | None
     _chrome_text: ChromeText | None
     _place: Place
@@ -169,6 +199,7 @@ class DrillDownWrapper:
     back_button: ui.button | None
     add_button: ui.button | None
     delete_button: ui.button | None
+    action_buttons: dict[str, ui.button]
 
     def __init__(self, item_type: type[BaseModel], adapter: CollectionAdapter, **kwargs: Unpack[_DrillDownWrapperOptionInputs]) -> None:
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
@@ -187,6 +218,11 @@ class DrillDownWrapper:
         self._add_button = kwargs.pop('add_button', '')
         self._delete_button = kwargs.pop('delete_button', '')
         self._back_button = kwargs.pop('back_button', '')
+        # requires_valid can only be answered by the form the wrapper builds itself: a
+        # render_detail of its own may put anything into the detail view, a form or not.
+        self._chrome_actions = ModelForm._checked_actions(
+            kwargs.pop('chrome_actions', {}),
+            no_form='' if self._render_detail is None else 'a render_detail of your own owns the detail view')
         self._chrome_style = kwargs.pop('chrome_style', None)
         self._chrome_text = kwargs.pop('chrome_text', None)
         self._place = kwargs.pop('place', 'toolbar')
@@ -210,6 +246,7 @@ class DrillDownWrapper:
         self.back_button = None
         self.add_button = None
         self.delete_button = None
+        self.action_buttons = {}
 
         # Resolve the display title field once so the detail title row is consistent
         if self._item_title_field is None:
@@ -315,10 +352,16 @@ class DrillDownWrapper:
             if self._back_button is not None:
                 self.back_button = chrome_button('back', self._back_button, 'arrow_back', text_of(text.back_tooltip), style, self._handle_back_click, place)
             self.title = chrome_title('', style)
-            if self._add_button is not None or self._delete_button is not None:
-                # count=1: Add belongs to the list view and Delete to the detail view, so however
-                # many are configured, only ever one of them is on screen — never a group.
-                with chrome_buttons(style, count=1):
+            if self._add_button is not None or self._delete_button is not None or self._chrome_actions:
+                # Add belongs to the list view, the actions and Delete to the detail view, so the
+                # count is whichever view shows more at once — never the sum of all that is built.
+                count = max(1 if self._add_button is not None else 0,
+                            len(self._chrome_actions) + (1 if self._delete_button is not None else 0))
+                with chrome_buttons(style, count):
+                    for name, action in self._chrome_actions.items():
+                        self.action_buttons[name] = render_action_button(
+                            action, style, place, None,
+                            lambda event, n=name, a=action: self._handle_chrome_action(n, a, event))
                     if self._add_button is not None:
                         self.add_button = chrome_button('add', self._add_button, 'add', text_of(text.add_tooltip), style, self._handle_add, place)
                     if self._delete_button is not None:
@@ -334,6 +377,8 @@ class DrillDownWrapper:
             self.add_button.set_visibility(not is_detail)
         if self.delete_button is not None:
             self.delete_button.set_visibility(is_detail)
+        for button in self.action_buttons.values():
+            button.set_visibility(is_detail)
 
     # --- body ------------------------------------------------------------------
 
@@ -386,6 +431,11 @@ class DrillDownWrapper:
                                       chrome_style=self._chrome_style, chrome_text=self._chrome_text)
         form.render()
         form.render_nonfield_errors()
+        # The title row outlives the form -- every navigation builds a new one -- so a
+        # requires_valid action is handed to whichever form is currently below it.
+        for name, action in self._chrome_actions.items():
+            if action.requires_valid and (button := self.action_buttons.get(name)) is not None:
+                form._gate_on_validity(button)
 
     def _set_detail_key(self, new_key: str) -> None:
         if new_key != self._state['key']:
@@ -410,6 +460,23 @@ class DrillDownWrapper:
             return
         item = self._adapter.create(self._item_type())
         self.open(self._adapter.key_from_item(item))
+
+    def _handle_chrome_action(self, name: str, action: FormAction, event: ClickEventArguments) -> None:
+        """Call one of the application's own title-row actions with the item on screen."""
+        if action.on_click is None:
+            return
+        key = self._state['key']
+        if key is None:
+            return  # only reachable in the detail view, where a key is what the view is about
+        try:
+            item = self._adapter.read(key)
+        except (KeyError, ValueError):
+            log.warning(f"Action '{name}': item {key!r} is gone")
+            return
+        handle_event(cast('Handler[DrillDownActionEventArguments]', action.on_click),
+                     DrillDownActionEventArguments(sender=event.sender, client=event.client,
+                                                   wrapper=self, name=name, action=action,
+                                                   key=key, item=item))
 
     async def _handle_delete(self) -> None:
         key = self._state['key']

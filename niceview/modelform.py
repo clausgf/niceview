@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 import inspect
 import logging
@@ -37,7 +38,8 @@ if typing.TYPE_CHECKING:
     # Only for the FormWidget type alias below; imported lazily elsewhere in this module
     # to avoid a circular import (editwrapper.py imports ModelForm from this module).
     from niceview.modelgrid import ModelGrid
-    from niceview.editwrapper import EditGridWrapper
+    from niceview.editwrapper import EditGridWrapper, GridActionEventArguments
+    from niceview.drilldown import DrillDownActionEventArguments
 
 log = logging.getLogger('niceview')
 
@@ -63,7 +65,7 @@ class FormAction:
     """
     A button in a form that is not a field: 'Test connection' next to the host, 'Generate' next
     to the password. Declared in a table and placed by name — '@test' in the layout, or
-    `actions=` on an EditFormWrapper for the title row.
+    `chrome_actions=` on a wrapper for its title row.
 
     The name is the key of that table; everything the name cannot carry lives here, the callback
     above all. Label and tooltip take a callable as well, so they can follow the client's
@@ -71,8 +73,13 @@ class FormAction:
     """
     label: TextValue = ''
     """The button's text. '' makes it an icon-only button, so it needs an `icon` then."""
-    on_click: Handler[FormActionEventArguments] | None = None
-    """Called with a FormActionEventArguments — sync or async, like every niceview handler."""
+    on_click: 'Handler[FormActionEventArguments] | Handler[GridActionEventArguments] | Handler[DrillDownActionEventArguments] | None' = None
+    """Called with the event arguments of the place the button sits in — sync or async, like
+    every niceview handler. A form and an EditFormWrapper's title row send a
+    FormActionEventArguments (`e.form`), an EditGridWrapper's a GridActionEventArguments
+    (`e.row_key`, `e.item` — the selected row, None when nothing is selected), a
+    DrillDownWrapper's a DrillDownActionEventArguments (`e.key`, `e.item` — the item on
+    screen)."""
     icon: str = ''
     """A Material icon name. Empty renders no icon."""
     tooltip: TextValue = ''
@@ -84,11 +91,35 @@ class FormAction:
     """CSS classes of the button. In a row, they replace the default 'self-center'."""
     requires_valid: bool = False
     """Disable the button while the form has validation errors. The one bit of state worth
-    taking over: niceview knows `has_validation_errors`, the application would have to wire it."""
+    taking over: niceview knows `has_validation_errors`, the application would have to wire it.
+    It needs a form to ask, so the title rows that have none — an EditGridWrapper's, a
+    DrillDownWrapper's with a `render_detail` of its own — reject it instead of ignoring it."""
 
     def __post_init__(self) -> None:
         if not self.label and not self.icon:
             raise ValueError("A FormAction needs a label or an icon — a button with neither is invisible")
+
+
+def render_action_button(action: FormAction, style: ChromeStyle, place: Place, classes: str | None,
+                         on_click: Callable[..., Any]) -> ui.button:
+    """
+    Build one action button in the current NiceGUI context — the same button wherever an action
+    sits, so a form's '@name' and a wrapper's `chrome_actions` cannot drift apart.
+
+    It goes through the same chrome layers as a Save or a Delete — the props of its place and
+    the shape its label asks for — minus the role layer: the roles are niceview's closed
+    vocabulary, and an application's own action is not one of them, so it styles itself.
+
+    What stays with the caller is the click (each place sends its own event arguments) and, where
+    there is a form to ask, `requires_valid`.
+    """
+    button = chrome_button(None, text_of(action.label), action.icon or None,
+                           text_of(action.tooltip), style, on_click, place)
+    if chosen := (classes or action.classes):
+        button.classes(chosen)
+    if action.props:
+        button.props(action.props)
+    return button
 
 
 # Any type ModelForm.widgets[field_name] / w() may return: a native NiceGUI element for most
@@ -262,8 +293,14 @@ class ModelForm():
             raise TypeError(f"Unexpected keyword arguments: {', '.join(kwargs.keys())}")
 
     @staticmethod
-    def _checked_actions(actions: Any) -> 'dict[str, FormAction]':
-        """Validate the action table. The keys are the names the layout's '@name' refers to."""
+    def _checked_actions(actions: Any, *, no_form: str = '') -> 'dict[str, FormAction]':
+        """
+        Validate the action table. The keys are the names the layout's '@name' refers to.
+
+        `no_form` is the reason there is no form behind these actions, given by the wrappers
+        whose title row has none: `requires_valid` cannot be answered there, and saying so beats
+        a button that stays enabled without a word.
+        """
         if not isinstance(actions, dict):
             raise TypeError(f"actions must be a dict of name -> FormAction, got {type(actions).__name__}")
         for name, action in actions.items():
@@ -272,6 +309,8 @@ class ModelForm():
                                  f"'@{str(name).lstrip('@')}' in the layout")
             if not isinstance(action, FormAction):
                 raise TypeError(f"Action '{name}' must be a FormAction, got {type(action).__name__}")
+            if no_form and action.requires_valid:
+                raise ValueError(f"Action '{name}': requires_valid needs a form to ask, and {no_form}")
         return dict(actions)
 
     @property
@@ -792,15 +831,10 @@ class ModelForm():
                        classes: str | None = None, in_row: bool = False,
                        bottom_space: bool = False) -> ui.button:
         """
-        Build one action button in the current NiceGUI context.
-
-        It goes through the same chrome layers as a Save or a Delete — the props of its place and
-        the shape its label asks for — minus the role layer: the roles are niceview's closed
-        vocabulary, and an application's own action is not one of them, so it styles itself.
+        Build one of *this form's* action buttons in the current NiceGUI context: the shared
+        button of `render_action_button()`, wired to this form's click handler and, for
+        `requires_valid`, to its validity.
         """
-        button = chrome_button(None, text_of(action.label), action.icon or None,
-                               text_of(action.tooltip), self._style, place=place)
-        button.on_click(lambda event, n=name, a=action: self._handle_action(n, a, event))
         chosen = classes or action.classes
         if in_row and not chosen:
             # A button belongs next to the *box* of the field beside it, not next to the field's
@@ -810,10 +844,9 @@ class ModelForm():
             # as much taller and lifts it back onto the box. A row of switches reserves nothing,
             # and then the plain centre is already right.
             chosen = 'self-center mb-5' if bottom_space else 'self-center'
-        if chosen:
-            button.classes(chosen)
-        if action.props:
-            button.props(action.props)
+        button = render_action_button(
+            action, self._style, place, chosen,
+            lambda event, n=name, a=action: self._handle_action(n, a, event))
         if action.requires_valid:
             self._gate_on_validity(button)
         return button
@@ -821,8 +854,10 @@ class ModelForm():
     def _handle_action(self, name: str, action: 'FormAction', event: ClickEventArguments) -> None:
         if action.on_click is None:
             return
-        handle_event(action.on_click, FormActionEventArguments(
-            sender=event.sender, client=event.client, form=self, name=name, action=action))
+        # The handler is typed for whichever place the action sits in; here it is a form's.
+        handle_event(typing.cast('Handler[FormActionEventArguments]', action.on_click),
+                     FormActionEventArguments(sender=event.sender, client=event.client,
+                                              form=self, name=name, action=action))
 
     def _gate_on_validity(self, button: ui.button) -> None:
         """

@@ -1,11 +1,7 @@
 niceview
 ========
 
-Forms and tables derived from Pydantic or SqlModel models: the widget for each type, the layout,
-and validation against the model — shown inline at the field it belongs to, cross-field rules
-included. Persistence is a swappable adapter (a JSON file, a directory of files, SQL through
-SqlModel, or your own) with save, refresh, autosave and optimistic locking already wired up. The
-same model renders as a desktop table or as a mobile list ↔ detail drill-down.
+NiceView simplifies [NiceGUI](https://nicegui.io) programming by deriving forms and tables from Pydantic or SqlModel models: the widget for each type, the layout, and validation against the model, shown inline at the field it belongs to, cross-field rules included. Persistence is a swappable adapter (a JSON file, a directory of files, SQL through SqlModel, or your own) with save, refresh, autosave and optimistic locking already wired up. The same model renders as a desktop table or as a mobile list ↔ detail drill-down.
 
 <p align="center">
   <img src="img/hero.png" width="430" alt="A ModelForm rendered from a Pydantic model — text, select, toggle, number, slider, switch, multi-select chips, color and textarea widgets"><br>

@@ -20,11 +20,11 @@ from niceview.dataadapter import (
     lenient_model_load,
 )
 from niceview.widgets import CheckboxGroup, field_value, render_field, to_widget_value
-from niceview.modelform import FormAction, ModelForm
+from niceview.modelform import FormAction, FormActionEventArguments, ModelForm
 from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
-from niceview.editwrapper import EditFormWrapper, EditGridWrapper
+from niceview.editwrapper import EditFormWrapper, EditGridWrapper, GridActionEventArguments
 from niceview.modellist import ModelList
-from niceview.drilldown import DrillDownWrapper
+from niceview.drilldown import DrillDownActionEventArguments, DrillDownWrapper
 from niceview.style import (ChromeStyle, FieldStyle, get_chrome_style, get_field_style,
                             set_chrome_style, set_field_style)
 from niceview.text import ChromeText, get_chrome_text, set_chrome_text
@@ -39,6 +39,8 @@ __all__ = [
     'ModelGrid', 'ModelGridInlineEdit',
     'EditFormWrapper', 'EditGridWrapper',
     'ModelList', 'DrillDownWrapper',
+    # What an action's on_click receives, one per place it can sit in
+    'FormActionEventArguments', 'GridActionEventArguments', 'DrillDownActionEventArguments',
     # Chrome styling and texts
     'ChromeStyle', 'get_chrome_style', 'set_chrome_style',
     'FieldStyle', 'get_field_style', 'set_field_style',
