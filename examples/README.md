@@ -24,3 +24,4 @@ uv run python examples/01_form_basic.py
 | 15 | `15_validation.py` | The three validation layers, `form.item` vs `form.draft`, cross-field errors | JSON file |
 | 16 | `16_form_layout.py` | Form layouts: rows, titled sections, per-field classes, `base_props` | in-memory |
 | 17 | `17_styling.py` | `ChromeStyle` / `FieldStyle` / `ChromeText`: styling presets and German texts, switchable live | in-memory |
+| 18 | `18_form_actions.py` | Form actions: `FormAction`, `'@name'` in the layout, `chrome_actions` in the title row | in-memory + JSON |

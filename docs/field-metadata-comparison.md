@@ -27,7 +27,7 @@ Three things to keep in mind while reading:
   `WIDGET_OPTIONS` and checked by `tests/test_widget_option_coverage.py`, so a NiceGUI upgrade
   cannot widen the gap unnoticed.
 
-[← Back to the README](../README.md) · See also [Field Types & Customization](field-types.md)
+[← Back to the overview](index.md) · See also [Field Types & Customization](field-types.md)
 
 
 Identity and text

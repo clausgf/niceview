@@ -11,6 +11,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 (nothing yet)
 
 
+[0.20.0] - 2026-08-16
+---------------------
+
+A form gets buttons that are not fields, and the documentation gets a home of its own at
+[clausgf.github.io/niceview](https://clausgf.github.io/niceview/).
+
+### Added
+
+- **Actions in a form.** A button that is not a field — "Test connection" next to the host,
+  "Generate" next to the password. It has no value, no validation and no place in the model, so
+  it is a layout element rather than a pseudo-field: `Fields` stays a mapping of model fields and
+  every path that walks it needs no exception. Two parts, because a callback cannot live in a
+  layout string:
+
+  ```python
+  ModelForm.from_item(cfg,
+      layout=[['# Server', ['host', 'port', '@test']]],
+      actions={'test': FormAction('Test', icon='bolt', on_click=test_connection)},
+  ).render()
+  ```
+
+  `'@name'` places the button, `actions` says what it does. `FormAction` carries `label`,
+  `on_click`, `icon`, `tooltip`, `props`, `classes` and `requires_valid`; the handler receives a
+  `FormActionEventArguments` with the form, whose `item` and `draft` are what an action almost
+  always needs. `label` and `tooltip` also take a callable, like every `ChromeText` slot.
+
+- **`requires_valid`** disables an action while the form has validation errors — the one bit of
+  state worth taking over, since niceview knows `has_validation_errors` and the application would
+  have to wire it up by hand.
+
+- **`EditFormWrapper(chrome_actions=…)`** puts the same `FormAction` in the title row, left of
+  Refresh and Save, exposed as `wrapper.action_buttons`. Otherwise the half between the fields
+  would exist and the more obvious one — an own button next to Save — would still have no way in.
+
+- **`widgets.reserves_bottom_space()`** answers whether a field is taller than its box — Quasar
+  keeps 20px free below one that can show a message (a validation, a hint), so that the layout
+  does not jump when one appears. An action in a row uses it to align itself with the box of its
+  neighbours (`self-center mb-5`) rather than with the middle of their total height; next to a
+  switch or a slider, which reserve nothing, the plain `self-center` is already right.
+
+- **`ModelForm.render_action('test')`** places one action in a layout built by hand, as
+  `render_field()` does for a field. Rendered actions are reachable as `form.w('@test')` (the
+  layout's spelling) and in `form.action_buttons` — `widgets` stays keyed by field name.
+
+- **A documentation site** at [clausgf.github.io/niceview](https://clausgf.github.io/niceview/):
+  the pages under `docs/` as they are, plus an API reference generated from the docstrings
+  (MkDocs Material + mkdocstrings, deployed by `.github/workflows/docs.yml`). The keyword options
+  of every component are documented there too — they live in the `TypedDict`s the factories
+  unpack, which is where their descriptions have always been.
+
+### Changed
+
+- `style.chrome_button()` accepts `kind=None` for a button without one of niceview's roles. The
+  roles are a closed vocabulary of what niceview itself means by a button; an application's action
+  skips that layer and styles itself, while place and shape still apply so it fits its neighbours.
+
+
 [0.19.0] - 2026-08-16
 ---------------------
 

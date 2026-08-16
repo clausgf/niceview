@@ -534,6 +534,27 @@ def resolve_help_texts(field_info: FieldInfo, description_as: DescriptionTarget 
     return hint, tooltip
 
 
+def reserves_bottom_space(field_info: FieldInfo, description_as: DescriptionTarget = DESCRIPTION_AS) -> bool:
+    """
+    Whether this field is taller than its box: Quasar keeps a strip of 20px free below a field
+    that *can* show a message, so that the layout does not jump when one appears
+    (`q-field--with-bottom`).
+
+    Two things ask for that strip, and both are niceview's own doing: a validation — NiceGUI
+    reserves the space for it (`error=False`), and ModelForm wires one on every VALIDATED_WIDGET
+    — and a hint, on the QInput based widgets that have a slot for one. Everything else, a
+    switch or a slider or a group of checkboxes, is exactly as tall as it looks.
+
+    Independent of `outlined`, `filled` and friends: those change how tall the box is, not what
+    sits below it.
+    """
+    widget_type = field_info.widget_type or ''
+    if widget_type in VALIDATED_WIDGETS:
+        return True
+    hint, _ = resolve_help_texts(field_info, description_as)
+    return bool(hint) and widget_type in HINT_WIDGETS
+
+
 def apply_field_info(widget: Any, field_info: FieldInfo, description_as: DescriptionTarget = DESCRIPTION_AS) -> None:
     """
     Apply disable, hint, tooltip, classes, style, props and validation from field_info to a

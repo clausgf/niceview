@@ -2,6 +2,7 @@ NiceView
 ========
 
 [![CI](https://github.com/clausgf/niceview/actions/workflows/ci.yml/badge.svg)](https://github.com/clausgf/niceview/actions/workflows/ci.yml)
+[![Docs](https://github.com/clausgf/niceview/actions/workflows/docs.yml/badge.svg)](https://clausgf.github.io/niceview/)
 
 NiceView simplifies [NiceGUI](https://nicegui.io) programming by deriving forms and tables from Pydantic or SqlModel models — the widget for each type, the layout, and validation against the model, shown inline at the field it belongs to and including cross-field rules. Persistence is a swappable adapter: a JSON file, a directory of files, SQL through SqlModel, or your own, with save, refresh, autosave and optimistic locking already wired up. The same model renders as a desktop table or as a mobile list ↔ detail drill-down. Inspired by declarative UI libraries like [Django](https://docs.djangoproject.com/)'s admin integration, [MagicGUI](https://magicgui.readthedocs.io/) and [NiceCRUD](https://github.com/zauberzeug/nicegui/tree/main/examples/nicecrud).
 
@@ -116,6 +117,9 @@ Screenshots
 Documentation
 -------------
 
+**[clausgf.github.io/niceview](https://clausgf.github.io/niceview/)** — the pages below as a
+searchable site, plus an API reference generated from the docstrings.
+
 - **[Components](docs/components.md)** — `ModelForm` (layout, validation), `ModelGrid`, the edit wrappers, card lists, `ModelList`/`DrillDownWrapper`, chrome styling, and the model-free `render_field`
 - **[Data Adapters](docs/adapters.md)** — storage backends, lenient loading, optimistic locking, reactive updates, adapter protocols
 - **[Field Types & Customization](docs/field-types.md)** — type→widget mapping, `niceview.Field()` options, `Meta` profiles, validation
@@ -136,6 +140,13 @@ uv sync --dev
 uv run pytest
 uv run mypy niceview/ --ignore-missing-imports
 uv run ruff check
+```
+
+Build the documentation site (`docs/` plus the generated API reference):
+```bash
+uv sync --group docs
+uv run mkdocs serve            # preview on http://127.0.0.1:8000
+uv run mkdocs build --strict   # what CI publishes; a broken link fails the build
 ```
 
 Run examples (after `uv sync --dev`, which editable-installs `niceview` into `.venv`):
@@ -165,6 +176,8 @@ example open; no `sys.path` setup is needed because `niceview` is installed into
 | `14_render_field.py` | `render_field` / `field_value` — a form built from field metadata, without a model |
 | `15_validation.py` | Validation — the three layers, `item` vs `draft`, cross-field rules, `required`, `frozen` |
 | `16_form_layout.py` | Form layout — rows, titled sections, per-field classes, uniform `base_props` |
+| `17_styling.py` | `ChromeStyle` / `FieldStyle` / `ChromeText` — styling presets and German texts, switchable live |
+| `18_form_actions.py` | Form actions — `FormAction`, `'@name'` in the layout, `chrome_actions` in the title row |
 
 Unit tests cover data adapters, field resolution, validation logic, and pure CRUD operations.
 Acceptance tests use the NiceGUI `User` fixture (headless, no browser) to verify render output and

@@ -3,7 +3,7 @@ Data Adapters
 
 The abstraction layer between NiceView components and storage backends.
 
-[← Back to the README](../README.md)
+[← Back to the overview](index.md)
 
 
 Data Adapters
@@ -17,7 +17,7 @@ or let the `from_*` factory methods create them transparently.
 | `ListAdapter(Type, list)` | Grid | In-memory list |
 | `JsonAdapter(Type, path)` | Form | Single object in a JSON file; supports `lock_field=`, `created_field=`, `strict=` |
 | `JsonListAdapter(Type, path)` | Grid | List of objects in a JSON file; supports `created_field=`, `strict=` |
-| `SqlModelAdapter(Type, engine)` | Grid, Form | SQLModel / SQLAlchemy table *(requires the `sqlmodel` extra, see [Installation](../README.md#installation))* |
+| `SqlModelAdapter(Type, engine)` | Grid, Form | SQLModel / SQLAlchemy table *(requires the `sqlmodel` extra, see [Installation](index.md#installation))* |
 | `DirectoryAdapter(dir_path)` | `DrillDownWrapper` | One file per item in a directory; items are filename metadata (`FileEntry`), not parsed content — supports `rename()`; `suffix=None` for a mixed-extension file browser |
 | `FilteredAdapter(inner, predicate, defaults=)` | Grid, `DrillDownWrapper` | Filtered view of another `CollectionAdapter` (see below) |
 

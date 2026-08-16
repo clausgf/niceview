@@ -297,3 +297,38 @@ class TestResolveHelpTexts:
         base = Field(widget_type='ui.input', description='derived')
         merged = niceview.fieldinfo._merge_field_infos(base, Field(tooltip='from meta'))
         assert self.resolve(merged, 'tooltip') == (None, 'from meta')
+
+
+class TestReservesBottomSpace:
+    """
+    Whether a field is taller than its box. Quasar keeps 20px free below a field that can show
+    a message; a form action beside it has to know, or it sits half of that too low.
+    """
+    reserves = staticmethod(niceview.widgets.reserves_bottom_space)
+
+    def test_a_validated_widget_reserves_it(self):
+        # ModelForm wires a validation on every one of them, which is what makes NiceGUI
+        # reserve the space (error=False) — no rule of the field's own is needed.
+        assert self.reserves(Field(widget_type='ui.input')) is True
+        assert self.reserves(Field(widget_type='ui.select')) is True
+
+    def test_a_control_widget_does_not(self):
+        assert self.reserves(Field(widget_type='ui.switch')) is False
+        assert self.reserves(Field(widget_type='ui.slider')) is False
+        assert self.reserves(Field(widget_type='checkbox_group')) is False
+
+    def test_a_hint_reserves_it_on_a_widget_with_a_hint_slot(self):
+        assert self.reserves(Field(widget_type='ui.color_input', hint='#rrggbb')) is True
+        assert self.reserves(Field(widget_type='ui.color_input')) is False
+
+    def test_a_hint_the_widget_cannot_show_reserves_nothing(self):
+        assert self.reserves(Field(widget_type='ui.switch', hint='dropped')) is False
+
+    def test_a_description_shown_as_a_hint_counts(self):
+        fi = Field(widget_type='ui.color_input', description='what it means')
+        assert self.reserves(fi, 'hint') is True
+        assert self.reserves(fi, 'tooltip') is False
+
+    def test_an_unknown_widget_type_reserves_nothing(self):
+        assert self.reserves(Field()) is False
+        assert self.reserves(Field(widget_type='editgrid')) is False

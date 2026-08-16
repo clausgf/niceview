@@ -9,7 +9,8 @@ from nicegui import ui
 from nicegui.events import Handler, ClickEventArguments, handle_event
 
 from niceview.dataadapter import CollectionAdapter, ConflictError, StorageError, ItemAdapter, ReloadableAdapter
-from niceview.modelform import ModelForm, FieldChangeEventArguments, _ModelFormOptionInputs
+from niceview.modelform import (FieldChangeEventArguments, FormAction, ModelForm,
+                                _ModelFormOptionInputs)
 from niceview.modelgrid import ModelGridInlineEdit, ModelGrid, T, TableItemEventArguments, _InlineEditableModelGridOptionInputs
 from niceview.style import (ChromeStyle, NotifyKind, Place, chrome_button, chrome_buttons,
                             chrome_dialog, chrome_dialog_buttons, chrome_notify, chrome_row,
@@ -425,6 +426,9 @@ class _EditFormWrapperInputs(typing_extensions.TypedDict, total=False):
     description: str | None
     save_button: str | None
     refresh_button: str | None
+    chrome_actions: dict[str, 'FormAction']
+    """The application's own buttons in the title row, by name, left of Refresh and Save. Same
+    FormAction as the form's `actions` — the one that is placed in the layout as '@name'."""
     chrome_style: ChromeStyle | None
     """Look of the title row and its buttons. Replaces the application-wide default of
     niceview.style.set_chrome_style() wholesale — derive it with ChromeStyle.derived().
@@ -471,16 +475,22 @@ class EditFormWrapper():
     - from_adapter(): save + refresh shown by default (adapter exists)
     Autosave suppresses the save button regardless.
 
+    `chrome_actions` adds the application's own buttons to that row — the same `FormAction` the
+    form places between its fields, here left of Refresh and Save, so niceview's own buttons keep
+    the right edge they always have.
+
     After render(), the NiceGUI elements are exposed for further styling:
         wrapper.title          → ui.label | None
         wrapper.save_button    → ui.button | None
         wrapper.refresh_button → ui.button | None
+        wrapper.action_buttons → dict[str, ui.button]
     """
     _rendered: bool
     _title: str | None
     _description: str | None
     _save_button: str | None
     _refresh_button: str | None
+    _chrome_actions: dict[str, FormAction]
     _chrome_style: ChromeStyle | None
     _chrome_text: ChromeText | None
     _place: Place
@@ -489,6 +499,7 @@ class EditFormWrapper():
     title: ui.label | None
     save_button: ui.button | None
     refresh_button: ui.button | None
+    action_buttons: dict[str, ui.button]
     title_row: ui.row | None
     description: ui.markdown | None
     form: ModelForm
@@ -505,6 +516,7 @@ class EditFormWrapper():
         default_refresh = '' if has_adapter else None
         self._save_button = kwargs.pop('save_button', default_save)
         self._refresh_button = kwargs.pop('refresh_button', default_refresh)
+        self._chrome_actions = ModelForm._checked_actions(kwargs.pop('chrome_actions', {}))
         self._chrome_style = kwargs.pop('chrome_style', None)
         self._chrome_text = kwargs.pop('chrome_text', None)
         self._place = kwargs.pop('place', 'toolbar')
@@ -513,6 +525,7 @@ class EditFormWrapper():
         self.title = None
         self.save_button = None
         self.refresh_button = None
+        self.action_buttons = {}
         self.title_row = None
         self.description = None
         self.form = form
@@ -603,11 +616,12 @@ class EditFormWrapper():
         self.title = None
         self.save_button = None
         self.refresh_button = None
+        self.action_buttons = {}
         self.title_row = None
         self.description = None
 
         style, text, place = self._style, self._text, self._place
-        button_count = sum(b is not None for b in [self._save_button, self._refresh_button])
+        button_count = sum(b is not None for b in [self._save_button, self._refresh_button]) + len(self._chrome_actions)
         has_chrome = bool(self._title) or button_count > 0
         if has_chrome:
             with chrome_row(style) as self.title_row:
@@ -617,6 +631,8 @@ class EditFormWrapper():
                     if not self._title:
                         ui.space()
                     with chrome_buttons(style, button_count):
+                        for name, action in self._chrome_actions.items():
+                            self.action_buttons[name] = self.form._render_action(name, action, place=place)
                         if self._refresh_button is not None:
                             self.refresh_button = chrome_button('refresh', self._refresh_button, 'refresh', text_of(text.refresh_tooltip), style, lambda _: self.form.refresh(), place)
                         if self._save_button is not None:

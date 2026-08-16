@@ -8,13 +8,14 @@ import typing_extensions
 from pydantic import BaseModel, TypeAdapter
 
 from nicegui import ui
-from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments, handle_event
+from nicegui.events import ClickEventArguments, Handler, UiEventArguments, ValueChangeEventArguments, handle_event
 
 from niceview.dataadapter import BoundItem, ConflictError, StorageError, JsonAdapter, CollectionAdapter, ItemAdapter
 from niceview.fieldinfo import FieldInfo, _FieldInfoInputs, _merge_field_infos
-from niceview.fields import Fields, LayoutField, LayoutGroup
-from niceview.style import ChromeStyle, NotifyKind, chrome_notify, get_chrome_style, get_field_style
-from niceview.text import ChromeText, get_chrome_text, text_of
+from niceview.fields import Fields, LayoutAction, LayoutField, LayoutGroup
+from niceview.style import (ChromeStyle, NotifyKind, Place, chrome_button, chrome_notify,
+                            get_chrome_style, get_field_style)
+from niceview.text import ChromeText, TextValue, get_chrome_text, text_of
 from niceview.widgets import (
     DESCRIPTION_AS,
     DescriptionTarget,
@@ -27,6 +28,7 @@ from niceview.widgets import (
     create_widget,
     field_value,
     required_error,
+    reserves_bottom_space,
     run_validation,
     to_widget_value,
 )
@@ -46,6 +48,47 @@ class FieldChangeEventArguments(UiEventArguments):
     field_name: str
     previous_value: Any
     value: Any
+
+
+@dataclass(kw_only=True, slots=True)
+class FormActionEventArguments(UiEventArguments):
+    """What an action's `on_click` receives. `form.item` and `form.draft` are the point of it."""
+    form: 'ModelForm'
+    name: str
+    action: 'FormAction'
+
+
+@dataclass(frozen=True)
+class FormAction:
+    """
+    A button in a form that is not a field: 'Test connection' next to the host, 'Generate' next
+    to the password. Declared in a table and placed by name — '@test' in the layout, or
+    `actions=` on an EditFormWrapper for the title row.
+
+    The name is the key of that table; everything the name cannot carry lives here, the callback
+    above all. Label and tooltip take a callable as well, so they can follow the client's
+    language like every other text niceview renders.
+    """
+    label: TextValue = ''
+    """The button's text. '' makes it an icon-only button, so it needs an `icon` then."""
+    on_click: Handler[FormActionEventArguments] | None = None
+    """Called with a FormActionEventArguments — sync or async, like every niceview handler."""
+    icon: str = ''
+    """A Material icon name. Empty renders no icon."""
+    tooltip: TextValue = ''
+    """Shown on hover, unless the chrome style turns tooltips off."""
+    props: str = ''
+    """Quasar props, merged on top of the place and shape layers of the chrome style. An
+    application's own action has no role, so it styles itself."""
+    classes: str = ''
+    """CSS classes of the button. In a row, they replace the default 'self-center'."""
+    requires_valid: bool = False
+    """Disable the button while the form has validation errors. The one bit of state worth
+    taking over: niceview knows `has_validation_errors`, the application would have to wire it."""
+
+    def __post_init__(self) -> None:
+        if not self.label and not self.icon:
+            raise ValueError("A FormAction needs a label or an icon — a button with neither is invisible")
 
 
 # Any type ModelForm.widgets[field_name] / w() may return: a native NiceGUI element for most
@@ -75,7 +118,11 @@ class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
     entry — a nested list opens a row (rows and columns alternate), a leading '# Title' makes
     the group a card, '## Title' gives it the same heading without the card, a leading
     ':classes' replaces the container's classes, and a field name may carry its own classes
-    after a colon ('street:sm:w-2/3')."""
+    after a colon ('street:sm:w-2/3'), and '@name' places one of the form's actions."""
+
+    actions: dict[str, 'FormAction']
+    """The form's action buttons, by name: buttons that are not fields ('Test connection').
+    Placed in the layout as '@name', or by hand with render_action('name')."""
 
     base_props: str
     """Quasar props applied to every field of this form (e.g. 'outlined dense'). Additive: the
@@ -139,7 +186,10 @@ class ModelForm():
     _nonfield_validation_errors: list[str]
     _nonfield_error_element: ui.label | None
     _warned_nonfield: bool
+    _actions: dict[str, 'FormAction']
+    _validity_gated: list[ui.button]
     widgets: dict[str, Any]
+    action_buttons: dict[str, ui.button]
 
     autosave: bool
     local_tz: str | None
@@ -178,14 +228,20 @@ class ModelForm():
         field_infos = _get_param('field_infos', {})
         profile = kwargs.pop('profile', None)  # type: ignore[misc]
         layout = _get_param('layout', None)
-        self._fields = Fields(item_type, include, exclude, field_infos, profile=profile, layout=layout)
+        # Actions are kwargs-only, deliberately: a Meta entry is data, and an action carries a
+        # callback — behaviour does not belong on the model class.
+        self._actions = self._checked_actions(kwargs.pop('actions', {}))  # type: ignore[misc]
+        self._fields = Fields(item_type, include, exclude, field_infos, profile=profile, layout=layout,
+                              actions=self._actions)
         self._current_item = None
         self._validated_item = None
         self._validation_error_messages = {}
         self._nonfield_validation_errors = []
         self._nonfield_error_element = None
         self._warned_nonfield = False
+        self._validity_gated = []
         self.widgets = {}
+        self.action_buttons = {}
 
         self._chrome_style = kwargs.pop('chrome_style', None)  # type: ignore[misc]
         self._chrome_text = kwargs.pop('chrome_text', None)  # type: ignore[misc]
@@ -204,6 +260,19 @@ class ModelForm():
 
         if len(kwargs) > 0:
             raise TypeError(f"Unexpected keyword arguments: {', '.join(kwargs.keys())}")
+
+    @staticmethod
+    def _checked_actions(actions: Any) -> 'dict[str, FormAction]':
+        """Validate the action table. The keys are the names the layout's '@name' refers to."""
+        if not isinstance(actions, dict):
+            raise TypeError(f"actions must be a dict of name -> FormAction, got {type(actions).__name__}")
+        for name, action in actions.items():
+            if not isinstance(name, str) or not name or name.startswith('@'):
+                raise ValueError(f"Invalid action name {name!r}: a plain name, referred to as "
+                                 f"'@{str(name).lstrip('@')}' in the layout")
+            if not isinstance(action, FormAction):
+                raise TypeError(f"Action '{name}' must be a FormAction, got {type(action).__name__}")
+        return dict(actions)
 
     @property
     def _style(self) -> ChromeStyle:
@@ -444,10 +513,23 @@ class ModelForm():
                                             #   CheckboxGroup for editgrid / checkbox_group fields)
           form.w('name', ui.input)         # → ui.input        (typed; raises TypeError if mismatch)
           form.w('perms', CheckboxGroup)   # → CheckboxGroup
+          form.w('@test')                  # → ui.button       (an action, written as in the layout)
 
         Raises KeyError if the field has no widget (e.g. not yet rendered or excluded).
         Raises TypeError if the widget exists but is not an instance of widget_type.
         """
+        if field_name.startswith('@'):
+            # An action is addressed the way the layout writes it. Its button lives in
+            # action_buttons rather than in widgets, which is keyed by field name and walked
+            # by everything that pushes values, converts them and validates them.
+            try:
+                widget = self.action_buttons[field_name[1:]]
+            except KeyError:
+                raise KeyError(f"No button for action '{field_name}'. Check that the form is "
+                               "rendered and the action is placed in the layout.")
+            if widget_type is not None and not isinstance(widget, widget_type):
+                raise TypeError(f"Button for '{field_name}' is {type(widget).__name__}, not {widget_type.__name__}")
+            return widget  # type: ignore[return-value]
         try:
             widget = self.widgets[field_name]
         except KeyError:
@@ -688,6 +770,68 @@ class ModelForm():
         self.widgets[field_name] = widget
         return widget
 
+    # --- actions -----------------------------------------------------------
+
+    def render_action(self, name: str) -> ui.button:
+        """
+        Render one of the form's actions in the current NiceGUI context, for a layout built by
+        hand out of render_field() calls — render() places the actions the layout names itself.
+
+        Returns the created button, which is also kept in `action_buttons` and reachable as
+        `form.w('@name')`.
+        """
+        name = name.lstrip('@')
+        if name not in self._actions:
+            raise ValueError(f"Unknown action '{name}' — the form's actions are: "
+                             f"{sorted(self._actions) or 'none'}")
+        button = self._render_action(name, self._actions[name])
+        self.action_buttons[name] = button
+        return button
+
+    def _render_action(self, name: str, action: 'FormAction', *, place: Place = 'form',
+                       classes: str | None = None, in_row: bool = False,
+                       bottom_space: bool = False) -> ui.button:
+        """
+        Build one action button in the current NiceGUI context.
+
+        It goes through the same chrome layers as a Save or a Delete — the props of its place and
+        the shape its label asks for — minus the role layer: the roles are niceview's closed
+        vocabulary, and an application's own action is not one of them, so it styles itself.
+        """
+        button = chrome_button(None, text_of(action.label), action.icon or None,
+                               text_of(action.tooltip), self._style, place=place)
+        button.on_click(lambda event, n=name, a=action: self._handle_action(n, a, event))
+        chosen = classes or action.classes
+        if in_row and not chosen:
+            # A button belongs next to the *box* of the field beside it, not next to the field's
+            # total height. Where that field keeps Quasar's 20px message strip free below its box
+            # (see widgets.reserves_bottom_space), centering over the whole of it would put the
+            # button half of that strip too low; the margin makes the centred margin box exactly
+            # as much taller and lifts it back onto the box. A row of switches reserves nothing,
+            # and then the plain centre is already right.
+            chosen = 'self-center mb-5' if bottom_space else 'self-center'
+        if chosen:
+            button.classes(chosen)
+        if action.props:
+            button.props(action.props)
+        if action.requires_valid:
+            self._gate_on_validity(button)
+        return button
+
+    def _handle_action(self, name: str, action: 'FormAction', event: ClickEventArguments) -> None:
+        if action.on_click is None:
+            return
+        handle_event(action.on_click, FormActionEventArguments(
+            sender=event.sender, client=event.client, form=self, name=name, action=action))
+
+    def _gate_on_validity(self, button: ui.button) -> None:
+        """
+        Disable a button while the form has validation errors — now, and after every change.
+        Used by `requires_valid`, and by a wrapper for the actions in its own title row.
+        """
+        self._validity_gated.append(button)
+        button.set_enabled(not self.has_validation_errors)
+
     def _styled(self, field_info: FieldInfo, layout_classes: str | None = None, in_row: bool = False) -> FieldInfo:
         """
         Apply the styling cascade to a field. Props and classes are handled differently, and
@@ -749,16 +893,27 @@ class ModelForm():
         Render all non-hidden fields followed by the non-field error label.
 
         Fields are arranged according to the form's layout (from `layout=`, from the selected
-        `Meta.profiles` entry, or simply one below the other). Use render_field() and
-        render_nonfield_errors() instead when a layout the notation cannot express is needed.
+        `Meta.profiles` entry, or simply one below the other), together with the actions the
+        layout names as '@name'. Use render_field(), render_action() and render_nonfield_errors()
+        instead when a layout the notation cannot express is needed.
         """
+        # A re-render replaces the buttons of the layout — but not the ones a wrapper registered
+        # for its own title row, which is drawn before the form and stays where it is.
+        own = {id(button) for button in self.action_buttons.values()}
+        self._validity_gated = [b for b in self._validity_gated if id(b) not in own]
         self.widgets = {}
+        self.action_buttons = {}
         self._render_group(self._fields.layout)
         self.render_nonfield_errors()
         return self
 
     def _render_group(self, group: LayoutGroup) -> None:
         """Render a layout group's children into the current NiceGUI context."""
+        bottom_space = group.row and any(
+            reserves_bottom_space(self._fields[child.name], self.description_as)
+            for child in group.children
+            if isinstance(child, LayoutField) and not self._fields[child.name].hidden
+        )
         for child in group.children:
             if isinstance(child, LayoutField):
                 field_info = self._fields[child.name]
@@ -768,6 +923,11 @@ class ModelForm():
                     continue
                 self.widgets[child.name] = self._render_widget(
                     child.name, self._styled(field_info, child.classes, in_row=group.row)
+                )
+            elif isinstance(child, LayoutAction):
+                self.action_buttons[child.name] = self._render_action(
+                    child.name, self._actions[child.name], classes=child.classes,
+                    in_row=group.row, bottom_space=bottom_space
                 )
             else:
                 with self._layout_container(child):
@@ -930,6 +1090,10 @@ class ModelForm():
             if hasattr(widget, 'validate') and callable(widget.validate):
                 # return_result=False: NiceGUI refuses to return a result for async validations
                 widget.validate(return_result=False)
+
+        valid = not self.has_validation_errors
+        for button in self._validity_gated:
+            button.set_enabled(valid)
 
     @property
     def has_validation_errors(self) -> bool:

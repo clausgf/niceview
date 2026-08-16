@@ -3,7 +3,7 @@ Components
 
 Reference for the NiceView UI components. See also [Data Adapters](adapters.md), [Field Types & Customization](field-types.md), [Field Metadata Comparison](field-metadata-comparison.md) and [Dialogs](dialogs.md).
 
-[← Back to the README](../README.md)
+[← Back to the overview](index.md)
 
 
 ModelForm
@@ -136,6 +136,7 @@ ModelForm.from_item(contact, layout=['name', ['zip_code', 'city']]).render()
 | `'# Address'` | as the **first** element of a group: it becomes a `ui.card` (flat, bordered) with that title, and always stacks |
 | `'## Address'` | the same section heading, but no card around it — a plain `ui.column` that stacks just as well |
 | `':gap-8 items-end'` | as the **first** element of a group: replaces the container's default classes |
+| `'@test'` | an **action** button from the form's `actions` table — see Actions below |
 
 A **section** is a group with a title. The number of `#` picks its shape, not its heading:
 `'# Address'` draws the flat bordered card, `'## Address'` leaves the frame away and renders
@@ -228,6 +229,93 @@ form.w('notes').classes(replace='w-1/3')      # the only way to remove, for clas
 
 What the layout notation cannot express, `render_field()` still can: it renders one field
 wherever you call it, and honours the same form-level defaults.
+
+### Actions
+
+A button that is **not** a field — *Test connection* next to the host, *Generate* next to the
+password. It has no value, no validation and no place in the model, so it is layout rather than a
+field: `Fields` stays a mapping of model fields, and everything that walks it (pushing values,
+converting them, validating) needs no exception for it.
+
+Two parts, because a callback cannot live in a layout string: the `actions` table says what the
+button does, `'@name'` says where it sits.
+
+```python
+from niceview import FormAction, ModelForm
+
+ModelForm.from_item(cfg,
+    layout=[['# Server', ['host', 'port', '@test']],
+            ['# Access', ['password', '@generate']]],
+    actions={'test':     FormAction('Test', icon='bolt', on_click=test_connection),
+             'generate': FormAction('', icon='casino', on_click=make_password)},
+).render()
+```
+
+| `FormAction` | Meaning |
+|---|---|
+| `label` | the button's text; `''` makes it icon-only. A callable is resolved when it renders, like every `ChromeText` slot |
+| `on_click` | handler for a `FormActionEventArguments` — sync or async |
+| `icon` | Material icon name |
+| `tooltip` | shown on hover, unless `ChromeStyle(tooltips=False)` |
+| `props` | Quasar props, merged on top of the chrome's place and shape layers |
+| `classes` | CSS classes; in a row they replace the alignment niceview picks (see below) |
+| `requires_valid` | disable the button while the form has validation errors |
+
+The event carries the form, which is the point of it — `e.form.item` is the last fully valid
+state, `e.form.draft` what the widgets hold right now:
+
+```python
+async def test_connection(e):
+    await ping(e.form.draft.host)      # what the user sees, valid or not
+
+def make_password(e):
+    e.form.w('password').set_value(secrets.token_urlsafe(12))   # the form commits it as usual
+```
+
+`requires_valid` is the one bit of state niceview takes over, because it is the one it already
+knows (`has_validation_errors`). Everything else the application does on the button itself:
+
+```python
+form.w('@test')                # the button — addressed the way the layout writes it
+form.action_buttons['test']    # the same, by plain name
+```
+
+In a row, an action lands on the same line as the **box** of the fields beside it, not on the
+middle of their total height: Quasar keeps a strip of 20px free below a field that can show a
+message, so that the layout does not jump when one appears. niceview knows which fields do that
+(any validated widget, and any widget showing a hint) and picks the classes per row:
+
+| The row holds | Classes | Why |
+|---|---|---|
+| a text field, a select, anything with a hint | `self-center mb-5` | the margin makes the centred margin box as much taller as the field keeps free, lifting the button back onto the box |
+| only switches, sliders, checkbox groups | `self-center` | those are exactly as tall as they look — there is nothing to compensate |
+| only actions | `self-center` | same |
+
+This does not depend on `outlined`, `filled` or `dense`: those change how tall the box is, and
+the compensation is about what sits *below* it. Classes of your own — in the layout
+(`'@test:self-end'`) or on the `FormAction` — replace the pair wholesale.
+
+An action carries no **role** — `add`, `delete`, `save` … are niceview's closed vocabulary for
+what *it* means by a button. Place and shape still apply (an action among the fields is `form`,
+one in a title row is `toolbar`), so it sits among the others and styles itself with `props`.
+
+For a layout built by hand, `render_action('test')` places one wherever it is called, exactly as
+`render_field()` does for a field.
+
+The title row takes the same `FormAction` under `chrome_actions=`, so the naturally-placed
+button — *Test all* next to Save — is not the one left out:
+
+```python
+EditFormWrapper.from_json(Connection, path, title='Connection',
+    chrome_actions={'check': FormAction('Test all', icon='bolt', requires_valid=True,
+                                        on_click=check_everything)},
+).render()
+wrapper.action_buttons['check']    # ui.button
+```
+
+The application's actions come first in that row, so Refresh and Save keep the right edge they
+have in every other wrapper. `chrome_actions` and `actions` are separate on purpose: the first
+belongs to the wrapper's row, the second to the layout, and a factory call sets both.
 
 ### Validation
 
@@ -375,7 +463,11 @@ wrapper.description                        # ui.markdown | None
 wrapper.title_row                          # ui.row | None
 wrapper.save_button.props('color=green')   # ui.button | None
 wrapper.refresh_button                     # ui.button | None
+wrapper.action_buttons                     # dict[str, ui.button] — from chrome_actions=
 ```
+
+`EditFormWrapper` also takes `chrome_actions={'name': FormAction(...)}` for the application's own
+buttons in that row — see [Actions](#actions).
 
 ### Chrome styling
 
@@ -417,7 +509,9 @@ are two layers, with the mechanical shape layer between them:
 | `dialog` | a dialog footer |
 
 Roles are `add`, `edit`, `delete`, `save`, `refresh`, `back`, `ok`, `cancel`. `delete` is the
-only one with a default (`'color=negative'`) — and only because that is meaning, not taste.
+only one with a default (`'color=negative'`) — and only because that is meaning, not taste. The
+list is closed: it is what *niceview* means by a button, so an application's own `FormAction` has
+no role and brings its own `props` instead. Place and shape still reach it.
 
 There is deliberately **no base layer** below the places. "Every button of this application is
 dense" is a statement about a type, and NiceGUI already owns it:

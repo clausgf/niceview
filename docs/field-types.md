@@ -3,7 +3,7 @@ Field Types & Customization
 
 How NiceView maps Python types to widgets, and how to customize fields.
 
-[← Back to the README](../README.md) · Side-by-side comparison with `pydantic.Field()` and JSON Schema: [Field Metadata Comparison](field-metadata-comparison.md)
+[← Back to the overview](index.md) · Side-by-side comparison with `pydantic.Field()` and JSON Schema: [Field Metadata Comparison](field-metadata-comparison.md)
 
 
 Supported Field Types

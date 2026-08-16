@@ -3,7 +3,7 @@ Dialogs
 
 Async dialog helpers in `niceview.util`.
 
-[← Back to the README](../README.md)
+[← Back to the overview](index.md)
 
 
 Dialogs

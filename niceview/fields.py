@@ -280,6 +280,16 @@ class LayoutField:
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
+class LayoutAction:
+    """
+    One action button in a form layout, written '@name' and looked up in the form's `actions`.
+    An action is layout, not a field: it has no value, no validation and no place in the model.
+    """
+    name: str
+    classes: str | None = None
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
 class LayoutGroup:
     """
     A container in a form layout: a row, a column, or — with a title — a section.
@@ -289,22 +299,26 @@ class LayoutGroup:
     A section comes in two shapes, told apart by `card`: '# Title' draws a card around its
     fields, '## Title' only sets the heading above them. Both headings look the same.
     """
-    children: tuple['LayoutField | LayoutGroup', ...]
+    children: tuple['LayoutField | LayoutAction | LayoutGroup', ...]
     row: bool = False
     title: str | None = None
     classes: str | None = None
     card: bool = False
 
 
-def parse_layout(spec: typing.Any, valid_names: typing.Container[str], *, row: bool = False, path: str = 'layout') -> LayoutGroup:
+def parse_layout(spec: typing.Any, valid_names: typing.Container[str], *, valid_actions: typing.Container[str] = (),
+                 row: bool = False, path: str = 'layout') -> LayoutGroup:
     """
-    Parse a nested field layout into LayoutGroups and LayoutFields.
+    Parse a nested field layout into LayoutGroups, LayoutFields and LayoutActions.
 
     A list holds field names; a nested list opens a container (rows and columns alternate).
     Leading strings are metadata for their own group — '# Title' makes it a titled card,
     '## Title' a section with the same heading but no card around it, ':classes' replaces the
     container's default CSS classes. A field name may carry classes of its own after a colon:
     'street:sm:w-2/3' (only the first colon separates, so Tailwind prefixes stay intact).
+
+    '@name' is an action button rather than a field, and must be declared in `valid_actions` —
+    the form's `actions` table, which holds the callback the name cannot carry.
 
     Raises ValueError with the position of the offending element.
     """
@@ -340,7 +354,7 @@ def parse_layout(spec: typing.Any, valid_names: typing.Container[str], *, row: b
 
     row = False if title is not None else row  # a section stacks: its heading sits above it
 
-    children: list[LayoutField | LayoutGroup] = []
+    children: list[LayoutField | LayoutAction | LayoutGroup] = []
     for index, element in enumerate(spec[first_field:], start=first_field):
         where = f'{path}[{index}]'
         if isinstance(element, str):
@@ -348,11 +362,20 @@ def parse_layout(spec: typing.Any, valid_names: typing.Container[str], *, row: b
                 raise ValueError(f"{where}: '{element}' is group metadata and must come before the fields")
             name, _, hint = element.partition(':')
             name, hint = name.strip(), hint.strip()
-            if name not in valid_names:
+            if name.startswith('@'):
+                action = name[1:]
+                if not action:
+                    raise ValueError(f"{where}: '@' needs an action name")
+                if action not in valid_actions:
+                    raise ValueError(f"{where}: unknown action '{action}' — every '@name' needs an "
+                                     f"entry in the form's actions")
+                children.append(LayoutAction(action, hint or None))
+            elif name not in valid_names:
                 raise ValueError(f"{where}: unknown field '{name}'")
-            children.append(LayoutField(name, hint or None))
+            else:
+                children.append(LayoutField(name, hint or None))
         elif isinstance(element, (list, tuple)):
-            children.append(parse_layout(element, valid_names, row=not row, path=where))
+            children.append(parse_layout(element, valid_names, valid_actions=valid_actions, row=not row, path=where))
         else:
             raise ValueError(f"{where}: expected a field name or a nested list, got {type(element).__name__}")
 
@@ -362,13 +385,24 @@ def parse_layout(spec: typing.Any, valid_names: typing.Container[str], *, row: b
 
 
 def layout_field_names(group: LayoutGroup) -> list[str]:
-    """All field names in a layout, in rendering order."""
+    """All field names in a layout, in rendering order. Actions are not fields and not listed."""
     names: list[str] = []
     for child in group.children:
         if isinstance(child, LayoutField):
             names.append(child.name)
-        else:
+        elif isinstance(child, LayoutGroup):
             names.extend(layout_field_names(child))
+    return names
+
+
+def layout_action_names(group: LayoutGroup) -> list[str]:
+    """All action names in a layout, in rendering order."""
+    names: list[str] = []
+    for child in group.children:
+        if isinstance(child, LayoutAction):
+            names.append(child.name)
+        elif isinstance(child, LayoutGroup):
+            names.extend(layout_action_names(child))
     return names
 
 
@@ -383,7 +417,7 @@ class Fields(typing.Mapping[str, FieldInfo]):
     _field_infos: dict[str, FieldInfo]
     _layout: LayoutGroup
 
-    def __init__(self, item_type: type[pydantic.BaseModel], include: str | typing.Iterable[str] = '__all__', exclude: str | typing.Iterable[str] = '', field_infos: dict[str, FieldInfo] = {}, profile: str | None = None, layout: typing.Any = None):
+    def __init__(self, item_type: type[pydantic.BaseModel], include: str | typing.Iterable[str] = '__all__', exclude: str | typing.Iterable[str] = '', field_infos: dict[str, FieldInfo] = {}, profile: str | None = None, layout: typing.Any = None, actions: typing.Container[str] = ()):
         self._item_type = item_type
         meta = getattr(item_type, 'Meta', None)
 
@@ -405,7 +439,7 @@ class Fields(typing.Mapping[str, FieldInfo]):
             include = [name.strip() for name in include.split(',') if name.strip()]
         parsed_layout: LayoutGroup | None = None
         if isinstance(include, (list, tuple)) and list(include) != ['__all__']:
-            parsed_layout = parse_layout(include, all_fields)
+            parsed_layout = parse_layout(include, all_fields, valid_actions=actions)
             include = layout_field_names(parsed_layout)
             duplicates = sorted({n for n in include if include.count(n) > 1})
             if duplicates:

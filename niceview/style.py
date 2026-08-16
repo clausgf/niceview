@@ -307,7 +307,7 @@ def chrome_buttons(style: ChromeStyle, count: int) -> Iterator[ui.element]:
         _in_button_group.reset(token)
 
 
-def chrome_button(kind: str, label: str, icon: str | None, tooltip: str, style: ChromeStyle,
+def chrome_button(kind: str | None, label: str, icon: str | None, tooltip: str, style: ChromeStyle,
                   on_click: Callable[..., Any] | None = None, place: Place = 'toolbar') -> ui.button:
     """
     One chrome button, built from three layers of props: the props of its `place`, the shape
@@ -318,6 +318,10 @@ def chrome_button(kind: str, label: str, icon: str | None, tooltip: str, style: 
     may replace the icon shape (a dialog wants squared-off buttons where a lone toolbar button
     is round), and inside a button group there is nothing to round, so the layer is skipped
     there unless the style says otherwise.
+
+    `kind` is None for an application's own action (niceview.FormAction): the roles are a closed
+    vocabulary of what niceview itself means by a button, so an action skips that layer and
+    brings its own props instead. Place and shape still apply — it sits among the others.
     """
     if label:
         shape = style.labelled_button_props
@@ -326,7 +330,8 @@ def chrome_button(kind: str, label: str, icon: str | None, tooltip: str, style: 
         shape = style.icon_button_props if override is None else override
     if _in_button_group.get() and not style.shape_in_group:
         shape = ''
-    layers = (getattr(style, f'{place}_button_props'), shape, getattr(style, f'{kind}_button_props'))
+    role = getattr(style, f'{kind}_button_props') if kind else ''
+    layers = (getattr(style, f'{place}_button_props'), shape, role)
     button = ui.button(label, icon=icon).props(' '.join(p for p in layers if p))
     if on_click is not None:
         button.on_click(on_click)

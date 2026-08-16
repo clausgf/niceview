@@ -31,7 +31,17 @@ uv run ruff check
   first in an issue.
 - **Types**: the library ships a `py.typed` marker; keep the public API fully typed and mypy-clean.
 - **Docs**: update the relevant page (the `README.md` landing page or the reference pages under
-  `docs/`) when you change behavior.
+  `docs/`) when you change behavior. `docs/` is also the source of the
+  [documentation site](https://clausgf.github.io/niceview/); preview it with
+
+  ```bash
+  uv sync --group docs
+  uv run mkdocs serve            # http://127.0.0.1:8000
+  uv run mkdocs build --strict   # what CI runs: a broken link fails the build
+  ```
+
+  The API reference is generated from the docstrings, so a new public class only needs a
+  `::: niceview.module.Name` line on the matching page under `docs/api/`.
 - **Changelog**: record any user-facing / API change under `[Unreleased]` in
   [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
 

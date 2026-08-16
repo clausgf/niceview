@@ -7,7 +7,8 @@ import pydantic
 import pytest
 
 import niceview
-from niceview.fields import Fields, LayoutField, LayoutGroup, layout_field_names, parse_layout
+from niceview.fields import (Fields, LayoutAction, LayoutField, LayoutGroup, layout_action_names,
+                             layout_field_names, parse_layout)
 
 NAMES = {'a', 'b', 'c', 'd'}
 
@@ -85,6 +86,39 @@ class TestParsing:
 
     def test_field_names_in_render_order(self):
         assert layout_field_names(parse_layout(['a', ['b', ['c']], 'd'], NAMES)) == ['a', 'b', 'c', 'd']
+
+
+class TestActionTokens:
+    """'@name' is layout, not a field: it has no value and no place in the model."""
+
+    def test_action_token(self):
+        group = parse_layout(['a', '@test'], NAMES, valid_actions={'test'})
+        assert group.children[1] == LayoutAction('test')
+
+    def test_action_classes_after_the_colon(self):
+        group = parse_layout(['@test:w-1/4'], NAMES, valid_actions={'test'})
+        assert group.children[0] == LayoutAction('test', 'w-1/4')
+
+    def test_actions_are_not_field_names(self):
+        group = parse_layout(['a', ['b', '@test']], NAMES, valid_actions={'test'})
+        assert layout_field_names(group) == ['a', 'b']
+        assert layout_action_names(group) == ['test']
+
+    def test_actions_reach_nested_groups(self):
+        group = parse_layout([['# Section', 'a', '@test']], NAMES, valid_actions={'test'})
+        assert layout_action_names(group) == ['test']
+
+    def test_undeclared_action(self):
+        with pytest.raises(ValueError, match=r"layout\[1\]: unknown action 'test'"):
+            parse_layout(['a', '@test'], NAMES)
+
+    def test_action_without_a_name(self):
+        with pytest.raises(ValueError, match="'@' needs an action name"):
+            parse_layout(['@'], NAMES, valid_actions={'test'})
+
+    def test_a_field_named_like_an_action_is_still_unknown(self):
+        with pytest.raises(ValueError, match="unknown field 'test'"):
+            parse_layout(['test'], NAMES, valid_actions={'test'})
 
 
 class TestParsingErrors:
@@ -174,6 +208,11 @@ class TestFieldsIntegration:
         fields = Fields(Model, layout=[['a:w-1/2', 'b']])
         assert fields['a'].widget_type == 'ui.input'
         assert fields.layout.children[0].children[0].classes == 'w-1/2'
+
+    def test_an_action_does_not_join_the_field_set(self):
+        fields = Fields(Model, layout=['a', ['b', '@test']], actions={'test'})
+        assert list(fields.field_names) == ['a', 'b']
+        assert layout_action_names(fields.layout) == ['test']
 
     def test_grid_style_consumers_see_a_flat_list(self):
         # ModelGrid/ModelList iterate field_names and ignore the tree.
