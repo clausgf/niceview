@@ -13,12 +13,13 @@ from nicegui.events import Handler, UiEventArguments, ValueChangeEventArguments,
 from niceview.dataadapter import BoundItem, ConflictError, StorageError, JsonAdapter, CollectionAdapter, ItemAdapter
 from niceview.fieldinfo import FieldInfo, _FieldInfoInputs, _merge_field_infos
 from niceview.fields import Fields, LayoutField, LayoutGroup
-from niceview.style import get_chrome_style
+from niceview.style import ChromeStyle, NotifyKind, chrome_notify, get_chrome_style, get_field_style
+from niceview.text import ChromeText, get_chrome_text, text_of
 from niceview.widgets import (
     DESCRIPTION_AS,
-    REQUIRED_MARKER,
-    REQUIRED_MESSAGE,
     DescriptionTarget,
+    CONTROL_WIDGETS,
+    INPUT_BASED_WIDGETS,
     TEXT_INPUT_WIDGETS,
     VALIDATED_WIDGETS,
     CheckboxGroup,
@@ -104,6 +105,14 @@ class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
     (default), 'hint' below the widget, or None to not show it at all. A field that sets `hint`
     or `tooltip` explicitly always wins over this."""
 
+    chrome_style: 'ChromeStyle | None'
+    """Look of the section titles of this form's layout. Replaces the application-wide default
+    of niceview.style.set_chrome_style() wholesale — derive it with ChromeStyle.derived()."""
+
+    chrome_text: 'ChromeText | None'
+    """Texts of this form. Replaces the application-wide default of
+    niceview.text.set_chrome_text() wholesale — derive it with ChromeText.derived()."""
+
 
 class ModelForm():
     """
@@ -139,6 +148,8 @@ class ModelForm():
     description_as: DescriptionTarget
     base_props: str | None
     default_classes: str | None
+    _chrome_style: 'ChromeStyle | None'
+    _chrome_text: 'ChromeText | None'
 
     def __init__(self, item_type: type[BaseModel], **kwargs: Unpack[_ModelFormOptionInputs]) -> None:
         """
@@ -176,10 +187,14 @@ class ModelForm():
         self._warned_nonfield = False
         self.widgets = {}
 
+        self._chrome_style = kwargs.pop('chrome_style', None)  # type: ignore[misc]
+        self._chrome_text = kwargs.pop('chrome_text', None)  # type: ignore[misc]
+        text = self._chrome_text or get_chrome_text()
+
         self.autosave = _get_param('autosave', False)
         self.local_tz = _get_param('local_tz', None)
-        self.required_marker = _get_param('required_marker', REQUIRED_MARKER)
-        self.required_message = _get_param('required_message', REQUIRED_MESSAGE)
+        self.required_marker = _get_param('required_marker', text_of(text.required_marker))
+        self.required_message = _get_param('required_message', text_of(text.required_message))
         self.description_as = _get_param('description_as', DESCRIPTION_AS)
         self.base_props = _get_param('base_props', None)
         self.default_classes = _get_param('default_classes', None)
@@ -189,6 +204,18 @@ class ModelForm():
 
         if len(kwargs) > 0:
             raise TypeError(f"Unexpected keyword arguments: {', '.join(kwargs.keys())}")
+
+    @property
+    def _style(self) -> ChromeStyle:
+        return self._chrome_style or get_chrome_style()
+
+    @property
+    def _text(self) -> ChromeText:
+        return self._chrome_text or get_chrome_text()
+
+    def _notify(self, template: Any, kind: NotifyKind, **params: Any) -> None:
+        """One of niceview's notifications: text from ChromeText, delivery from ChromeStyle."""
+        chrome_notify(text_of(template, **params), kind, self._style)
 
     # --- factory methods ---------------------------------------------------
 
@@ -372,7 +399,7 @@ class ModelForm():
             raise TypeError(f"item must be a BaseModel instance, got {type(item)}")
         self._set_item(item, in_place=True)  # same item reloaded: keep bindings alive
         if notify:
-            ui.notify('Form refreshed', color='positive')
+            self._notify(self._text.form_refreshed, 'positive')
 
     def save(self, notify: bool = True) -> None:
         """Persist the current item to the adapter. No-op if validation errors are present.
@@ -384,7 +411,7 @@ class ModelForm():
 
         if self.has_validation_errors:
             if notify:
-                ui.notify('Cannot save form: validation errors present', color='negative')
+                self._notify(self._text.validation_errors, 'negative')
             return
 
         try:
@@ -392,7 +419,7 @@ class ModelForm():
         except (ConflictError, StorageError) as e:
             log.error(f"save failed: {e}")
             if notify:
-                ui.notify(str(e), color='negative')
+                self._notify(str(e), 'negative')  # the adapter's own message, not one of ours
             return
         if updated is not None and updated is not self._validated_item:
             # Adapters may return a new instance (e.g. with generated ids). Copy the values in
@@ -401,7 +428,7 @@ class ModelForm():
                 self._validated_item = updated
             self._current_item = self._validated_item.model_copy()  # type: ignore[union-attr]
         if notify:
-            ui.notify('Form saved', color='positive')
+            self._notify(self._text.form_saved, 'positive')
 
     # --- widget management -------------------------------------------------
 
@@ -582,10 +609,11 @@ class ModelForm():
         widget = ModelGrid(field_info.item_type, data)
         # An embedded grid is a section of the form, not a page of its own: its title takes the
         # chrome's section size, one step below the title of the wrapper around the form.
-        chrome = get_chrome_style()
+        chrome = self._style
         section_style = chrome.replace(title_classes=f'{chrome.section_title_classes} grow')
         if field_info.editable:
-            edit_widget = EditGridWrapper(widget, title=field_info.label, chrome_style=section_style)
+            edit_widget = EditGridWrapper(widget, title=field_info.label, chrome_style=section_style,
+                                          chrome_text=self._chrome_text, place='form')
             if self._model_repositories:
                 edit_widget.with_repositories(self._model_repositories)
             edit_widget.on_change(notify_change)
@@ -668,19 +696,30 @@ class ModelForm():
         decided by stylesheet order, not by the order in the class list — so classes cannot be
         merged meaningfully and the most specific source replaces the others wholesale.
 
-          props:   base_props + the field's own props   (additive, per key, field wins)
-          classes: layout classes, else the field's own classes, else default_classes
+          props:   the category's props (FieldStyle) + base_props + the field's own props
+                   (additive, per key, the narrower source wins)
+          classes: layout classes, else the field's own classes, else the form's
+                   default_classes, else the application's
 
         In a row, 'min-w-0' is always added — it is layout mechanics, not styling, and cannot
         conflict with a width utility. 'flex-1' (equal share) is added only when no source
         asked for a width of its own, because it sets flex-basis to 0 and would silently
         override one.
         """
+        field_style = get_field_style()
+        widget_type = field_info.widget_type or ''
+        if widget_type in INPUT_BASED_WIDGETS:
+            category_props = field_style.input_props
+        elif widget_type in CONTROL_WIDGETS:
+            category_props = field_style.control_props
+        else:
+            category_props = ''  # 'editgrid' brings its own chrome, it is not a field with props
+
         explicit_classes = layout_classes or field_info.classes
-        classes = [explicit_classes or self.default_classes]
+        classes = [explicit_classes or self.default_classes or field_style.default_classes]
         if in_row:
             classes.append('min-w-0' if explicit_classes else 'flex-1 min-w-0')
-        props = [self.base_props, field_info.props]
+        props = [category_props, self.base_props, field_info.props]
 
         overrides: dict[str, Any] = {}
         if any(classes):
@@ -734,8 +773,7 @@ class ModelForm():
                 with self._layout_container(child):
                     self._render_group(child)
 
-    @staticmethod
-    def _layout_container(group: LayoutGroup) -> ui.element:
+    def _layout_container(self, group: LayoutGroup) -> ui.element:
         """
         The container for a nested layout group: a section for a titled group ('#' draws a card
         around it, '##' only the heading), otherwise a row or a column. `:classes` replaces the
@@ -743,10 +781,12 @@ class ModelForm():
         stylesheet order, not by the order in the class list.
         """
         if group.title is not None:
+            chrome = self._style
             section = (ui.card().props('flat bordered').classes(group.classes or 'w-full')
                        if group.card else ui.column().classes(group.classes or 'w-full gap-4'))
             with section:
-                ui.label(group.title).classes(get_chrome_style().section_title_classes)
+                ui.label(group.title).classes(chrome.card_title_classes if group.card
+                                              else chrome.section_title_classes)
             return section
         if group.row:
             return ui.row().classes(group.classes or 'w-full items-start gap-4')

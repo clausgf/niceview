@@ -380,63 +380,101 @@ wrapper.refresh_button                     # ui.button | None
 ### Chrome styling
 
 Styling elements one by one is the fine adjustment. The *shared* look of the chrome — the title
-row of every wrapper, its buttons, the title of a section inside a form — is a `ChromeStyle`,
-set once for the whole application:
+row of every wrapper, its buttons, the dialogs, the notifications, the title of a section inside
+a form — is a `ChromeStyle`, set once for the whole application:
 
 ```python
-from niceview import ChromeStyle, get_chrome_style, set_chrome_style
+from niceview import ChromeStyle, set_chrome_style
 
-set_chrome_style(button_props='dense outline', tooltips=False)   # change single attributes
-set_chrome_style(ChromeStyle(title_classes='text-h5 grow'))      # or replace it wholesale
+set_chrome_style(toolbar_button_props='dense outline', tooltips=False)  # change single attributes
+set_chrome_style(ChromeStyle(title_classes='text-h5 grow'))             # or replace it wholesale
 ```
 
 Call it at startup, before the first page is built: wrappers read the style when they render.
-A single wrapper can opt out with `chrome_style=` — which *replaces* the default rather than
-adding to it, so derive it from the current one:
+A single widget can opt out with `chrome_style=` — which *replaces* the default rather than
+adding to it, so derive it from the current one with `ChromeStyle.derived()`:
 
 ```python
 EditGridWrapper.from_list(User, users,
-    chrome_style=get_chrome_style().replace(button_group=False),
+    chrome_style=ChromeStyle.derived(button_group=False),
 ).render()
 ```
+
+#### Two axes: place and role
+
+Every chrome button sits in exactly one **place** and carries exactly one **role**, and the two
+are independent — a Delete exists in a toolbar and as the confirm button of a dialog. So they
+are two layers, with the mechanical shape layer between them:
+
+```
+{place}_button_props  →  shape  →  {role}_button_props
+```
+
+| place | where |
+|---|---|
+| `toolbar` | a wrapper's own action row (the default) |
+| `form` | the same row for a wrapper embedded in a form — an editgrid field |
+| `dialog` | a dialog footer |
+
+Roles are `add`, `edit`, `delete`, `save`, `refresh`, `back`, `ok`, `cancel`. `delete` is the
+only one with a default (`'color=negative'`) — and only because that is meaning, not taste.
+
+There is deliberately **no base layer** below the places. "Every button of this application is
+dense" is a statement about a type, and NiceGUI already owns it:
+
+```python
+ui.button.default_props('dense flat')   # NiceGUI, not niceview
+ui.input.default_props('outlined')
+```
+
+niceview styles only what NiceGUI cannot see: the place and the role of the buttons it builds
+itself.
 
 | Attribute | Default | Applies to |
 |---|---|---|
 | `title_row_classes` | `'w-full items-center flex-nowrap'` | the title row of every wrapper |
 | `title_classes` | `'text-h6 grow'` | the title label (`grow` pushes the buttons right) |
-| `section_title_classes` | `'text-subtitle2'` | a layout section's title (`'# …'` and `'## …'` alike), an embedded grid's label |
-| `button_props` | `''` | every chrome button |
+| `card_title_classes` | `'text-subtitle2'` | a layout section with a card (`'# …'`) |
+| `section_title_classes` | `'text-subtitle2'` | a layout section without one (`'## …'`), an embedded grid's label |
+| `toolbar_` / `form_` / `dialog_button_props` | `''` | the buttons of that place |
 | `icon_button_props` / `labelled_button_props` | `''` / `''` | a button without / with a label |
-| `shape_in_group` | `False` | whether that shape also applies inside a button group |
-| `add_button_props` … `back_button_props` | `''`, `delete`: `'color=negative'` | merged on top of the two above, per button kind |
+| `toolbar_` / `form_` / `dialog_icon_button_props` | `None` | the icon shape *in that place*: `None` inherits, `''` suppresses, a value replaces |
+| `shape_in_group` | `False` | whether the shape also applies inside a button group |
+| `add_button_props` … `cancel_button_props` | `''`, `delete`: `'color=negative'` | per role, merged last |
 | `button_group` | `True` | whether buttons that show together are joined in a `ui.button_group` |
 | `button_group_style` | `'width: fit-content; flex: none'` | inline style of that group |
 | `button_row_classes` | `'flex items-center gap-1 w-fit flex-none'` | the container used instead of the group |
-| `tooltips` | `True` | whether the buttons carry their default tooltips |
+| `tooltips` | `True` | whether the buttons carry their tooltips (the texts are `ChromeText`) |
+| `dialog_props` / `dialog_style` | maximized below `md`, `'width: 400px'` | every dialog niceview opens |
+| `dialog_card_classes` / `dialog_title_classes` / `dialog_button_row_classes` | `'w-full'` / `'text-h6'` / `'w-full place-content-end'` | the parts of a dialog |
+| `notify_position` / `notify_timeout` / `notify_close_button` | `'bottom'` / `5.0` / `False` | niceview's notifications |
+| `notify` | `None` | hook `(message, kind) -> None` for an application with its own messaging |
 | `list_props` | `'dense separator'` | a `ModelList`'s `ui.list` |
 | `list_item_classes` | `'cursor-pointer'` | one row (`ui.item`) |
 | `list_title_props` / `list_subtitle_props` | `''` / `'caption'` | the two `ui.item_label`s of a row |
 | `list_chevron_icon` | `'chevron_right'` | drill-down hint at the right edge; `None` renders none |
 | `list_chevron_classes` | `'text-grey'` | that icon |
 
-A button's props are layered **base → shape → role**: `button_props` is what every chrome button
-shares, the shape comes from whether the button carries a label, and the role
-(`delete_button_props` …) has the last word. Shape follows the button, not the place it is used —
-a lone Refresh looks the same in a form as in a grid.
+#### Merge semantics, readable off the type
 
-The base and shape layers ship **empty**: the chrome decides where a button goes and what it
-means, the application decides what it looks like. Only the role layer has an opinion of its
-own, and only where it is meaning rather than taste (a delete button is `color=negative`). The
-common setup is one line at startup:
+| Type | Rule |
+|---|---|
+| `str` | additive layer — props merge per key, the later layer wins |
+| `str \| None` | replacing layer — `None` inherits, `''` suppresses, a value replaces |
+| `*_classes` | replaces wholesale — a CSS class has no key to merge on |
+
+The shape override is the one replacing layer, and it has to be: Quasar's shapes are separate
+boolean props, so `round` and `rounded` are two keys and a later layer cannot cancel an earlier
+one by setting the other. Hence "in a dialog, square; alone in a toolbar, round":
 
 ```python
-set_chrome_style(button_props='dense flat', icon_button_props='round')  # icon-only → circles
+set_chrome_style(icon_button_props='round', dialog_icon_button_props='')
 ```
 
-Rounding icon buttons has one limit, and it is Quasar's rather than ours: a button group joins
-straight edges, and a circle has none. Inside a group the shape layer is therefore skipped, so
-grouped icon buttons stay square. It is *joined or round, not both* — `button_group=False` gives
-you round icon buttons everywhere, and `shape_in_group=True` lets a group-compatible shape
+Rounding icon buttons has one further limit, and it is Quasar's rather than ours: a button group
+joins straight edges, and a circle has none. Inside a group the shape layer is therefore skipped,
+so grouped icon buttons stay square. It is *joined or round, not both* — `button_group=False`
+gives you round icon buttons everywhere, and `shape_in_group=True` lets a group-compatible shape
 through (Quasar's `rounded` survives being joined, `round` does not).
 
 A button group is only used when there is something to join: Quasar styles it as one control —
@@ -451,13 +489,60 @@ The `list_*` attributes are what a `ModelList` is made of — it has no title ro
 `DrillDownWrapper` reaches the list it renders, so one `chrome_style=` covers both:
 
 ```python
-ModelList.from_list(User, users, chrome_style=get_chrome_style().replace(list_chevron_icon=None))
-DrillDownWrapper.from_list(User, users, chrome_style=get_chrome_style().replace(list_props='separator'))
+ModelList.from_list(User, users, chrome_style=ChromeStyle.derived(list_chevron_icon=None))
+DrillDownWrapper.from_list(User, users, chrome_style=ChromeStyle.derived(list_props='separator'))
 ```
 
-Props are additive and classes replace, the same rule as the [field cascade](#how-props-and-classes-travel-down-the-cascade)
-and for the same reason: a Quasar prop has a key, a CSS class does not. `ChromeStyle` is frozen —
-`replace()` returns a copy, so a style handed to one wrapper cannot be mutated by another.
+`ChromeStyle` is frozen — `replace()` returns a copy, so a style handed to one wrapper cannot be
+mutated by another.
+
+### Field styling
+
+The second cascade, keyed by widget **category** rather than by place or role. Two categories,
+because that is what practice asks for: an input and a select take the same props, a switch does
+not — `outlined` says nothing to a checkbox.
+
+```python
+from niceview import set_field_style
+
+set_field_style(input_props='outlined dense', control_props='dense', default_classes='w-full')
+```
+
+| Attribute | Applies to |
+|---|---|
+| `input_props` | the QInput/QSelect based widgets (`widgets.INPUT_BASED_WIDGETS`) |
+| `control_props` | checkbox, switch, radio, toggle, checkbox_group, slider, rating (`widgets.CONTROL_WIDGETS`) |
+| `default_classes` | every field that brings none of its own and whose form sets none either |
+
+Three layers, narrowest last: the application's category props, then `ModelForm(base_props=…)`
+for one form, then `FieldInfo(props=…)` for one field. Props are additive per key, classes
+replace.
+
+### Texts
+
+Every string niceview shows is a `ChromeText` slot — tooltips, dialog labels, notifications, the
+required marker and message. Replacing them is all a single-language application in a language
+other than English needs:
+
+```python
+from niceview import set_chrome_text
+
+set_chrome_text(add_tooltip='Neuen Eintrag anlegen', ok_label='Ok',
+                delete_selected_message='Den Eintrag *{key}* wirklich löschen?')
+```
+
+Placeholders are named (`{key}`, `{error}`), never positional, so a translation can reorder the
+sentence. Every slot also accepts a callable, resolved when the text is rendered rather than when
+it is configured — that is the hook for a multilingual application, where the language belongs to
+the client rather than to the process:
+
+```python
+set_chrome_text(add_tooltip=lambda: gettext('add_tooltip'))
+```
+
+Model texts are deliberately not here: a field's label comes from `FieldInfo` (or pydantic's
+`title`), so it already belongs to the application. See [DESIGN.md](DESIGN.md) for why niceview
+ships no gettext of its own.
 
 **`EditGridWrapper` options:**
 ```python

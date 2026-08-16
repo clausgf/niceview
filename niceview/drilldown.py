@@ -16,7 +16,9 @@ from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 from niceview.modelform import ModelForm
 from niceview.modellist import ModelList
-from niceview.style import ChromeStyle, chrome_button, chrome_buttons, chrome_row, chrome_title, get_chrome_style
+from niceview.style import (ChromeStyle, NotifyKind, Place, chrome_button, chrome_buttons,
+                            chrome_notify, chrome_row, chrome_title, get_chrome_style)
+from niceview.text import ChromeText, get_chrome_text, text_of
 from niceview.util import confirm_dialog, maybe_await
 
 log = logging.getLogger('niceview')
@@ -76,8 +78,14 @@ class _DrillDownWrapperOptionInputs(typing_extensions.TypedDict, total=False):
     """Label of the Back button, '' for icon-only (the default). None hides it — the detail
     view then has no way back other than one you render yourself."""
     chrome_style: ChromeStyle | None
-    """Look of the title row and its buttons. Replaces the application-wide default of
-    niceview.style.set_chrome_style() wholesale — derive it with get_chrome_style().replace()."""
+    """Look of the title row, its buttons and the list rows. Replaces the application-wide
+    default of niceview.style.set_chrome_style() wholesale — derive it with ChromeStyle.derived()."""
+    chrome_text: ChromeText | None
+    """Texts of the tooltips, dialogs and notifications. Replaces the application-wide default
+    of niceview.text.set_chrome_text() wholesale — derive it with ChromeText.derived()."""
+    place: Place
+    """Where this wrapper's buttons sit in the chrome cascade: 'toolbar' (default) for a wrapper
+    of its own, 'form' for one embedded in a form."""
     on_add: ActionHandler | None
     """Replaces the default Add action (create item_type() and open it). Sync or async — an
     async handler can ask for a name via util.input_dialog() before creating anything."""
@@ -146,6 +154,8 @@ class DrillDownWrapper:
     _delete_button: str | None
     _back_button: str | None
     _chrome_style: ChromeStyle | None
+    _chrome_text: ChromeText | None
+    _place: Place
     _list_kwargs: dict[str, Any]
     _state: dict[str, Any]
     _auto_update_registered: bool
@@ -178,6 +188,8 @@ class DrillDownWrapper:
         self._delete_button = kwargs.pop('delete_button', '')
         self._back_button = kwargs.pop('back_button', '')
         self._chrome_style = kwargs.pop('chrome_style', None)
+        self._chrome_text = kwargs.pop('chrome_text', None)
+        self._place = kwargs.pop('place', 'toolbar')
         self._list_kwargs = dict(kwargs)  # remainder forwarded to ModelList (include, exclude, ...) when render_list_item is unset
         allowed_list_keys = {'include', 'exclude', 'field_infos', 'profile'}
         if unknown := set(self._list_kwargs) - allowed_list_keys:
@@ -279,26 +291,38 @@ class DrillDownWrapper:
         elif self._on_back is not None:
             await maybe_await(self._on_back())
 
+    @property
+    def _style(self) -> ChromeStyle:
+        return self._chrome_style or get_chrome_style()
+
+    @property
+    def _text(self) -> ChromeText:
+        return self._chrome_text or get_chrome_text()
+
+    def _notify(self, template: Any, kind: NotifyKind, **params: Any) -> None:
+        """One of niceview's notifications: text from ChromeText, delivery from ChromeStyle."""
+        chrome_notify(text_of(template, **params), kind, self._style)
+
     def _build_title_row(self) -> None:
         # Built once (unlike _body) and updated in place by _update_title_row(): its structure
         # barely changes between list/detail -- just text and which buttons are visible -- so
         # keeping it persistent lets callers style it once after render() instead of every
         # element being wiped out on each list<->detail navigation.
-        style = self._chrome_style or get_chrome_style()
+        style, text, place = self._style, self._text, self._place
         with chrome_row(style) as self.title_row:
             # Back sits left of the title: it navigates, it is not one of the actions on the
             # item, which are grouped at the right edge like in the other wrappers.
             if self._back_button is not None:
-                self.back_button = chrome_button('back', self._back_button, 'arrow_back', 'Back', style, self._handle_back_click)
+                self.back_button = chrome_button('back', self._back_button, 'arrow_back', text_of(text.back_tooltip), style, self._handle_back_click, place)
             self.title = chrome_title('', style)
             if self._add_button is not None or self._delete_button is not None:
                 # count=1: Add belongs to the list view and Delete to the detail view, so however
                 # many are configured, only ever one of them is on screen — never a group.
                 with chrome_buttons(style, count=1):
                     if self._add_button is not None:
-                        self.add_button = chrome_button('add', self._add_button, 'add', 'Add a new item', style, self._handle_add)
+                        self.add_button = chrome_button('add', self._add_button, 'add', text_of(text.add_tooltip), style, self._handle_add, place)
                     if self._delete_button is not None:
-                        self.delete_button = chrome_button('delete', self._delete_button, 'delete', 'Delete this item', style, self._handle_delete)
+                        self.delete_button = chrome_button('delete', self._delete_button, 'delete', text_of(text.delete_item_tooltip), style, self._handle_delete, place)
 
     def _update_title_row(self) -> None:
         assert self.title is not None
@@ -328,7 +352,7 @@ class DrillDownWrapper:
         if self._render_list_item is not None:
             items = list(self._adapter.items())
             if not items:
-                ui.label('No items yet.').classes('italic')
+                ui.label(text_of(self._text.no_items)).classes('italic')
                 return
             render_list_item = self._render_list_item
 
@@ -358,7 +382,8 @@ class DrillDownWrapper:
         model_list.render()
 
     def _default_render_detail(self, adapter: CollectionAdapter, key: str, set_key: Callable[[str], None]) -> None:
-        form = ModelForm.from_adapter(self._item_type, adapter, key, autosave=True)
+        form = ModelForm.from_adapter(self._item_type, adapter, key, autosave=True,
+                                      chrome_style=self._chrome_style, chrome_text=self._chrome_text)
         form.render()
         form.render_nonfield_errors()
 
@@ -372,7 +397,7 @@ class DrillDownWrapper:
         try:
             self._adapter.read(key)
         except (KeyError, ValueError):
-            ui.label(f'Item {key!r} not found.').classes('text-negative')
+            ui.label(text_of(self._text.detail_not_found, key=key)).classes('text-negative')
             return
         renderer = self._render_detail or self._default_render_detail
         renderer(self._adapter, key, self._set_detail_key)
@@ -390,15 +415,18 @@ class DrillDownWrapper:
         key = self._state['key']
         if key is None:
             return
-        if not await confirm_dialog('Delete', 'Delete this item? This cannot be undone.', ok_label='Delete', ok_color='negative'):
+        text = self._text
+        if not await confirm_dialog(text_of(text.delete_item_title), text_of(text.delete_item_message),
+                                    ok_label=text_of(text.delete_label), ok_role='delete',
+                                    chrome_style=self._chrome_style, chrome_text=self._chrome_text):
             return
         try:
             self._adapter.delete(key)
         except Exception as e:
             log.error(f'Error deleting item {key!r}: {e}')
-            ui.notify(f'Error deleting item: {e}', color='negative')
+            self._notify(text.delete_failed, 'negative', error=e)
             return
-        ui.notify('Item deleted', color='positive')
+        self._notify(text.item_deleted, 'positive')
         self._back()
 
     # --- render --------------------------------------------------------------

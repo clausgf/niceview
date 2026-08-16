@@ -29,6 +29,7 @@ from nicegui.elements.mixins.validation_element import ValidationDict, Validatio
 from nicegui.events import Handler, ValueChangeEventArguments, handle_event
 
 from niceview.fieldinfo import FieldInfo, _merge_field_infos
+from niceview.text import get_chrome_text, text_of
 
 log = logging.getLogger('niceview')
 
@@ -36,11 +37,19 @@ log = logging.getLogger('niceview')
 MODEL_ONLY_WIDGETS: tuple[str, ...] = ('editgrid', 'modelselect')
 """Widget types that need a model type and a repository — ModelForm only, not render_field()."""
 
-REQUIRED_MARKER = ' *'
-"""Appended to the label of a required field. Per form: ModelForm(required_marker=...)."""
+class _FromChromeText:
+    """Sentinel for a text that is taken from niceview.text.ChromeText when the widget is
+    built. Not a constant with the English string in it: ChromeText is the single place where
+    niceview's texts live, and a default evaluated at import time could not follow a later
+    set_chrome_text()."""
 
-REQUIRED_MESSAGE = 'Required'
-"""Validation message for an empty required field. Per form: ModelForm(required_message=...)."""
+    def __repr__(self) -> str:
+        return 'FROM_CHROME_TEXT'
+
+
+FROM_CHROME_TEXT = _FromChromeText()
+"""Default of the `required_marker` / `required_message` arguments: use ChromeText. Pass an
+explicit string to override it here, or None (for the marker) to render none."""
 
 DescriptionTarget: typing.TypeAlias = typing.Literal['hint', 'tooltip'] | None
 """Where a model's `description` is rendered: below the widget, on hover, or nowhere."""
@@ -57,6 +66,23 @@ HINT_WIDGETS: frozenset[str] = frozenset({
     'datetime', 'date', 'time', 'timedelta', 'modelselect',
 })
 """Widget types with a Quasar hint slot below the field (all QInput/QSelect based)."""
+
+INPUT_BASED_WIDGETS: frozenset[str] = frozenset({
+    'ui.input', 'ui.number', 'ui.textarea', 'ui.select', 'ui.input_chips', 'ui.color_input',
+    'datetime', 'date', 'time', 'timedelta', 'modelselect',
+})
+"""Widget types built on a Quasar QInput/QSelect — the ones that take 'outlined', 'filled',
+'standout' and friends. FieldStyle.input_props styles them. Deliberately its own list rather
+than an alias of HINT_WIDGETS: that the two happen to hold the same types today says nothing
+about the two questions ("does it have a hint slot" and "which props does it accept")."""
+
+CONTROL_WIDGETS: frozenset[str] = frozenset({
+    'ui.checkbox', 'ui.switch', 'ui.radio', 'ui.toggle', 'checkbox_group',
+    'ui.slider', 'ui.rating',
+})
+"""Widget types that are not built on a QInput — a prop like 'outlined' says nothing to them.
+FieldStyle.control_props styles them. 'editgrid' is in neither list: it brings its own chrome
+rather than being a field with props."""
 
 CAPTION_WIDGETS: frozenset[str] = frozenset({
     'ui.radio', 'ui.toggle', 'checkbox_group', 'ui.slider', 'ui.rating',
@@ -131,7 +157,7 @@ def _pick_attrs(obj: Any, attrs: list[str], rename: dict[str, str] = {}) -> dict
     return {rename.get(k, k): v for k in attrs if (v := getattr(obj, k)) is not None}
 
 
-def _label(field_info: FieldInfo, required_marker: str | None = REQUIRED_MARKER) -> str:
+def _label(field_info: FieldInfo, required_marker: str | None) -> str:
     """The widget's label: the FieldInfo label plus the required marker. Empty label = no label."""
     label = field_info.label or ''
     if label and field_info.required and required_marker:
@@ -258,14 +284,15 @@ def is_empty(value: Any) -> bool:
     return False
 
 
-def required_error(field_info: FieldInfo, value: Any, message: str = REQUIRED_MESSAGE) -> str | None:
+def required_error(field_info: FieldInfo, value: Any,
+                   message: 'str | _FromChromeText' = FROM_CHROME_TEXT) -> str | None:
     """
     Validation layer 1a: reject an empty value in a required field. Works without a model, so
     a JSON-Schema `required` means the same thing as a Pydantic field without a default.
     Skipped for non-editable fields — a disabled empty field must not block a form forever.
     """
     if field_info.required and field_info.editable and is_empty(value):
-        return message
+        return text_of(get_chrome_text().required_message) if isinstance(message, _FromChromeText) else message
     return None
 
 
@@ -541,7 +568,7 @@ def apply_field_info(widget: Any, field_info: FieldInfo, description_as: Descrip
 
 
 def create_widget(field_info: FieldInfo, name: str, push_value: Callable[[Any], None],
-                  required_marker: str | None = REQUIRED_MARKER,
+                  required_marker: 'str | None | _FromChromeText' = FROM_CHROME_TEXT,
                   description_as: DescriptionTarget = DESCRIPTION_AS) -> Any:
     """
     Create the widget for field_info.widget_type in the current NiceGUI context and apply
@@ -554,6 +581,8 @@ def create_widget(field_info: FieldInfo, name: str, push_value: Callable[[Any], 
     is rendered as a select once its options have been resolved from the repository).
     """
     widget_type = field_info.widget_type
+    if isinstance(required_marker, _FromChromeText):
+        required_marker = text_of(get_chrome_text().required_marker)
     label = _label(field_info, required_marker)
     widget: Any = None
 
@@ -706,7 +735,7 @@ def _create_checkbox_group_widget(field_info: FieldInfo, name: str, push_value: 
 # --- public model-free entry point -----------------------------------------
 
 def render_field(field_info: FieldInfo, value: Any = None, *, local_tz: str | None = None,
-                 required_marker: str | None = REQUIRED_MARKER,
+                 required_marker: 'str | None | _FromChromeText' = FROM_CHROME_TEXT,
                  description_as: DescriptionTarget = DESCRIPTION_AS) -> Any:
     """
     Render a single widget from a FieldInfo in the current NiceGUI context, initialised to
@@ -730,7 +759,8 @@ def render_field(field_info: FieldInfo, value: Any = None, *, local_tz: str | No
     `field_info.validation` runs as NiceGUI's own validation would. What a ModelForm adds on
     top — validating the whole item against a Pydantic model — is the only difference.
 
-    `required` also appends `required_marker` to the label; pass `required_marker=None` for none.
+    `required` also appends `required_marker` to the label — ChromeText's by default; pass
+    `required_marker=None` for none.
 
     `field_info.description` is help text without a fixed place: `description_as` decides
     whether it is rendered as the hint, as the tooltip, or not at all. It is the slot for text

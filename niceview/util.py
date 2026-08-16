@@ -3,6 +3,10 @@ from typing import Any, Awaitable, Callable
 from nicegui import helpers, ui
 from nicegui.elements.mixins.validation_element import ValidationDict, ValidationFunction
 
+from niceview.style import (ChromeStyle, chrome_button, chrome_dialog, chrome_dialog_buttons,
+                            chrome_dialog_title, get_chrome_style)
+from niceview.text import ChromeText, get_chrome_text, text_of
+
 
 async def maybe_await(result: Any) -> Any:
     """
@@ -21,25 +25,33 @@ async def confirm_dialog(
     title: str,
     message: str,
     *,
-    ok_label: str = 'OK',
-    cancel_label: str = 'Cancel',
-    ok_color: str = 'primary',
+    ok_label: str | None = None,
+    cancel_label: str | None = None,
+    ok_role: str = 'ok',
+    chrome_style: ChromeStyle | None = None,
+    chrome_text: ChromeText | None = None,
 ) -> bool:
     """Show a confirmation dialog. Returns True if confirmed, False if cancelled.
 
+    `ok_role` picks the role layer of the chrome cascade for the confirm button rather than a
+    color: 'delete' makes it negative, and an application that restyles its delete buttons
+    restyles this one with them.
+
     Usage:
         if not await confirm_dialog('Delete Device', f'Delete {name!r}? Irreversible.',
-                                    ok_label='Delete', ok_color='negative'):
+                                    ok_label='Delete', ok_role='delete'):
             return
     """
-    dialog = ui.dialog().props(':maximized="$q.screen.lt.md" transition-show="slide-up" transition-hide="slide-down"').style('width: 400px')
-    with dialog:
-        with ui.card().classes('w-full'):
-            ui.label(title).classes('text-h6')
-            ui.markdown(message)
-            with ui.row().classes('w-full place-content-end'):
-                ui.button(cancel_label, on_click=lambda: dialog.submit(False))
-                ui.button(ok_label, on_click=lambda: dialog.submit(True)).props(f'color={ok_color}')
+    style = chrome_style or get_chrome_style()
+    text = chrome_text or get_chrome_text()
+    with chrome_dialog(style) as dialog:
+        chrome_dialog_title(title, style)
+        ui.markdown(message)
+        with chrome_dialog_buttons(style):
+            chrome_button('cancel', cancel_label or text_of(text.cancel_label), None, '', style,
+                          lambda: dialog.submit(False), place='dialog')
+            chrome_button(ok_role, ok_label or text_of(text.ok_label), None, '', style,
+                          lambda: dialog.submit(True), place='dialog')
     return await dialog
 
 
@@ -50,7 +62,9 @@ async def input_dialog(
     placeholder: str = '',
     value: str = '',
     validator: Callable[[str], bool | Awaitable[bool]] | None = None,
-    error_message: str = 'Invalid input',
+    error_message: str | None = None,
+    chrome_style: ChromeStyle | None = None,
+    chrome_text: ChromeText | None = None,
 ) -> str | None:
     """Show an input dialog. Returns the entered string, or None if cancelled.
 
@@ -65,36 +79,40 @@ async def input_dialog(
             return  # cancelled
         create_project(name)
     """
-    dialog = ui.dialog().props(':maximized="$q.screen.lt.md" transition-show="slide-up" transition-hide="slide-down"').style('width: 400px')
-    with dialog:
-        with ui.card().classes('w-full'):
-            ui.label(title).classes('text-h6')
-            # A sync validator goes into Quasar's validation dict unchanged. An async one cannot:
-            # NiceGUI's ValidationDict is sync-only, so it is wrapped in a ValidationFunction,
-            # which does accept awaitables.
-            validation: ValidationFunction | ValidationDict | None
-            if validator is None:
-                validation = None
-            elif helpers.is_coroutine_function(validator):
-                async def validation(value: str) -> str | None:  # type: ignore[no-redef]
-                    return None if await validator(value) else error_message  # type: ignore[misc, union-attr]
-            else:
-                validation = {error_message: validator}  # type: ignore[dict-item]
-            inp = ui.input(label=label, placeholder=placeholder, value=value, validation=validation)
-            with ui.row().classes('w-full place-content-end'):
-                ui.button('Cancel', on_click=lambda: dialog.submit(None))
-                async def on_ok() -> None:
-                    if validator is not None and not await maybe_await(validator(inp.value)):
-                        # return_result=False: an async validation function has no synchronous
-                        # answer to give, and we only call this for the error message anyway.
-                        inp.validate(return_result=False)
-                        return
-                    dialog.submit(inp.value)
-                ui.button('OK', on_click=on_ok).props('color=primary')
+    style = chrome_style or get_chrome_style()
+    text = chrome_text or get_chrome_text()
+    message = error_message or text_of(text.invalid_input)
+    with chrome_dialog(style) as dialog:
+        chrome_dialog_title(title, style)
+        # A sync validator goes into Quasar's validation dict unchanged. An async one cannot:
+        # NiceGUI's ValidationDict is sync-only, so it is wrapped in a ValidationFunction,
+        # which does accept awaitables.
+        validation: ValidationFunction | ValidationDict | None
+        if validator is None:
+            validation = None
+        elif helpers.is_coroutine_function(validator):
+            async def validation(value: str) -> str | None:  # type: ignore[no-redef]
+                return None if await validator(value) else message  # type: ignore[misc, union-attr]
+        else:
+            validation = {message: validator}  # type: ignore[dict-item]
+        inp = ui.input(label=label, placeholder=placeholder, value=value, validation=validation)
+        with chrome_dialog_buttons(style):
+            chrome_button('cancel', text_of(text.cancel_label), None, '', style,
+                          lambda: dialog.submit(None), place='dialog')
+
+            async def on_ok() -> None:
+                if validator is not None and not await maybe_await(validator(inp.value)):
+                    # return_result=False: an async validation function has no synchronous
+                    # answer to give, and we only call this for the error message anyway.
+                    inp.validate(return_result=False)
+                    return
+                dialog.submit(inp.value)
+            chrome_button('ok', text_of(text.ok_label), None, '', style, on_ok, place='dialog')
     return await dialog
 
 
-async def submit_dialog(title: str, message: str, buttons: 'tuple[str, ...] | list[str]' = ('Cancel', 'OK')) -> str | None:
+async def submit_dialog(title: str, message: str, buttons: 'tuple[str, ...] | list[str]' = ('Cancel', 'OK'),
+                        *, chrome_style: ChromeStyle | None = None) -> str | None:
     """Show a dialog with a title, message and buttons; returns the text of the
        pressed button, or None if the dialog was dismissed (e.g. Escape key).
        Buttons can be prefixed with a character for formatting and to set the color:
@@ -113,24 +131,28 @@ async def submit_dialog(title: str, message: str, buttons: 'tuple[str, ...] | li
        # result is the button text "Cancel" or "OK" (without prefixes), or None
        """
 
-    dialog = ui.dialog().props(':maximized="$q.screen.lt.md" transition-show="slide-up" transition-hide="slide-down"').style('width: 400px')
-    with dialog:
-        with ui.card().classes('w-full'):
-            ui.label(title).classes('text-h6')
-            ui.markdown(message)
-            with ui.row().classes('w-full place-content-end'):
-                for button in buttons:
-                    if button.startswith('|'):
-                        ui.space()
-                        button = button[1:]
-                    s2prop = { '1': 'color=primary', '2': 'color=secondary', 
-                            'a': 'color=accent', 'd': 'color=dark', 
-                            '+': 'color=positive', '-': 'color=negative',
-                            'i': 'color=info', 'w': 'color=warning',}
-                    if button[0] in s2prop:
-                        prop = s2prop[button[0]]
-                        button = button[1:]
-                    else:
-                        prop = None
-                    ui.button(button).on_click(lambda msg: dialog.submit(msg.sender.text)).props(prop)
+    style = chrome_style or get_chrome_style()
+    with chrome_dialog(style) as dialog:
+        chrome_dialog_title(title, style)
+        ui.markdown(message)
+        with chrome_dialog_buttons(style):
+            for button in buttons:
+                if button.startswith('|'):
+                    ui.space()
+                    button = button[1:]
+                s2prop = { '1': 'color=primary', '2': 'color=secondary',
+                        'a': 'color=accent', 'd': 'color=dark',
+                        '+': 'color=positive', '-': 'color=negative',
+                        'i': 'color=info', 'w': 'color=warning',}
+                if button[0] in s2prop:
+                    prop = s2prop[button[0]]
+                    button = button[1:]
+                else:
+                    prop = None
+                # The chrome cascade styles the button; the prefix, being the most specific
+                # source, has the last word on its color.
+                element = chrome_button('ok', button, None, '', style,
+                                        lambda msg: dialog.submit(msg.sender.text), place='dialog')
+                if prop:
+                    element.props(prop)
     return await dialog

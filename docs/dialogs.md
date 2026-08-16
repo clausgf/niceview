@@ -23,7 +23,7 @@ async def on_delete():
         'Delete Device',
         f'Delete **{name}**? This is irreversible.',
         ok_label='Delete',
-        ok_color='negative',
+        ok_role='delete',
     ):
         return
     device_adapter.delete(key)
@@ -33,9 +33,11 @@ async def on_delete():
 |---|---|---|---|
 | `title` | `str` | — | Dialog title |
 | `message` | `str` | — | Body text (Markdown) |
-| `ok_label` | `str` | `'OK'` | Confirm button label |
-| `cancel_label` | `str` | `'Cancel'` | Cancel button label |
-| `ok_color` | `str` | `'primary'` | Quasar color for the confirm button |
+| `ok_label` | `str \| None` | `None` | Confirm button label; `None` takes `ChromeText.ok_label` |
+| `cancel_label` | `str \| None` | `None` | Cancel button label; `None` takes `ChromeText.cancel_label` |
+| `ok_role` | `str` | `'ok'` | Role of the confirm button in the chrome cascade. `'delete'` makes it negative — and follows the application's delete styling |
+| `chrome_style` | `ChromeStyle \| None` | `None` | Look of this dialog; `None` takes the application-wide style |
+| `chrome_text` | `ChromeText \| None` | `None` | Texts of this dialog |
 
 **`input_dialog`** — ask for a string value, returns the entered string or `None` if cancelled:
 

@@ -70,7 +70,7 @@ def add_row() -> None:
 
 async def delete_row(item: Webhook) -> None:
     if not await confirm_dialog('Delete Webhook', f'Delete **{item.name or "this webhook"}**?',
-                                ok_label='Delete', ok_color='negative'):
+                                ok_label='Delete', ok_role='delete'):
         return
     adapter.delete(adapter.key_from_item(item))
     render_cards.refresh()

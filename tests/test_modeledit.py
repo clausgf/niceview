@@ -305,7 +305,7 @@ class TestEditFormWrapperFactoryMethods:
             form_a.save()
             form_b._validated_item.name = 'B'
             form_b.save()  # stale lock → ConflictError caught, notify shown, no exception
-        conflict_msgs = [args for args, kw in notify_calls if kw.get('color') == 'negative']
+        conflict_msgs = [args for args, kw in notify_calls if kw.get('type') == 'negative']
         assert conflict_msgs, f"Expected conflict notification, got: {notify_calls}"
 
     def test_from_adapter_without_key_uses_json_adapter(self, tmp_path):

@@ -121,6 +121,7 @@ Documentation
 - **[Field Types & Customization](docs/field-types.md)** — type→widget mapping, `niceview.Field()` options, `Meta` profiles, validation
 - **[Field Metadata Comparison](docs/field-metadata-comparison.md)** — how `niceview.Field()`, NiceGUI widget options, `pydantic.Field()` and JSON Schema correspond, and where they deviate
 - **[Dialogs](docs/dialogs.md)** — `confirm_dialog`, `input_dialog`, `submit_dialog`
+- **[Concepts](docs/CONCEPT.md)** — how the chrome, field and text cascades fit together
 - **[DESIGN.md](docs/DESIGN.md)** — design decisions and accepted technical debt
 - **[TODO.md](TODO.md)** — open questions and planned work
 - **[Changelog](docs/CHANGELOG.md)** · License: **[MIT](LICENSE)**

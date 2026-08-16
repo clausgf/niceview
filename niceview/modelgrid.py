@@ -11,8 +11,16 @@ from nicegui.events import Handler, ClickEventArguments, handle_event
 from niceview.dataadapter import CollectionAdapter, ConflictError, ListAdapter, JsonListAdapter, ReactiveAdapter
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
+from niceview.style import chrome_notify, get_chrome_style
+from niceview.text import get_chrome_text, text_of
 
 log = logging.getLogger('niceview')
+
+
+def _notify(template: Any, **params: Any) -> None:
+    """A grid's own message. ModelGrid has no chrome of its own — no title row, no buttons —
+    so it has no chrome_style= either: its messages follow the application-wide style."""
+    chrome_notify(text_of(template, **params), 'negative', get_chrome_style())
 
 
 def _collect_aggrid_cols(fields: Fields) -> list[dict[str, Any]]:
@@ -326,7 +334,7 @@ class ModelGridInlineEdit(ModelGrid):
         try:
             item = self._data.read(row_key)
         except Exception:
-            ui.notify(f"Row {row_key} not found — try again", color='negative')
+            _notify(get_chrome_text().row_not_found, key=row_key)
             return
 
         if not isinstance(item, self._fields._item_type):
@@ -345,16 +353,16 @@ class ModelGridInlineEdit(ModelGrid):
             try:
                 self._data.update(item)
             except ConflictError:
-                ui.notify('This item was changed by another user. The list has been refreshed — please edit again.', color='negative')
+                _notify(get_chrome_text().conflict)
                 self.update_rows()
                 return
             except Exception as e:
                 log.error(f'Error persisting cell edit for row {row_key}: {e}')
-                ui.notify(f'Error saving change: {e}', color='negative')
+                _notify(get_chrome_text().save_error, error=e)
                 self.update_rows()
                 return
         else:
-            ui.notify(f"Invalid value {new_value!r}: {errors}", color='negative')
+            _notify(get_chrome_text().invalid_value, value=new_value, errors=errors)
             self.update_rows()
 
         tife = TableItemFieldEventArguments(

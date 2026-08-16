@@ -11,6 +11,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 (nothing yet)
 
 
+[0.19.0] - 2026-08-16
+---------------------
+
+Chrome styling gets a second axis, field styling and texts get an application-wide default, and
+everything niceview says out loud becomes replaceable. See [CONCEPT.md](CONCEPT.md) for how the
+three cascades fit together.
+
+### Added
+
+- **The `place` axis.** Every chrome button now sits in one of three places — `'toolbar'` (a
+  wrapper's own action row), `'form'` (the same row for a wrapper embedded in a form), `'dialog'`
+  (a dialog footer) — styled with `toolbar_button_props`, `form_button_props`,
+  `dialog_button_props`. Place and role are orthogonal (a Delete exists in both a toolbar and a
+  dialog), so they are two layers rather than combined keys:
+
+  ```
+  {place}_button_props → shape → {role}_button_props
+  ```
+
+  Wrappers take `place=` and pass it on; `ModelForm` renders an embedded editgrid with
+  `place='form'`.
+- **Per-place icon shape**: `toolbar_icon_button_props`, `form_icon_button_props`,
+  `dialog_icon_button_props`. `None` inherits `icon_button_props`, `''` suppresses the shape,
+  a value replaces it — replacing rather than adding, because Quasar's shapes are separate
+  boolean props and `round rounded` cancels nothing. "Round in a toolbar, square in a dialog"
+  is now one line.
+- **`ok` and `cancel` roles**, both without a default.
+- **Dialog chrome**: `dialog_props`, `dialog_style`, `dialog_card_classes`,
+  `dialog_title_classes`, `dialog_button_row_classes`, plus `chrome_style=` / `chrome_text=` on
+  `confirm_dialog`, `input_dialog` and `submit_dialog`. The four hard-coded copies of
+  `':maximized=… width: 400px'` are gone.
+- **Notification chrome**: `notify_position`, `notify_timeout`, `notify_close_button`, and a
+  `notify` hook `(message, kind) -> None` for an application with its own messaging.
+- **`ChromeText`** (`niceview.text`) with `get_chrome_text()` / `set_chrome_text()` and a
+  `chrome_text=` option on the widgets — every tooltip, dialog label, notification and field
+  marker niceview shows, in one replaceable table. Placeholders are named (`{key}`, `{error}`)
+  and every slot also accepts a callable, resolved at render time, so a multilingual application
+  can resolve per client (a NiceGUI locale is per client, gettext's is per process).
+
+  ```python
+  set_chrome_text(add_tooltip='Neuen Eintrag anlegen', ok_label='Ok')
+  ```
+- **`FieldStyle`** with `get_field_style()` / `set_field_style()`: an application-wide default
+  for form fields, by widget category — `input_props` for the QInput/QSelect based widgets,
+  `control_props` for checkbox, switch, radio, toggle, checkbox_group, slider, rating, plus
+  `default_classes`. The cascade below it is unchanged (`ModelForm(base_props=…)`, then the
+  field's own props).
+- **`widgets.INPUT_BASED_WIDGETS` / `widgets.CONTROL_WIDGETS`** name those two categories.
+- **`ChromeStyle.derived()` / `FieldStyle.derived()` / `ChromeText.derived()`** — the
+  application-wide value with single attributes changed, which is what a per-widget override
+  almost always wants.
+- **`card_title_classes`**: `'# Title'` (with card) and `'## Title'` (without) can now be styled
+  apart. Both default to `'text-subtitle2'`, so nothing changes until it is set.
+- **`chrome_style=` on `ModelForm`**, which styles its section titles and reaches the editgrid
+  wrappers it embeds. `EditFormWrapper` passes its own style and texts down to its form.
+- `examples/17_styling.py` — styling presets (Quasar / compact / touch) and a German text set,
+  switchable at runtime. Presets are example code on purpose: the defaults stay empty.
+
+### Changed
+
+- **BREAKING: `ChromeStyle.button_props` is gone.** "Every button of this application is dense"
+  is a statement about a type, and NiceGUI owns it. Use `ui.button.default_props('dense flat')`
+  for all buttons, or `toolbar_button_props` (and its siblings) for niceview's chrome.
+- **BREAKING: `confirm_dialog(ok_color=…)` → `ok_role=…`.** The confirm button is picked from the
+  role layer instead of being handed a color, so `ok_role='delete'` follows whatever the
+  application's delete buttons look like. `ok_label` / `cancel_label` now default to `None`,
+  meaning "take it from `ChromeText`". The explicit `color=primary` on the confirm button is
+  gone — a `ui.button` is primary anyway.
+- **BREAKING: `widgets.REQUIRED_MARKER` / `widgets.REQUIRED_MESSAGE` are gone**, replaced by
+  `ChromeText.required_marker` / `.required_message`. `render_field()` and `create_widget()`
+  default to `FROM_CHROME_TEXT`, resolved at render time; passing an explicit string or `None`
+  works as before.
+- Notifications use Quasar's `type=` instead of `color=`, which brings the matching icon along.
+  A `notify` hook or `notify_*` options change how they are delivered.
+- Two texts that were duplicated in the code — the optimistic-lock message in `ModelGrid` and
+  `EditGridWrapper`, `'Required'` in `widgets` and `ModelForm` — are now one slot each.
+- The dialog confirm button reads `'OK'` where it used to read `'Ok'` for an edit.
+
+### Notes
+
+- `ModelGrid` takes no `chrome_style=`: it renders no chrome of its own, so its messages follow
+  the application-wide style.
+- A `list` place for buttons inside `ModelList` rows was considered and dropped — the row's job
+  is to navigate, and the detail view already carries the item's actions. A `grid` place is not
+  possible the same way at all: AG Grid cells live client-side, where Quasar props do not reach.
+  Both are written up under "Possible extensions" in [CONCEPT.md](CONCEPT.md).
+
+
 [0.18.1] - 2026-08-14
 ---------------------
 

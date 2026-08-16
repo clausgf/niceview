@@ -11,7 +11,10 @@ from nicegui.events import Handler, ClickEventArguments, handle_event
 from niceview.dataadapter import CollectionAdapter, ConflictError, StorageError, ItemAdapter, ReloadableAdapter
 from niceview.modelform import ModelForm, FieldChangeEventArguments, _ModelFormOptionInputs
 from niceview.modelgrid import ModelGridInlineEdit, ModelGrid, T, TableItemEventArguments, _InlineEditableModelGridOptionInputs
-from niceview.style import ChromeStyle, chrome_button, chrome_buttons, chrome_row, chrome_title, get_chrome_style
+from niceview.style import (ChromeStyle, NotifyKind, Place, chrome_button, chrome_buttons,
+                            chrome_dialog, chrome_dialog_buttons, chrome_notify, chrome_row,
+                            chrome_title, get_chrome_style)
+from niceview.text import ChromeText, get_chrome_text, text_of
 from niceview.util import confirm_dialog
 
 log = logging.getLogger('niceview')
@@ -26,7 +29,13 @@ class _EditGridWrapperInputs(typing_extensions.TypedDict, total=False):
     refresh_button: str | None
     chrome_style: ChromeStyle | None
     """Look of the title row and its buttons. Replaces the application-wide default of
-    niceview.style.set_chrome_style() wholesale — derive it with get_chrome_style().replace()."""
+    niceview.style.set_chrome_style() wholesale — derive it with ChromeStyle.derived()."""
+    chrome_text: ChromeText | None
+    """Texts of the tooltips, dialogs and notifications. Replaces the application-wide default
+    of niceview.text.set_chrome_text() wholesale — derive it with ChromeText.derived()."""
+    place: Place
+    """Where this wrapper's buttons sit in the chrome cascade: 'toolbar' (default) for a wrapper
+    of its own, 'form' for one embedded in a form."""
 
 
 class _EditGridWrapperFactoryInputs(_EditGridWrapperInputs, _InlineEditableModelGridOptionInputs, total=False):
@@ -66,6 +75,8 @@ class EditGridWrapper():
     _edit_button: str | None
     _refresh_button: str | None
     _chrome_style: ChromeStyle | None
+    _chrome_text: ChromeText | None
+    _place: Place
 
     # Exposed NiceGUI elements (populated by render())
     title: ui.label | None
@@ -94,6 +105,8 @@ class EditGridWrapper():
         self._edit_button = kwargs.pop('edit_button', default_edit)
         self._refresh_button = kwargs.pop('refresh_button', '')
         self._chrome_style = kwargs.pop('chrome_style', None)
+        self._chrome_text = kwargs.pop('chrome_text', None)
+        self._place = kwargs.pop('place', 'toolbar')
 
         self._rendered = False
         self.title = None
@@ -109,6 +122,18 @@ class EditGridWrapper():
 
         if kwargs:
             raise TypeError(f"Unexpected keyword arguments for EditGridWrapper: {', '.join(kwargs.keys())}")
+
+    @property
+    def _style(self) -> ChromeStyle:
+        return self._chrome_style or get_chrome_style()
+
+    @property
+    def _text(self) -> ChromeText:
+        return self._chrome_text or get_chrome_text()
+
+    def _notify(self, template: Any, kind: 'NotifyKind', **params: Any) -> None:
+        """One of niceview's notifications: text from ChromeText, delivery from ChromeStyle."""
+        chrome_notify(text_of(template, **params), kind, self._style)
 
     # --- factory methods ---------------------------------------------------
 
@@ -201,7 +226,7 @@ class EditGridWrapper():
         self.edit_button = None
         self.refresh_button = None
 
-        style = self._chrome_style or get_chrome_style()
+        style, text, place = self._style, self._text, self._place
         button_count = sum(b is not None for b in [self._refresh_button, self._delete_button, self._add_button, self._edit_button])
         has_chrome = bool(self._title) or button_count > 0
         if has_chrome:
@@ -213,13 +238,13 @@ class EditGridWrapper():
                         ui.space()
                     with chrome_buttons(style, button_count):
                         if self._refresh_button is not None:
-                            self.refresh_button = chrome_button('refresh', self._refresh_button, 'refresh', 'Refresh', style, self._on_refresh_clicked)
+                            self.refresh_button = chrome_button('refresh', self._refresh_button, 'refresh', text_of(text.refresh_tooltip), style, self._on_refresh_clicked, place)
                         if self._delete_button is not None:
-                            self.delete_button = chrome_button('delete', self._delete_button, 'delete', 'Delete selected item', style, self._on_delete_clicked)
+                            self.delete_button = chrome_button('delete', self._delete_button, 'delete', text_of(text.delete_tooltip), style, self._on_delete_clicked, place)
                         if self._add_button is not None:
-                            self.add_button = chrome_button('add', self._add_button, 'add', 'Add a new item', style, self._on_create_clicked)
+                            self.add_button = chrome_button('add', self._add_button, 'add', text_of(text.add_tooltip), style, self._on_create_clicked, place)
                         if self._edit_button is not None:
-                            self.edit_button = chrome_button('edit', self._edit_button, 'edit', 'Edit item', style, self._on_update_clicked)
+                            self.edit_button = chrome_button('edit', self._edit_button, 'edit', text_of(text.edit_tooltip), style, self._on_update_clicked, place)
 
         if self._description:
             self.description = ui.markdown(self._description)
@@ -267,14 +292,14 @@ class EditGridWrapper():
         if success:
             try:
                 item = self._apply_create(item)
-                ui.notify('Item created', color='positive')
+                self._notify(self._text.item_created, 'positive')
                 self.grid.update_rows()
                 self._notify_change_handlers(self.grid.adapter.key_from_item(item), item)
             except Exception as e:
                 log.error(f'Error creating item: {e}')
-                ui.notify(f'Error creating item: {self._error_msg_from_exception(e)}', color='negative')
+                self._notify(self._text.create_error, 'negative', error=self._error_msg_from_exception(e))
         else:
-            ui.notify('Item creation cancelled', color='negative')
+            self._notify(self._text.create_cancelled, 'negative')
 
     async def _on_create_clicked(self, event: ClickEventArguments) -> None:
         await self.create_item()
@@ -283,36 +308,36 @@ class EditGridWrapper():
         """Open the edit dialog for the selected row and, on confirmation, persist changes."""
         row_key = await self._get_selected_row_key()
         if not row_key:
-            ui.notify('Please select a row first!', color='negative')
+            self._notify(self._text.select_row_first, 'negative')
             return
 
         item = self.grid.adapter.read(row_key)
         if not item:
-            ui.notify(f'Item with key {row_key} not found', color='negative')
+            self._notify(self._text.item_not_found, 'negative', key=row_key)
             return
 
         item = item.model_copy(deep=True)
         success = await self.default_edit_create_handler(item, False)
         if not success:
-            ui.notify('Item update cancelled', color='negative')
+            self._notify(self._text.update_cancelled, 'negative')
             return
 
         try:
             item = self._apply_update(item, row_key)
-            ui.notify('Item updated', color='positive')
+            self._notify(self._text.item_updated, 'positive')
             self.grid.update_rows()
             self._notify_change_handlers(self.grid.adapter.key_from_item(item), item)
         except ConflictError as e:
             log.warning(f'Optimistic lock conflict updating item {row_key}: {e}')
-            ui.notify('This item was changed by another user. The list has been refreshed — please edit again.', color='negative')
+            self._notify(self._text.conflict, 'negative')
             self.grid.update_rows()
         except StorageError as e:
             log.error(f'Storage error updating item {row_key}: {e}')
-            ui.notify(str(e), color='negative')
+            self._notify(str(e), 'negative')  # the adapter's own message, not one of ours
             self.grid.update_rows()
         except Exception as e:
             log.error(f'Error updating item: {e}')
-            ui.notify(f'Error updating item: {self._error_msg_from_exception(e)}', color='negative')
+            self._notify(self._text.update_error, 'negative', error=self._error_msg_from_exception(e))
             self.grid.update_rows()  # refresh to revert the UI to the current adapter state
 
     async def _on_update_clicked(self, event: ClickEventArguments) -> None:
@@ -322,23 +347,26 @@ class EditGridWrapper():
         """Ask for confirmation and delete the selected row."""
         row_key = await self._get_selected_row_key()
         if not row_key:
-            ui.notify('Please select a row for deletion!', color='negative')
+            self._notify(self._text.select_row_to_delete, 'negative')
             return
 
-        confirm = await confirm_dialog('Confirm Deletion', f'Are you sure you want to delete the selected item *{row_key}*?',
-                                       ok_label='Delete', ok_color='negative')
+        text = self._text
+        confirm = await confirm_dialog(text_of(text.delete_selected_title),
+                                       text_of(text.delete_selected_message, key=row_key),
+                                       ok_label=text_of(text.delete_label), ok_role='delete',
+                                       chrome_style=self._chrome_style, chrome_text=self._chrome_text)
         if not confirm:
-            ui.notify('Item deletion cancelled', color='negative')
+            self._notify(text.delete_cancelled, 'negative')
             return
 
         try:
             self._apply_delete(row_key)
-            ui.notify('Item deleted', color='positive')
+            self._notify(text.item_deleted, 'positive')
             self.grid.update_rows()
             self._notify_change_handlers(row_key, None)
         except Exception as e:
             log.error(f'Error deleting item {row_key}: {e}')
-            ui.notify(f'Error deleting item {row_key}: {self._error_msg_from_exception(e)}', color='negative')
+            self._notify(text.delete_error, 'negative', key=row_key, error=self._error_msg_from_exception(e))
             self.grid.update_rows()  # refresh to revert the UI to the current adapter state
 
     async def _on_delete_clicked(self, event: ClickEventArguments) -> None:
@@ -353,13 +381,14 @@ class EditGridWrapper():
         closes — this guards against the edge case where a blur event arrives after the click
         over WebSocket (browsers fire blur before click, but message ordering is not guaranteed).
         """
-        form = ModelForm.from_item(item)
+        style, text = self._style, self._text
+        form = ModelForm.from_item(item, chrome_style=self._chrome_style, chrome_text=self._chrome_text)
         if self._model_repositories:
             form.with_repositories(self._model_repositories)
 
         def confirm():
             if form.has_validation_errors:
-                ui.notify('Cannot save form: validation errors present', color='negative')
+                self._notify(text.validation_errors, 'negative')
                 return
 
             # Flush any pending widget values into the validated item.
@@ -375,15 +404,16 @@ class EditGridWrapper():
                         setattr(form._validated_item, field_name, cur)
             dialog.submit('confirm')
 
-        with ui.dialog().props(':maximized="$q.screen.lt.md" transition-show="slide-up" transition-hide="slide-down"').style('width: 400px') as dialog:
-            with ui.card().classes('w-full'):
-                form.render()
-                with ui.card_section().classes('w-full'):
-                    # Same button row as niceview.util's dialogs: cancel first, confirm last
-                    # and in the primary color, aligned to the right edge.
-                    with ui.row().classes('w-full place-content-end'):
-                        ui.button('Cancel', on_click=lambda: dialog.submit('cancel'))
-                        ui.button('Create' if do_create else 'Ok', on_click=confirm).props('color=primary')
+        with chrome_dialog(style) as dialog:
+            form.render()
+            with ui.card_section().classes('w-full'):
+                # Same button row as niceview.util's dialogs: cancel first, confirm last,
+                # aligned to the right edge.
+                with chrome_dialog_buttons(style):
+                    chrome_button('cancel', text_of(text.cancel_label), None, '', style,
+                                  lambda: dialog.submit('cancel'), place='dialog')
+                    chrome_button('ok', text_of(text.create_label if do_create else text.ok_label),
+                                  None, '', style, confirm, place='dialog')
 
         success = ('confirm' == await dialog)
         dialog.clear()
@@ -397,11 +427,20 @@ class _EditFormWrapperInputs(typing_extensions.TypedDict, total=False):
     refresh_button: str | None
     chrome_style: ChromeStyle | None
     """Look of the title row and its buttons. Replaces the application-wide default of
-    niceview.style.set_chrome_style() wholesale — derive it with get_chrome_style().replace()."""
+    niceview.style.set_chrome_style() wholesale — derive it with ChromeStyle.derived().
+    Passed on to the wrapped ModelForm, whose section titles it styles too."""
+    chrome_text: ChromeText | None
+    """Texts of the tooltips and notifications. Replaces the application-wide default of
+    niceview.text.set_chrome_text() wholesale — derive it with ChromeText.derived()."""
+    place: Place
+    """Where this wrapper's buttons sit in the chrome cascade: 'toolbar' (default) for a wrapper
+    of its own, 'form' for one embedded in a form."""
 
 
-class _EditFormWrapperFactoryInputs(_EditFormWrapperInputs, _ModelFormOptionInputs, total=False):
-    """Options accepted by the EditFormWrapper factory methods: wrapper chrome plus all ModelForm options."""
+class _EditFormWrapperFactoryInputs(_EditFormWrapperInputs, _ModelFormOptionInputs, total=False):  # type: ignore[misc]
+    """Options accepted by the EditFormWrapper factory methods: wrapper chrome plus all ModelForm
+    options. Both halves declare chrome_style and chrome_text, with the same type and the same
+    meaning — the factory hands them to both the wrapper and the form it wraps."""
     repositories: dict[type[BaseModel], CollectionAdapter]
 
 
@@ -413,6 +452,11 @@ def _split_form_kwargs(kwargs: Mapping[str, Any]) -> 'tuple[dict[str, Any], dict
     form_kwargs = dict(kwargs)
     wrapper_kwargs = {k: form_kwargs.pop(k) for k in list(form_kwargs) if k in _FORM_WRAPPER_INPUT_KEYS}
     repositories = form_kwargs.pop('repositories', None)
+    # Style and texts belong to both: the wrapper draws the title row, the form the section
+    # titles and the field markers below it. A style set on the wrapper styles its inside too.
+    for shared in ('chrome_style', 'chrome_text'):
+        if shared in wrapper_kwargs:
+            form_kwargs[shared] = wrapper_kwargs[shared]
     return wrapper_kwargs, repositories, form_kwargs
 
 
@@ -438,6 +482,8 @@ class EditFormWrapper():
     _save_button: str | None
     _refresh_button: str | None
     _chrome_style: ChromeStyle | None
+    _chrome_text: ChromeText | None
+    _place: Place
 
     # Exposed NiceGUI elements (populated by render())
     title: ui.label | None
@@ -460,6 +506,8 @@ class EditFormWrapper():
         self._save_button = kwargs.pop('save_button', default_save)
         self._refresh_button = kwargs.pop('refresh_button', default_refresh)
         self._chrome_style = kwargs.pop('chrome_style', None)
+        self._chrome_text = kwargs.pop('chrome_text', None)
+        self._place = kwargs.pop('place', 'toolbar')
 
         self._rendered = False
         self.title = None
@@ -471,6 +519,14 @@ class EditFormWrapper():
 
         if kwargs:
             raise TypeError(f"Unexpected keyword arguments for EditFormWrapper: {', '.join(kwargs.keys())}")
+
+    @property
+    def _style(self) -> ChromeStyle:
+        return self._chrome_style or get_chrome_style()
+
+    @property
+    def _text(self) -> ChromeText:
+        return self._chrome_text or get_chrome_text()
 
     # --- factory methods ---------------------------------------------------
 
@@ -550,7 +606,7 @@ class EditFormWrapper():
         self.title_row = None
         self.description = None
 
-        style = self._chrome_style or get_chrome_style()
+        style, text, place = self._style, self._text, self._place
         button_count = sum(b is not None for b in [self._save_button, self._refresh_button])
         has_chrome = bool(self._title) or button_count > 0
         if has_chrome:
@@ -562,9 +618,9 @@ class EditFormWrapper():
                         ui.space()
                     with chrome_buttons(style, button_count):
                         if self._refresh_button is not None:
-                            self.refresh_button = chrome_button('refresh', self._refresh_button, 'refresh', 'Refresh', style, lambda _: self.form.refresh())
+                            self.refresh_button = chrome_button('refresh', self._refresh_button, 'refresh', text_of(text.refresh_tooltip), style, lambda _: self.form.refresh(), place)
                         if self._save_button is not None:
-                            self.save_button = chrome_button('save', self._save_button, 'save', 'Save', style, lambda _: self.form.save())
+                            self.save_button = chrome_button('save', self._save_button, 'save', text_of(text.save_tooltip), style, lambda _: self.form.save(), place)
 
         if self._description:
             self.description = ui.markdown(self._description)
