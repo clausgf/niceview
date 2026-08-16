@@ -8,7 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [Unreleased]
 ------------
 
-(nothing yet)
+### Added
+
+- **The examples are part of the documentation site.** One page per example, generated at build
+  time from the example's own docstring — the text the app already prints on its first page — with
+  a screenshot of it running, a link to the source and the source itself. Nothing to keep in sync
+  by hand: a new example appears in the navigation on its own. The screenshots are committed and
+  refreshed with `docs/screenshots/capture_examples.py`, so building the docs needs no browser.
 
 
 [0.20.0] - 2026-08-16

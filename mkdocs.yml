@@ -13,6 +13,7 @@ docs_dir: docs
 exclude_docs: |
   screenshots/
   img/README.md
+  examples/SUMMARY.md
 
 theme:
   name: material
@@ -42,6 +43,10 @@ theme:
 
 plugins:
   - search
+  - gen-files:
+      scripts: [docs/gen_example_pages.py]
+  - literate-nav:
+      nav_file: SUMMARY.md
   - mkdocstrings:
       handlers:
         python:
@@ -85,6 +90,9 @@ markdown_extensions:
       # dash and would silently break every such link in one of the two places.
       slugify: !!python/object/apply:pymdownx.slugs.slugify {kwds: {case: lower}}
   - pymdownx.details
+  - pymdownx.emoji:      # ':material-file-code:' and friends, used on the example pages
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.superfences
   - pymdownx.highlight:
       anchor_linenums: true
@@ -100,6 +108,7 @@ nav:
       - Field types: field-types.md
       - Field metadata comparison: field-metadata-comparison.md
       - Dialogs: dialogs.md
+  - Examples: examples/
   - API reference:
       - Forms: api/forms.md
       - Grids and lists: api/grids.md

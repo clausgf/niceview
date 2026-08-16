@@ -41,7 +41,10 @@ uv run ruff check
   ```
 
   The API reference is generated from the docstrings, so a new public class only needs a
-  `::: niceview.module.Name` line on the matching page under `docs/api/`.
+  `::: niceview.module.Name` line on the matching page under `docs/api/`. A new example needs
+  nothing at all: its page is generated from its own docstring — only the screenshot is a
+  committed file, refreshed with
+  `uv run python docs/screenshots/capture_examples.py <number>`.
 - **Changelog**: record any user-facing / API change under `[Unreleased]` in
   [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
 
