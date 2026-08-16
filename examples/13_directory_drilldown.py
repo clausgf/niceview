@@ -40,7 +40,7 @@ def render_note_detail(adapter: DirectoryAdapter, key: str, set_key) -> None:
         try:
             set_key(adapter.rename(key, name_input.value))
         except ValueError as e:
-            ui.notify(str(e), color='negative')
+            ui.notify(str(e), type='negative')
 
     name_input = ui.input('Name', value=key).classes('w-full').props('outlined dense')
     name_input.on('blur', do_rename)
@@ -68,7 +68,7 @@ def page():
             # create() only reads .name off the item; mtime/size come from the file it writes.
             entry = directory.create(FileEntry(name=name, mtime=datetime.datetime.now(), size=0))
         except ValueError as e:  # name already taken, or not a usable file name
-            ui.notify(str(e), color='negative')
+            ui.notify(str(e), type='negative')
             return
         wrapper.open(entry.name)
 
