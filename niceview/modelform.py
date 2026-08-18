@@ -20,13 +20,12 @@ from niceview.text import ChromeText, TextValue, get_chrome_text, text_of
 from niceview.widgets import (
     DESCRIPTION_AS,
     DescriptionTarget,
-    CONTROL_WIDGETS,
-    INPUT_BASED_WIDGETS,
     TEXT_INPUT_WIDGETS,
     VALIDATED_WIDGETS,
     CheckboxGroup,
     apply_field_info,
     create_widget,
+    field_style_props,
     field_value,
     required_error,
     reserves_bottom_space,
@@ -886,13 +885,9 @@ class ModelForm():
         override one.
         """
         field_style = get_field_style()
-        widget_type = field_info.widget_type or ''
-        if widget_type in INPUT_BASED_WIDGETS:
-            category_props = field_style.input_props
-        elif widget_type in CONTROL_WIDGETS:
-            category_props = field_style.control_props
-        else:
-            category_props = ''  # 'editgrid' brings its own chrome, it is not a field with props
+        # The application-wide category props ('' for 'editgrid', which brings its own chrome) —
+        # the same layer the model-free render_field() applies, shared so they cannot drift.
+        category_props = field_style_props(field_style, field_info.widget_type)
 
         explicit_classes = layout_classes or field_info.classes
         classes = [explicit_classes or self.default_classes or field_style.default_classes]

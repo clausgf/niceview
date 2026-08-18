@@ -226,7 +226,8 @@ def set_chrome_style(style: ChromeStyle | None = None, **overrides: Any) -> Chro
 @dataclass(frozen=True)
 class FieldStyle:
     """
-    Application-wide defaults for form fields, by widget *category*.
+    Application-wide defaults for the fields niceview renders — in a ModelForm and in the
+    model-free render_field() alike — by widget *category*.
 
     Two categories, because that is what the practice asks for: an input and a select take the
     same props, a switch does not ('outlined' says nothing to a checkbox). A category is
@@ -242,7 +243,8 @@ class FieldStyle:
     """Props for checkbox, switch, radio, toggle, checkbox_group, slider, rating —
     see widgets.CONTROL_WIDGETS."""
     default_classes: str = ''
-    """Classes for every field that brings none of its own and whose form sets none either."""
+    """Classes for every field that brings none of its own (in a ModelForm, only when the form
+    sets no default_classes of its own either)."""
     caption_classes: str = 'text-caption'
     """Classes of the caption label placed above widgets that have no label slot of their own —
     radio, toggle, checkbox_group, slider, rating."""

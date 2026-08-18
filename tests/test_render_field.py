@@ -332,3 +332,49 @@ class TestReservesBottomSpace:
     def test_an_unknown_widget_type_reserves_nothing(self):
         assert self.reserves(Field()) is False
         assert self.reserves(Field(widget_type='editgrid')) is False
+
+
+class TestParseTimedelta:
+    """Tolerant timedelta input: ISO 8601 (case-insensitive, incl. P1Y/P1M/P1W) and human
+    shorthand, always resolving to a timedelta the field then shows canonically."""
+
+    def _canonical(self, td: datetime.timedelta) -> str:
+        return to_widget_value(Field(widget_type='timedelta'), td)
+
+    @pytest.mark.parametrize('text, expected', [
+        ('P7D', datetime.timedelta(days=7)),
+        ('p7d', datetime.timedelta(days=7)),                 # lower case
+        ('pt1h30m', datetime.timedelta(hours=1, minutes=30)),
+        ('P1Y', datetime.timedelta(days=365)),               # pydantic's fixed lengths
+        ('P1M', datetime.timedelta(days=30)),                # month before the T
+        ('P1W', datetime.timedelta(days=7)),
+        ('7d', datetime.timedelta(days=7)),                  # shorthand
+        ('2h30m', datetime.timedelta(hours=2, minutes=30)),
+        ('1d2h', datetime.timedelta(days=1, hours=2)),
+        ('90m', datetime.timedelta(minutes=90)),
+        ('1w', datetime.timedelta(weeks=1)),
+        ('1.5h', datetime.timedelta(hours=1, minutes=30)),   # decimals
+        ('2h 30m', datetime.timedelta(hours=2, minutes=30)), # spaces
+        ('1y', datetime.timedelta(days=365)),
+        ('-2h', datetime.timedelta(hours=-2)),               # sign
+    ])
+    def test_accepts_tolerant_forms(self, text, expected):
+        assert niceview.widgets.parse_timedelta(text) == expected
+
+    def test_empty_is_none(self):
+        assert niceview.widgets.parse_timedelta('') is None
+        assert niceview.widgets.parse_timedelta('   ') is None
+
+    @pytest.mark.parametrize('text', ['7', 'abc', '2x3d', 'PT7D', '5 apples'])
+    def test_rejects_ambiguous_or_invalid(self, text):
+        # A bare number is rejected on purpose: pydantic would read '7' as 7 seconds.
+        with pytest.raises(Exception):
+            niceview.widgets.parse_timedelta(text)
+
+    def test_shorthand_and_iso_share_the_canonical_form(self):
+        # '7d', 'p7d' and 'P1W' all mean 7 days and display the same afterwards.
+        for text in ('7d', 'p7d', 'P1W', '1w'):
+            assert self._canonical(niceview.widgets.parse_timedelta(text)) == 'P7D'
+
+    def test_field_value_uses_the_tolerant_parser(self):
+        assert field_value(_widget('2h30m'), Field(widget_type='timedelta')) == datetime.timedelta(hours=2, minutes=30)

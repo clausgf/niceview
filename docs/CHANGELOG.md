@@ -5,6 +5,24 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+[0.21.3] - 2026-08-18
+---------------------
+
+### Changed
+
+- **The application-wide `FieldStyle` now reaches the model-free `render_field()`**, not only a
+  `ModelForm`. `input_props` / `control_props` (by widget category) and the `default_classes`
+  fallback apply to a standalone field too; a field's own props/classes still win, and a
+  ModelForm's per-form layers (`base_props`, its own `default_classes`, the layout) remain
+  form-only. The shared `field_style_props()` helper keeps the two paths from drifting.
+
+- **`timedelta` fields accept tolerant input.** Besides the canonical ISO 8601 duration they
+  accept it case-insensitively (`p7d`), the fixed-length calendar units pydantic understands
+  (`P1Y` = 365 d, `P1M` = 30 d, `P1W` = 7 d), and a human shorthand of `<number><unit>` parts
+  with units `y w d h m s` (`7d`, `2h30m`, `1.5h`, `-2h`); on blur the field rewrites the entry
+  to its canonical form. A bare number is still rejected — pydantic would read `7` as 7 seconds.
+  New helper `niceview.widgets.parse_timedelta()`.
+
 [0.21.2] - 2026-08-18
 ---------------------
 

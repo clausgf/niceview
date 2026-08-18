@@ -19,7 +19,7 @@ NiceView automatically selects a widget based on the Python type annotation:
 | `datetime.date` | HTML date input |
 | `datetime.time` | HTML time input |
 | `datetime.datetime` | HTML datetime-local input |
-| `datetime.timedelta` | `ui.input` (ISO 8601 duration) |
+| `datetime.timedelta` | `ui.input` (ISO 8601 duration, tolerant input — see below) |
 | `pydantic.SecretStr` | `ui.input` (password, with reveal button) |
 | `Literal['a', 'b', ...]` | `ui.select` |
 | `list[Literal['a', 'b', ...]]` | `ui.select` (multi-select; options from the `Literal`) |
@@ -45,6 +45,16 @@ To show selected values as removable chips instead of comma-separated text, pass
 min_length=2, max_length=10)]]` still renders as `ui.input_chips`. The `Field(...)` constraints
 are not reinterpreted by NiceView — they stay part of the item's Pydantic annotation and are
 enforced by the model's own validation, surfacing as a normal field-level error on the list field.
+
+A `timedelta` field stores and displays the canonical
+[ISO 8601 duration](https://en.wikipedia.org/wiki/ISO_8601#Durations) (`P7D`, `PT1H30M`,
+`P1DT2H`), but its input is **tolerant**: ISO is accepted case-insensitively (`p7d`), including
+the fixed-length calendar units pydantic understands (`P1Y` = 365 d, `P1M` = 30 d, `P1W` = 7 d),
+and so is a human shorthand of `<number><unit>` parts with units `y w d h m s` (year = 365 d,
+`m` = minutes; decimals, spaces and a leading sign allowed): `7d`, `2h30m`, `1.5h`, `-2h`. On
+blur the field rewrites whatever was typed to the canonical form. A bare number is rejected on
+purpose — pydantic would read `7` as 7 *seconds*, the one surprise worth ruling out. Point the
+field's `hint` or `tooltip` at the format so the notation is discoverable.
 
 Additional widgets can be selected explicitly via `niceview.Field(widget_type='...')`:
 

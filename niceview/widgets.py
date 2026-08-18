@@ -17,6 +17,7 @@ import contextlib
 import datetime
 import inspect
 import logging
+import re
 import types
 import typing
 from typing import Any, Callable
@@ -29,7 +30,7 @@ from nicegui.elements.mixins.validation_element import ValidationDict, Validatio
 from nicegui.events import Handler, ValueChangeEventArguments, handle_event
 
 from niceview.fieldinfo import FieldInfo, _merge_field_infos
-from niceview.style import get_field_style
+from niceview.style import FieldStyle, get_field_style
 from niceview.text import get_chrome_text, text_of
 
 log = logging.getLogger('niceview')
@@ -89,6 +90,34 @@ CAPTION_WIDGETS: frozenset[str] = frozenset({
     'ui.radio', 'ui.toggle', 'checkbox_group', 'ui.slider', 'ui.rating',
 })
 """Widget types with no label of their own; niceview renders a caption above them instead."""
+
+
+def field_style_props(field_style: FieldStyle, widget_type: str | None) -> str:
+    """The application-wide category props for a widget: input_props for the QInput/QSelect
+    family (INPUT_BASED_WIDGETS), control_props for switch/checkbox/... (CONTROL_WIDGETS), and
+    '' for anything else ('editgrid' brings its own chrome). Shared by ModelForm._styled and the
+    model-free render_field() so both apply FieldStyle the same way."""
+    if widget_type in INPUT_BASED_WIDGETS:
+        return field_style.input_props
+    if widget_type in CONTROL_WIDGETS:
+        return field_style.control_props
+    return ''
+
+
+def _apply_field_style(field_info: FieldInfo) -> FieldInfo:
+    """Merge the application-wide FieldStyle onto a field: the category's props beneath the
+    field's own, and default_classes when the field brings no classes of its own. This is the
+    layer ModelForm applies through _styled; a ModelForm additionally stacks its per-form
+    base_props / default_classes / layout classes on top."""
+    field_style = get_field_style()
+    props = ' '.join(p for p in (field_style_props(field_style, field_info.widget_type), field_info.props) if p)
+    classes = field_info.classes or field_style.default_classes
+    overrides: dict[str, Any] = {}
+    if props:
+        overrides['props'] = props
+    if classes:
+        overrides['classes'] = classes
+    return _merge_field_infos(field_info, FieldInfo(**overrides)) if overrides else field_info
 
 TEXT_INPUT_WIDGETS: frozenset[str] = frozenset({
     'ui.input', 'ui.number', 'ui.textarea', 'ui.input_chips',
@@ -506,13 +535,90 @@ def field_value(widget: Any, field_info: FieldInfo, *, local_tz: str | None = No
         value = datetime.time.fromisoformat(value) if value else None
 
     elif widget_type == 'timedelta':
-        timedelta_adapter = TypeAdapter(datetime.timedelta)
-        value = timedelta_adapter.validate_python(value)
+        value = parse_timedelta(value) if isinstance(value, str) else value
 
     if _unwrap_optional(field_type) is SecretStr and value is not None:
         value = SecretStr(value)
 
     return value
+
+
+_TIMEDELTA_UNIT_SECONDS = {'y': 31536000, 'w': 604800, 'd': 86400, 'h': 3600, 'm': 60, 's': 1}
+"""Shorthand units and their length in seconds. 'y' = 365 d (pydantic's own assumption); there
+is no month shorthand — 'm' is minutes, and a 30-day month is the ISO 'P1M'."""
+_TIMEDELTA_SHORTHAND = re.compile(r'(\d+(?:\.\d+)?)\s*([ywdhms])', re.IGNORECASE)
+
+
+def parse_timedelta(text: str) -> datetime.timedelta | None:
+    """
+    Parse a timedelta from tolerant user input, so the field does not force ISO 8601 by hand.
+
+    Accepted, in order:
+      - '' → None (an empty field, left for the required layer to judge);
+      - ISO 8601 duration, case-insensitively — 'p7d' / 'P7D', 'pt1h30m', and the calendar units
+        pydantic fixes to a length: 'P1Y' = 365 d, 'P1M' = 30 d (month, before the T),
+        'P1W' = 7 d;
+      - human shorthand: <number><unit> parts with units y/w/d/h/m/s (year = 365 d; 'm' is
+        minutes), case-insensitive, decimals and spaces allowed, an optional leading sign —
+        '7d', '2h30m', '1d2h', '90m', '1.5h', '2h 30m', '-2h'.
+
+    Anything else raises pydantic's ValidationError. A bare number is deliberately *not* accepted
+    as seconds ('7' is rejected, not read as PT7S), the trap that makes a plain number surprising.
+    """
+    s = text.strip()
+    if not s:
+        return None
+    adapter = TypeAdapter(datetime.timedelta)
+    core = s[1:] if s[:1] in '+-' else s
+    if core[:1].upper() == 'P':  # ISO 8601 — normalise case and let pydantic (and its lengths) rule
+        return adapter.validate_python(s.upper())
+    shorthand = _parse_timedelta_shorthand(s)
+    if shorthand is not None:
+        return shorthand
+    return adapter.validate_python(s)  # not ISO, not shorthand: let pydantic raise a clear error
+
+
+def _parse_timedelta_shorthand(s: str) -> datetime.timedelta | None:
+    """'2h30m' → timedelta, or None when the string is not clean shorthand (then the caller lets
+    pydantic decide). The whole string must be consumed by <number><unit> parts, so stray
+    characters — a bare number, '2x3d' — fall through rather than parsing partially."""
+    sign = 1
+    if s[:1] in '+-':
+        sign = -1 if s[0] == '-' else 1
+        s = s[1:]
+    s = s.strip()
+    pos = 0
+    total = 0.0
+    for match in _TIMEDELTA_SHORTHAND.finditer(s):
+        if match.start() != pos:
+            return None  # an unexpected character sits between parts
+        total += float(match.group(1)) * _TIMEDELTA_UNIT_SECONDS[match.group(2).lower()]
+        pos = match.end()
+        while pos < len(s) and s[pos].isspace():
+            pos += 1
+    if pos == 0 or pos != len(s):
+        return None
+    return datetime.timedelta(seconds=sign * total)
+
+
+def _canonicalise_timedelta_on_blur(widget: Any, field_info: FieldInfo) -> None:
+    """Reformat a timedelta input to the canonical ISO 8601 duration when it loses focus, so
+    tolerant input ('7d', 'p1w', '2h 30m') settles into the shape the field stores and shows.
+    Invalid text is left as typed for the validation layer to flag."""
+    def _run(_event: typing.Any = None) -> None:
+        text = (widget.value or '').strip()
+        if not text:
+            return
+        try:
+            td = parse_timedelta(text)
+        except Exception:
+            return
+        if td is None:
+            return
+        canonical = to_widget_value(field_info, td)
+        if canonical and canonical != widget.value:
+            widget.value = canonical
+    widget.on('blur', _run)
 
 
 # --- widget creation -------------------------------------------------------
@@ -669,6 +775,7 @@ def create_widget(field_info: FieldInfo, name: str, push_value: Callable[[Any], 
     elif widget_type == 'timedelta':
         widget = ui.input(label=label, **_pick_attrs(field_info, ['placeholder']))
         push_value(widget)
+        _canonicalise_timedelta_on_blur(widget, field_info)
 
     elif widget_type == 'ui.slider':
         slider_min = field_info.min if field_info.min is not None else 0.0
@@ -776,10 +883,13 @@ def render_field(field_info: FieldInfo, value: Any = None, *, local_tz: str | No
 
     `field_info.widget_type` is required — without a model there is nothing to infer it from.
     label / placeholder / hint / tooltip / props / classes / style / options and the
-    widget-specific attributes (min, max, step, multiple, ...) are applied exactly as in a
-    ModelForm, and so is validation: `required` rejects an empty value, then
+    widget-specific attributes (min, max, step, multiple, ...) are applied as in a ModelForm,
+    the application-wide FieldStyle included: the category's props (input_props / control_props)
+    beneath the field's own, and default_classes when the field brings none. Only a ModelForm's
+    per-form layers (base_props, its own default_classes, the layout) do not apply here — there
+    is no form. Validation works the same: `required` rejects an empty value, then
     `field_info.validation` runs as NiceGUI's own validation would. What a ModelForm adds on
-    top — validating the whole item against a Pydantic model — is the only difference.
+    top — validating the whole item against a Pydantic model — is the only other difference.
 
     `required` also appends `required_marker` to the label — ChromeText's by default; pass
     `required_marker=None` for none.
@@ -803,6 +913,7 @@ def render_field(field_info: FieldInfo, value: Any = None, *, local_tz: str | No
     def push_value(widget: Any) -> None:
         widget.value = to_widget_value(field_info, value, local_tz=local_tz)
 
+    field_info = _apply_field_style(field_info)
     widget = create_widget(field_info, field_info.label or widget_type, push_value, required_marker, description_as)
     if field_info.required and hasattr(widget, 'validation'):
         # Chain the required check in front of the caller's own validation, same order as

@@ -14,7 +14,7 @@ One form showing all field types supported by NiceView:
 | `datetime.date` | HTML date input |
 | `datetime.time` | HTML time input |
 | `datetime.datetime` | HTML datetime-local input |
-| `datetime.timedelta` | `ui.input` (ISO 8601 duration) |
+| `datetime.timedelta` | `ui.input` (ISO 8601 duration; tolerant input: `7d`, `2h30m`, `p1w`) |
 | `Literal[...]` | `ui.select`, `ui.radio`, or `ui.toggle` (via `widget_type` override) |
 | `Literal[...]` with `with_input=True` | `ui.select` (searchable) |
 | `list[str]` with `options` + `multiple=True` | `ui.select` (multi-select) |
@@ -75,7 +75,9 @@ class AllTypes(pydantic.BaseModel):
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0),
         title='Datetime',
     )
-    duration: datetime.timedelta = pydantic.Field(
+    duration: Annotated[datetime.timedelta, niceview.Field(
+        hint='ISO 8601 (P7D, PT1H30M) or shorthand (7d, 2h30m) — normalised on blur',
+    )] = pydantic.Field(
         default_factory=lambda: datetime.timedelta(hours=1, minutes=30),
         title='Timedelta',
     )

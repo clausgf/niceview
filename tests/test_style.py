@@ -865,6 +865,29 @@ class TestFieldStyle:
         assert 'w-full' in forms[0].w('name').classes
         assert 'w-full' not in forms[0].w('nick').classes
 
+    async def test_field_style_reaches_the_model_free_render_field(self, user: User) -> None:
+        # The application-wide FieldStyle applies to niceview.render_field() too, not just to a
+        # ModelForm: the category props and the default_classes fallback, with a field's own
+        # props/classes still winning.
+        import niceview
+        set_field_style(input_props='outlined', control_props='dense', default_classes='w-full')
+
+        widgets: dict = {}
+
+        @ui.page('/')
+        def page():
+            widgets['name'] = niceview.render_field(niceview.Field(widget_type='ui.input'))
+            widgets['active'] = niceview.render_field(niceview.Field(widget_type='ui.switch'))
+            widgets['own'] = niceview.render_field(niceview.Field(widget_type='ui.input', classes='w-1/2'))
+
+        await user.open('/')
+        assert widgets['name'].props.get('outlined')        # input_props on an input
+        assert not widgets['active'].props.get('outlined')  # not on a control
+        assert widgets['active'].props.get('dense')         # control_props on a switch
+        assert 'w-full' in widgets['name'].classes          # default_classes fallback
+        assert 'w-full' not in widgets['own'].classes       # a field's own classes win
+        assert 'w-1/2' in widgets['own'].classes
+
 
 # ---------------------------------------------------------------------------
 # ChromeText
