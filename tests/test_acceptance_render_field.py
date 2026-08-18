@@ -143,6 +143,30 @@ class TestRenderFieldWidgets:
         await user.open('/')
         assert captured[0].value == 'PT1H30M'
 
+    async def test_timedelta_tolerant_input_is_canonicalised_on_blur(self, user: User) -> None:
+        captured = _page(lambda: render_field(Field(label='Every', widget_type='timedelta'), datetime.timedelta(minutes=90)))
+
+        await user.open('/')
+        widget = captured[0]
+
+        user.find('Every').clear().type('7d').trigger('blur')
+        assert widget.value == 'P7D'                 # shorthand rewritten to canonical ISO
+
+        user.find('Every').clear().type('2h30m').trigger('blur')
+        assert widget.value == 'PT2H30M'
+
+        user.find('Every').clear().type('p1w').trigger('blur')
+        assert widget.value == 'P7D'                 # lower-case ISO, week -> 7 days
+
+    async def test_timedelta_invalid_input_is_left_untouched_on_blur(self, user: User) -> None:
+        captured = _page(lambda: render_field(Field(label='Every', widget_type='timedelta'), datetime.timedelta(minutes=90)))
+
+        await user.open('/')
+        widget = captured[0]
+
+        user.find('Every').clear().type('nonsense').trigger('blur')
+        assert widget.value == 'nonsense'            # left for the validation layer to flag
+
     async def test_slider(self, user: User) -> None:
         captured = _page(lambda: render_field(Field(label='Level', widget_type='ui.slider', min=0, max=10), 7))
 
