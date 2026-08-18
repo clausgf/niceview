@@ -1,7 +1,9 @@
 - Never change acceptance tests without asking!
-- Before every commit, run and fix the tests. Then update the docs. Finally, commit and push.
+- Before every commit, run and fix the tests. Then update the docs. Finally, commit and push. Increase only the lowest possible digit of the tag, prefer patches over minor over major releases if justifiable.
+- Only commit if explicitly ordered so.
 - When unsure, ask before committing and pushing.
 - Ask before removing dead code (commented out, not called, ...).
 - Use uv for python package management. Use the python interpreter, pytest etc. from the .venv.
 - Always add API changes to CHANGELOG.md.
-
+- Keep docs and code comments short and precise.
+- Keep the doc well structured.

@@ -32,27 +32,6 @@ form = ModelForm.from_adapter(User, json_adapter)
 form.render()
 ```
 
-**Custom field layout** — render fields individually to control placement in rows/columns:
-```python
-form = ModelForm.from_item(user)
-with ui.row():
-    with ui.column():
-        form.render_field('name').classes('w-full')   # returns the widget for direct styling
-        form.render_field('age').classes('w-full')
-    with ui.column():
-        form.render_field('active')
-form.render_nonfield_errors().classes('q-mt-sm')      # returns the ui.label
-```
-`render_field()` accepts optional `niceview.Field` kwargs to override field metadata for this render only:
-```python
-form.render_field('name', label='Short name')   # custom label
-form.render_field('is_active', label='')        # suppress label
-form.render_field('budget', suffix='k€')        # add suffix
-```
-`render_field()` returns the created widget (`ui.element` subclass) and raises `ValueError` for unknown or hidden fields.
-`render_nonfield_errors()` returns the `ui.label`; omit the call to suppress model-level error display.
-`render()` is equivalent to calling `render_field()` for all non-hidden fields followed by `render_nonfield_errors()`.
-
 **Options** (apply to all `ModelForm` and `ModelGrid` factory methods):
 ```python
 ModelForm.from_item(user,
@@ -109,6 +88,31 @@ blocked by a validation error is reported when the error clears.
 
 ### Layout
 
+#### Imperative form layout
+
+**Custom field layout** — render fields individually to control placement in rows/columns:
+```python
+form = ModelForm.from_item(user)
+with ui.row():
+    with ui.column():
+        form.render_field('name').classes('w-full')   # returns the widget for direct styling
+        form.render_field('age').classes('w-full')
+    with ui.column():
+        form.render_field('active')
+form.render_nonfield_errors().classes('q-mt-sm')      # returns the ui.label
+```
+`render_field()` accepts optional `niceview.Field` kwargs to override field metadata for this render only:
+```python
+form.render_field('name', label='Short name')   # custom label
+form.render_field('is_active', label='')        # suppress label
+form.render_field('budget', suffix='k€')        # add suffix
+```
+`render_field()` returns the created widget (`ui.element` subclass) and raises `ValueError` for unknown or hidden fields.
+`render_nonfield_errors()` returns the `ui.label`; omit the call to suppress model-level error display.
+`render()` is equivalent to calling `render_field()` for all non-hidden fields followed by `render_nonfield_errors()`.
+
+#### Declarative from layout
+
 By default a form stacks its fields. A **layout** arranges them: a nested list of field names,
 either in `Meta.profiles` (when the arrangement belongs to the model) or as `layout=` for a
 single form.
@@ -150,14 +154,19 @@ order — `Meta.field_order` does not apply on top of it. Grids and lists read t
 ignore the nesting, so one profile can serve a form and a table. Unknown, duplicated or
 excluded field names raise `ValueError` naming the position (`layout[1][0]`).
 
+Field selection is a **view** concern: `include`/`exclude`/`field_order` pick the set (form,
+grid and list), `layout` adds the arrangement (form only). None of them narrow validation, which
+always covers the whole model (see [Validation](#validation)).
+
 Two rules exist to avoid fighting Tailwind, and both are worth knowing:
 
 - Fields in a row share the width evenly (`flex-1 min-w-0`). A field that brings classes of its
   own gets those **instead** — `flex-1` sets `flex-basis: 0` and would silently override any
   width that was asked for. (`min-w-0` is always added: it is layout mechanics, not styling.)
-- Container classes **replace** the defaults (`w-full items-start gap-4` for a row) rather than
-  adding to them: `gap-4 gap-8` is resolved by stylesheet order, not by the order in the class
-  list.
+- Container classes **replace** the defaults rather than adding to them: `gap-4 gap-8` is
+  resolved by stylesheet order, not by the order in the class list. The defaults themselves are
+  chrome knobs — `form_row_classes`, `form_column_classes`, `form_card_classes` / `form_card_props`
+  on `ChromeStyle` — so a `':classes'` first element is only needed to override *one* container.
 
 Without a layout no container is created at all, so the fields become direct children of
 whatever the caller opened — which is what makes the `ui.grid()` two-column trick work:
@@ -359,6 +368,12 @@ A value rejected by layer 1 is never converted and never reaches the model, so P
 sees a value the user was already told is wrong. A field's own message wins over the model's
 message for the same field.
 
+Layer 3 validates the **whole** Pydantic model, not only the rendered fields: `include`,
+`exclude`, `layout` and `field_order` choose what is *shown*, never what is *checked*. So a
+constraint on a field with no widget — one excluded or hidden, or a cross-field
+`@model_validator` — still runs, and its message, having no widget to sit under, surfaces as a
+**model-level (nonfield) error**.
+
 ```python
 class User(pydantic.BaseModel):
     # required (no default) + a widget-level rule + a model constraint, in that order
@@ -379,7 +394,7 @@ form.draft         # what the widgets currently hold, including invalid values
 form.has_validation_errors, form.validation_errors, form.nonfield_validation_errors
 ```
 
-Model-level (`@model_validator`) errors have no field to attach to. `render()` places the label
+These model-level errors have no field to attach to. `render()` places the label
 for them automatically; with a hand-built layout of `render_field()` calls, call
 `form.render_nonfield_errors()` yourself — otherwise a cross-field error blocks every commit
 without showing why (the form logs a warning when that happens).

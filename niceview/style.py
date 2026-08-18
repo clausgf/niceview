@@ -68,6 +68,18 @@ class ChromeStyle:
     """Classes of a title *inside* a form without a card ('## …'), and of the label of an
     embedded grid. One step below title_classes — it is a section, not the page heading."""
 
+    # --- form layout containers --------------------------------------------
+    form_row_classes: str = 'w-full items-start gap-4'
+    """Default classes of a layout row (a nested list). A ':classes' first element of the row
+    replaces this — a class list has no key to merge on, so it is all-or-nothing."""
+    form_column_classes: str = 'w-full gap-4'
+    """Default classes of a layout column — the plain default container and the body of a '## …'
+    section. Replaced by a ':classes' first element, like form_row_classes."""
+    form_card_classes: str = 'w-full'
+    """Default classes of a '# …' section card. Replaced by a ':classes' first element."""
+    form_card_props: str = 'flat bordered'
+    """Props of a '# …' section card."""
+
     # --- place layer -------------------------------------------------------
     toolbar_button_props: str = ''
     """Props of the buttons in a wrapper's own action row. Empty: the chrome brings no look of
@@ -231,6 +243,11 @@ class FieldStyle:
     see widgets.CONTROL_WIDGETS."""
     default_classes: str = ''
     """Classes for every field that brings none of its own and whose form sets none either."""
+    caption_classes: str = 'text-caption'
+    """Classes of the caption label placed above widgets that have no label slot of their own —
+    radio, toggle, checkbox_group, slider, rating."""
+    checkbox_group_classes: str = 'gap-x-4 gap-y-1'
+    """Classes of the checkbox_group's inner container that holds the checkboxes."""
 
     def replace(self, **overrides: Any) -> Self:
         """Return a copy with the given attributes changed."""

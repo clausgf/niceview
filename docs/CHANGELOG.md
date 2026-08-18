@@ -5,6 +5,18 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+[0.21.1] - 2026-08-18
+---------------------
+
+### Added
+
+- **Form layout containers and two field bits are chrome knobs now.** `ChromeStyle` gains
+  `form_row_classes`, `form_column_classes`, `form_card_classes` and `form_card_props` for the
+  containers a layout builds; `FieldStyle` gains `caption_classes` (the label above radio /
+  toggle / checkbox_group / slider / rating) and `checkbox_group_classes` (the checkbox
+  container). Defaults are unchanged, so nothing renders differently — but a row's alignment no
+  longer needs a `':classes'` first element on every layout. See [Layout](components.md#layout).
+
 [0.21.0] - 2026-08-16
 ---------------------
 

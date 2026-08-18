@@ -913,6 +913,10 @@ class ModelForm():
         """
         Render the non-field (model-level) validation error label in the current NiceGUI context.
 
+        Validation runs model_validate() over the whole model, so an error with no widget to sit
+        under — a cross-field @model_validator, or a field that is excluded or hidden — surfaces
+        here rather than below a field.
+
         Returns the created ui.label so callers can style it:
           form.render_nonfield_errors().classes('q-mt-sm')
 
@@ -971,21 +975,22 @@ class ModelForm():
     def _layout_container(self, group: LayoutGroup) -> ui.element:
         """
         The container for a nested layout group: a section for a titled group ('#' draws a card
-        around it, '##' only the heading), otherwise a row or a column. `:classes` replaces the
-        defaults rather than adding to them — Tailwind resolves a duplicate utility by
-        stylesheet order, not by the order in the class list.
+        around it, '##' only the heading), otherwise a row or a column. The defaults come from
+        the chrome style (form_row_classes / form_column_classes / form_card_classes|props); a
+        group's own `:classes` replaces them rather than adding to them — a class list has no key
+        to merge on, and Tailwind resolves a duplicate utility by stylesheet order.
         """
+        chrome = self._style
         if group.title is not None:
-            chrome = self._style
-            section = (ui.card().props('flat bordered').classes(group.classes or 'w-full')
-                       if group.card else ui.column().classes(group.classes or 'w-full gap-4'))
+            section = (ui.card().props(chrome.form_card_props).classes(group.classes or chrome.form_card_classes)
+                       if group.card else ui.column().classes(group.classes or chrome.form_column_classes))
             with section:
                 ui.label(group.title).classes(chrome.card_title_classes if group.card
                                               else chrome.section_title_classes)
             return section
         if group.row:
-            return ui.row().classes(group.classes or 'w-full items-start gap-4')
-        return ui.column().classes(group.classes or 'w-full gap-4')
+            return ui.row().classes(group.classes or chrome.form_row_classes)
+        return ui.column().classes(group.classes or chrome.form_column_classes)
 
     # --- value conversion --------------------------------------------------
 

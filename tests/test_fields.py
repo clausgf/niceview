@@ -5,7 +5,7 @@ import pydantic
 import pytest
 
 import niceview
-from niceview.fieldinfo import FieldInfo
+from niceview.fieldinfo import FieldInfo, _FieldInfoInputs
 from niceview.fields import Fields
 
 
@@ -452,6 +452,39 @@ class TestMergePreservesInternalAttrs:
         # field_type is also framework-internal and was lost in the same bug
         fields = Fields(SimpleModel, field_infos={'age': FieldInfo(label='Age')})
         assert fields['age'].field_type == int
+
+
+class TestFieldInfoTypedDictSync:
+    """
+    FieldInfo's attributes and the _FieldInfoInputs TypedDict are two hand-maintained lists
+    that must stay aligned. _FIELD_INFO_KWARGS (which _merge_field_infos consults) is derived
+    from the TypedDict, so an attribute added to the class but forgotten in the TypedDict would
+    be dropped silently on every merge — no error, just a value that never propagates. And a
+    TypedDict key without an attribute loses editor completion its way. This test holds the line.
+    """
+
+    # Attributes set by Fields during resolution, deliberately not user-settable via kwargs and
+    # therefore absent from the TypedDict. _merge_field_infos copies them from the base only.
+    INTERNAL_ONLY = {'literal_options'}
+
+    def test_every_settable_attribute_has_a_typeddict_key(self):
+        class_attrs = set(FieldInfo.__annotations__)
+        typeddict_keys = set(_FieldInfoInputs.__annotations__)
+        missing = class_attrs - self.INTERNAL_ONLY - typeddict_keys
+        assert not missing, (
+            f"FieldInfo attribute(s) {sorted(missing)} have no _FieldInfoInputs key. "
+            f"_merge_field_infos would drop them silently — add the key, or list the "
+            f"attribute in INTERNAL_ONLY if it is framework-internal."
+        )
+
+    def test_every_typeddict_key_is_a_settable_attribute(self):
+        class_attrs = set(FieldInfo.__annotations__)
+        typeddict_keys = set(_FieldInfoInputs.__annotations__)
+        missing = typeddict_keys - class_attrs
+        assert not missing, (
+            f"_FieldInfoInputs key(s) {sorted(missing)} are not FieldInfo attributes — "
+            f"FieldInfo(**{{key}}) would raise TypeError. Add the attribute or drop the key."
+        )
 
 
 # ---------------------------------------------------------------------------

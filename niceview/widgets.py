@@ -29,6 +29,7 @@ from nicegui.elements.mixins.validation_element import ValidationDict, Validatio
 from nicegui.events import Handler, ValueChangeEventArguments, handle_event
 
 from niceview.fieldinfo import FieldInfo, _merge_field_infos
+from niceview.style import get_field_style
 from niceview.text import get_chrome_text, text_of
 
 log = logging.getLogger('niceview')
@@ -174,7 +175,7 @@ def _labelled(field_info: FieldInfo, required_marker: str | None, classes: str =
     """
     with ui.column().classes(classes) as column:
         if label := _label(field_info, required_marker):
-            ui.label(label).classes('text-caption')
+            ui.label(label).classes(get_field_style().caption_classes)
         yield column
 
 
@@ -742,7 +743,7 @@ def _create_checkbox_group_widget(field_info: FieldInfo, name: str, push_value: 
 
     checkboxes: dict[Any, ui.checkbox] = {}
     with _labelled(field_info, required_marker):
-        with container().classes('gap-x-4 gap-y-1') as container_element:
+        with container().classes(get_field_style().checkbox_group_classes) as container_element:
             for opt, label in items:
                 checkboxes[opt] = ui.checkbox(text=str(label))
 
