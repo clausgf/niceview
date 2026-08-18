@@ -34,6 +34,7 @@ __all__ = [
     'ReactiveAdapter',
     'CollectionAdapter',
     'BoundItem',
+    'BoundFieldAdapter',
     'ListAdapter',
     'FilteredAdapter',
     'JsonAdapter',
@@ -141,7 +142,6 @@ def lenient_list_load(item_type: type[T], json_text: str, context: str = '') -> 
     return result
 
 
-@runtime_checkable
 class ItemAdapter(Generic[T], Protocol):
     """
     Adapter protocol for single-item backends (ModelForm).
@@ -223,7 +223,7 @@ class CollectionAdapter(Generic[T], Protocol):
             yield self.key_from_item(item), item
 
 
-class BoundItem(Generic[T]):
+class BoundItem(ItemAdapter[T]):
     """
     Wraps a CollectionAdapter + key into an ItemAdapter.
 
@@ -239,6 +239,45 @@ class BoundItem(Generic[T]):
 
     def save(self, item: T) -> T:
         return self._adapter.update(item)
+
+
+class BoundFieldAdapter(ItemAdapter[T]):
+    """
+    Wraps an ItemAdapter + field name into an ItemAdapter for one named sub-field
+    of the parent item — typically an embedded model of its own.
+
+    This is the piece ModelForm does not render as a sub-form on its own: bind a
+    second ModelForm to a single nested model by focusing the parent adapter onto
+    that field.
+
+        parent = JsonAdapter(Device, path)
+        addr_form = ModelForm.from_adapter(Address, BoundFieldAdapter(parent, 'address'))
+
+    save() is read-modify-write: it re-reads the parent, sets only this one field, and
+    saves the parent back. Two consequences follow from that, both deliberate:
+
+    * Sibling fields are never touched. Several BoundFieldAdapters over the same parent
+      (e.g. one ModelForm per card) therefore stay independent — each save re-reads and
+      picks up the others' already-saved values, in any order.
+    * It does NOT take part in the parent adapter's optimistic locking. Re-reading right
+      before the write means the lock token always matches, so the check never fires. Do
+      not set a `lock_field` on a parent reached only through BoundFieldAdapters: it adds
+      no protection here, and its token bump on every sub-save would make a concurrently
+      open full-parent form see a false conflict. For real single-field locking, bind a
+      ModelForm to the parent adapter directly instead.
+    """
+    def __init__(self, parent_adapter: 'ItemAdapter[Any]', field_name: str) -> None:
+        self._parent_adapter = parent_adapter
+        self._field_name = field_name
+
+    def read(self) -> T:
+        return getattr(self._parent_adapter.read(), self._field_name)
+
+    def save(self, item: T) -> T:
+        parent_item = self._parent_adapter.read()
+        setattr(parent_item, self._field_name, item)
+        saved_parent = self._parent_adapter.save(parent_item)
+        return getattr(saved_parent, self._field_name)
 
 
 class ListAdapter(_ChangeNotifier, CollectionAdapter[T]):
@@ -349,7 +388,7 @@ class ListAdapter(_ChangeNotifier, CollectionAdapter[T]):
         self._notify()
 
 
-class FilteredAdapter(_ChangeNotifier, Generic[T]):
+class FilteredAdapter(_ChangeNotifier, CollectionAdapter[T], ReloadableAdapter):
     """
     Wraps a CollectionAdapter, filtering __iter__ results by a predicate and
     injecting default field values on create().
@@ -404,7 +443,7 @@ class FilteredAdapter(_ChangeNotifier, Generic[T]):
             self._inner.reload()
 
 
-class JsonAdapter(Generic[T]):
+class JsonAdapter(ItemAdapter[T]):
     """
     An ItemAdapter backed by a JSON file containing a single Pydantic model instance.
     Writes are atomic (.tmp → rename).
@@ -509,7 +548,8 @@ class JsonListAdapter(ListAdapter[T], ReloadableAdapter):
 
     Items are kept in memory (like ListAdapter) and written to disk after
     every mutating operation. Writes are atomic: the full list is serialized to
-    a .tmp file that is then renamed over the target path.
+    a .tmp file that is then renamed over the target path. A lock_field for
+    for optimistic locking is not supported.
 
     Keys are monotonic counter strings (same as ListAdapter), stable across
     deletions within a session but reassigned after reload().

@@ -176,7 +176,7 @@ class ModelList:
     def render(self) -> Self:
         """Render the list widget into the current NiceGUI context."""
         style = self._chrome_style or get_chrome_style()
-        with ui.list().props(style.list_props) as self.widget:
+        with ui.list().props(style.list_props).classes('w-full') as self.widget:
             self._render_items()
 
         if not self._auto_update_registered and isinstance(self._data, ReactiveAdapter):

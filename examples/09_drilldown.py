@@ -30,7 +30,7 @@ contacts = [
 
 @ui.page('/')
 def page():
-    with ui.card().classes('w-full max-w-2xl mx-auto'):
+    with ui.card().classes('w-full'):
         DrillDownWrapper.from_list(
             Contact, contacts,
             list_title='Contacts',

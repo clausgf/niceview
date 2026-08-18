@@ -143,6 +143,26 @@ for key, project in projects_adapter.items():
 the standard bridge for master-detail navigation (e.g. `ModelForm.from_adapter()`).
 `BoundItem` can be imported directly from `niceview` (`from niceview import BoundItem`).
 
+`BoundFieldAdapter(parent_adapter, field_name)` wraps an `ItemAdapter` + a field name into an
+`ItemAdapter` for one named sub-field of the parent item. Its purpose is the one thing `ModelForm`
+does **not** render on its own: a *single* embedded model (`address: Address`). Bind a second form
+to that field by focusing the parent adapter onto it:
+
+```python
+parent = JsonAdapter(Device, path)
+ModelForm.from_adapter(Device, parent).render()                         # the parent's own fields
+ModelForm.from_adapter(Address, BoundFieldAdapter(parent, 'address')).render()   # the nested model
+```
+
+`save()` is read-modify-write: it re-reads the parent, sets only this one field, and saves the
+parent back. So sibling fields are never touched, and **several `BoundFieldAdapter`s over the same
+parent stay independent** — one `ModelForm` per card, edited in any order, each save picking up the
+others' saved values. The flip side: it does **not** take part in the parent adapter's optimistic
+locking (re-reading right before the write makes the lock token always match). Do not set a
+`lock_field` on a parent reached only through `BoundFieldAdapter`s — it adds no protection and its
+token bump would make a concurrently open full-parent form see a false conflict. For real
+single-field locking, bind a `ModelForm` to the parent adapter directly instead.
+
 **Reactive updates**
 
 All built-in adapters implement `ReactiveAdapter` via the `_ChangeNotifier` mixin.

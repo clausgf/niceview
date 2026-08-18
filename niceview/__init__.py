@@ -3,6 +3,7 @@ from typing import Any, Unpack
 
 from niceview.fieldinfo import _FieldInfoInputs, FieldInfo
 from niceview.dataadapter import (
+    BoundFieldAdapter,
     BoundItem,
     CollectionAdapter,
     ConflictError,
@@ -47,7 +48,7 @@ __all__ = [
     'ChromeText', 'get_chrome_text', 'set_chrome_text',
     # Data adapters
     'ItemAdapter', 'CollectionAdapter', 'ReloadableAdapter', 'ReactiveAdapter',
-    'BoundItem', 'ListAdapter', 'JsonAdapter', 'JsonListAdapter',
+    'BoundItem', 'BoundFieldAdapter', 'ListAdapter', 'JsonAdapter', 'JsonListAdapter',
     'DirectoryAdapter', 'FileEntry', 'FilteredAdapter', 'SqlModelAdapter',
     'lenient_model_load', 'lenient_list_load',
     # Errors

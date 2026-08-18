@@ -5,6 +5,31 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+[0.22.0] - 2026-08-18
+---------------------
+
+### Added
+
+- **`BoundFieldAdapter(parent_adapter, field_name)`** — an `ItemAdapter` that focuses a parent
+  `ItemAdapter` onto one named sub-field. It fills the one gap `ModelForm` leaves open: editing a
+  *single* embedded model (`address: Address`) with its own form, by binding it to
+  `BoundFieldAdapter(parent, 'address')`. `save()` is read-modify-write (re-read the parent, set
+  only that field, save the parent), so sibling fields are never touched and several
+  `BoundFieldAdapter`s over one parent stay independent — but it does not take part in the parent
+  adapter's optimistic locking. See [Data Adapters](adapters.md).
+
+### Changed
+
+- **`ModelList` now renders its `ui.list` at full width** (`w-full`), so a list in a full-width
+  card or column fills it instead of shrinking to its content. Affects `ModelList` and every
+  default `DrillDownWrapper` list.
+
+- Adapters now inherit their protocols explicitly for consistency: `BoundItem` and `JsonAdapter`
+  from `ItemAdapter[T]`, `FilteredAdapter` from `CollectionAdapter[T], ReloadableAdapter` (matching
+  `ListAdapter`, `DirectoryAdapter`, `JsonListAdapter`, `SqlModelAdapter`). Internal only — the
+  structural conformance, and thus every usage, is unchanged. The unused `@runtime_checkable` on
+  `ItemAdapter` was removed (nothing ever `isinstance`-checked it).
+
 [0.21.3] - 2026-08-18
 ---------------------
 

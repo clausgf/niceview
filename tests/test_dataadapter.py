@@ -3,7 +3,7 @@ import json
 import pytest
 import pydantic
 
-from niceview.dataadapter import ConflictError, ListAdapter, JsonAdapter, JsonListAdapter, DirectoryAdapter, FileEntry
+from niceview.dataadapter import ConflictError, ListAdapter, JsonAdapter, JsonListAdapter, DirectoryAdapter, FileEntry, BoundItem, BoundFieldAdapter
 from niceview.modelgrid import ModelGrid, ModelGridInlineEdit
 
 
@@ -18,6 +18,17 @@ class Item(pydantic.BaseModel):
 class TimestampedItem(pydantic.BaseModel):
     name: str = ''
     created_at: datetime.datetime | None = None
+
+
+class Address(pydantic.BaseModel):
+    street: str = ''
+    city: str = ''
+
+
+class Device(pydantic.BaseModel):
+    name: str = ''
+    address: Address = pydantic.Field(default_factory=Address)
+    shipping: Address = pydantic.Field(default_factory=Address)
 
 
 # ---------------------------------------------------------------------------
@@ -425,6 +436,60 @@ class TestJsonAdapterCreatedField:
         path = tmp_path / 'data.json'
         with pytest.raises(ValueError, match='does not have a field named'):
             JsonAdapter(Item, path, created_field='nonexistent')
+
+
+# ---------------------------------------------------------------------------
+# BoundFieldAdapter
+# ---------------------------------------------------------------------------
+
+class TestBoundFieldAdapter:
+    def _parent(self, tmp_path):
+        path = tmp_path / 'device.json'
+        adapter = JsonAdapter(Device, path, create_if_not_exist=True)
+        adapter.save(Device(name='dev', address=Address(street='Main', city='Town')))
+        return adapter
+
+    def test_read_returns_the_named_sub_field(self, tmp_path):
+        parent = self._parent(tmp_path)
+        addr = BoundFieldAdapter(parent, 'address').read()
+        assert isinstance(addr, Address)
+        assert addr.street == 'Main' and addr.city == 'Town'
+
+    def test_save_writes_only_that_field_through_the_parent(self, tmp_path):
+        parent = self._parent(tmp_path)
+        sub = BoundFieldAdapter(parent, 'address')
+        sub.save(Address(street='New', city='City'))
+        stored = parent.read()
+        assert stored.address == Address(street='New', city='City')
+        assert stored.name == 'dev'  # sibling field untouched
+
+    def test_save_returns_the_stored_sub_item(self, tmp_path):
+        parent = self._parent(tmp_path)
+        result = BoundFieldAdapter(parent, 'address').save(Address(street='X', city='Y'))
+        assert result == Address(street='X', city='Y')
+
+    def test_two_adapters_over_one_parent_stay_independent(self, tmp_path):
+        # The read-modify-write in save() is what keeps them from clobbering each other:
+        # each save re-reads the parent and picks up the other's already-saved value.
+        parent = self._parent(tmp_path)
+        addr = BoundFieldAdapter(parent, 'address')
+        ship = BoundFieldAdapter(parent, 'shipping')
+        addr.save(Address(street='A-street', city='A-city'))
+        ship.save(Address(street='S-street', city='S-city'))
+        stored = parent.read()
+        assert stored.address == Address(street='A-street', city='A-city')
+        assert stored.shipping == Address(street='S-street', city='S-city')
+
+    def test_works_over_a_bound_item_parent(self, tmp_path):
+        # Parent reached through a CollectionAdapter + key, not only a JsonAdapter.
+        devices = [Device(name='d0'), Device(name='d1', address=Address(street='Old', city='Here'))]
+        collection = ListAdapter(Device, devices)
+        parent = BoundItem(collection, collection.key_from_item(devices[1]))
+        sub = BoundFieldAdapter(parent, 'address')
+        assert sub.read().street == 'Old'
+        sub.save(Address(street='Fresh', city='There'))
+        assert devices[1].address == Address(street='Fresh', city='There')
+        assert devices[1].name == 'd1'
 
 
 # ---------------------------------------------------------------------------
