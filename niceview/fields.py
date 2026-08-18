@@ -212,7 +212,10 @@ class _FieldInfoResolver:
         # examples[0] -> placeholder (an example of the expected input). Where the description
         # is *shown* is not decided here — it is a rendering choice (`description_as`), so the
         # resolver carries the text and stays out of it. hint and tooltip stay the author's.
-        if not nv_field_info.label:
+        # An explicit label='' means "no label"; only an unset label auto-generates one from the
+        # pydantic title or the field name. The sparse __dict__ tells the two apart — '' is
+        # falsy, so `not label` would treat a deliberate empty label as unset.
+        if 'label' not in vars(nv_field_info):
             nv_field_info.label = py_field_info.title or self._label_from_name(field_name)
         if nv_field_info.description is None:
             nv_field_info.description = py_field_info.description

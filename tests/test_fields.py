@@ -218,6 +218,16 @@ class TestLabels:
         fields = Fields(AnnotatedModel)
         assert fields['weight'].label == 'Weight (kg)'
 
+    def test_explicit_empty_label_in_annotation_suppresses_the_name(self):
+        # niceview.Field(label='') in the model means "no label" — it must override both the
+        # auto-generated name and a pydantic title, exactly like passing it at the constructor.
+        class M(pydantic.BaseModel):
+            active: Annotated[bool, niceview.Field(label='')] = True
+            token: Annotated[str, pydantic.Field(title='Secret'), niceview.Field(label='')] = ''
+        fields = Fields(M)
+        assert fields['active'].label == ''
+        assert fields['token'].label == ''
+
     def test_description_from_pydantic_description(self):
         fields = Fields(TitledModel)
         assert fields['first_name'].description == 'Your first name'
