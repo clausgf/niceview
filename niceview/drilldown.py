@@ -429,8 +429,7 @@ class DrillDownWrapper:
     def _default_render_detail(self, adapter: CollectionAdapter, key: str, set_key: Callable[[str], None]) -> None:
         form = ModelForm.from_adapter(self._item_type, adapter, key, autosave=True,
                                       chrome_style=self._chrome_style, chrome_text=self._chrome_text)
-        form.render()
-        form.render_nonfield_errors()
+        form.render()  # render() already places the non-field error label
         # The title row outlives the form -- every navigation builds a new one -- so a
         # requires_valid action is handed to whichever form is currently below it.
         for name, action in self._chrome_actions.items():
