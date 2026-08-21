@@ -145,9 +145,7 @@ class ModelList:
     def _item_subtitle(self, item: Any) -> str:
         parts = []
         for field_name in self._subtitle_fields:
-            fi = self._fields.get(field_name)
-            label = fi.label if fi else field_name
-            parts.append(f'{label}: {getattr(item, field_name, "")}')
+            parts.append(f'{getattr(item, field_name, "")}')
         return ' · '.join(parts)
 
     def _render_items(self) -> None:
