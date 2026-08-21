@@ -207,7 +207,7 @@ class ModelForm():
     """
     _item_type: type[BaseModel]
     _item_adapter: ItemAdapter | None
-    _model_repositories: dict[type[BaseModel], CollectionAdapter]
+    _model_repositories: dict[type[BaseModel] | str, CollectionAdapter]
     _change_handlers: list[Handler[FieldChangeEventArguments]]
 
     _fields: Fields
@@ -251,7 +251,7 @@ class ModelForm():
 
         self._item_type = item_type
         self._item_adapter = None
-        self._model_repositories: dict[type[BaseModel], CollectionAdapter] = {}
+        self._model_repositories: dict[type[BaseModel] | str, CollectionAdapter] = {}
         self._change_handlers: list[Handler[FieldChangeEventArguments]] = []
 
         include = _get_param('include', '__all__')
@@ -588,11 +588,13 @@ class ModelForm():
         through different collections, and a scalar key-select field is resolved by its name) or,
         for the SQLModel-relationship style, the related **model class**. Values are the
         CollectionAdapters. When a field-name-keyed adapter is given, the field's `item_type` is
-        inferred from the adapter if not set. Returns self for chaining.
+        inferred from the adapter if not set. Additive: repeated calls merge (a later entry
+        overrides an earlier one for the same key), so a wrapper's registrations combine with the
+        form's own rather than replacing them. Returns self for chaining.
         """
         if not isinstance(repositories, dict):
             raise TypeError(f"repositories must be a dictionary, got {type(repositories)}")
-        self._model_repositories = repositories
+        self._model_repositories = {**self._model_repositories, **repositories}  # merge; new wins
         return self
 
     def _push_item_to_widgets(self) -> None:
@@ -721,10 +723,10 @@ class ModelForm():
         if not field_info.item_type:
             raise ValueError(f"Field {field_name} is a list but no item type is specified in FieldInfo or as a pydantic model type")
 
-        # If model_repositories has an adapter for the child type and the parent has
-        # a valid PK, use a FilteredAdapter so mutations are persisted via the adapter.
+        # If a repository is registered for this field (by field name or child type) and the
+        # parent has a valid PK, use a FilteredAdapter so mutations are persisted via the adapter.
         # Otherwise fall back to an in-memory ListAdapter.
-        repo = self._model_repositories.get(field_info.item_type)
+        repo = resolve_repository(self._model_repositories, field_name, field_info.item_type)
         data: CollectionAdapter
         if repo is not None:
             fk_info = self._get_fk_info(field_name)

@@ -230,6 +230,7 @@ class DrillDownWrapper:
         self._chrome_style = kwargs.pop('chrome_style', None)
         self._chrome_text = kwargs.pop('chrome_text', None)
         self._place = kwargs.pop('place', 'toolbar')
+        self._model_repositories: dict = {}
         self._list_kwargs = dict(kwargs)  # remainder forwarded to ModelList (include, exclude, ...) when render_list_item is unset
         allowed_list_keys = {'include', 'exclude', 'field_infos', 'profile'}
         if unknown := set(self._list_kwargs) - allowed_list_keys:
@@ -288,6 +289,14 @@ class DrillDownWrapper:
     def adapter(self) -> CollectionAdapter:
         """The backing data adapter."""
         return self._adapter
+
+    def with_repositories(self, repositories: 'dict') -> Self:
+        """Register repositories for modelselect fields, forwarded to both views: the list rows
+        (a key field shows the referenced label) and the default detail form (its selects).
+        Keys are a field name (preferred) or the related model type. Call before render().
+        Additive: a later call adds to (and overrides) earlier registrations."""
+        self._model_repositories = {**self._model_repositories, **repositories}  # merge; new wins
+        return self
 
     # --- navigation ----------------------------------------------------------
 
@@ -427,12 +436,16 @@ class DrillDownWrapper:
         # and letting each throwaway ModelList instance register too would leak a growing chain
         # of on_change handlers pointing at stale, already-deleted widgets.
         model_list._auto_update_registered = True
+        if self._model_repositories:
+            model_list.with_repositories(self._model_repositories)
         model_list.on_select(lambda e: self.open(e.row_key))
         model_list.render()
 
     def _default_render_detail(self, adapter: CollectionAdapter, key: str, set_key: Callable[[str], None]) -> None:
         form = ModelForm.from_adapter(self._item_type, adapter, key, autosave=True,
                                       chrome_style=self._chrome_style, chrome_text=self._chrome_text)
+        if self._model_repositories:
+            form.with_repositories(self._model_repositories)
         form.render()  # render() already places the non-field error label
         # The title row outlives the form -- every navigation builds a new one -- so a
         # requires_valid action is handed to whichever form is currently below it.

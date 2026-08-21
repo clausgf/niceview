@@ -16,6 +16,7 @@ from nicegui.events import Handler, ClickEventArguments, handle_event
 
 from niceview.dataadapter import CollectionAdapter, ListAdapter, JsonListAdapter, ReactiveAdapter
 from niceview.fieldinfo import FieldInfo
+from niceview.util import resolve_repository
 from niceview.fields import Fields
 from niceview.style import ChromeStyle, get_chrome_style
 
@@ -71,6 +72,7 @@ class ModelList:
     _select_handlers: list[Handler[ListItemSelectEventArguments]]
     _auto_update_registered: bool
     _chrome_style: ChromeStyle | None
+    _model_repositories: dict[type[BaseModel] | str, CollectionAdapter]
     widget: ui.list | None
 
     def __init__(self, item_type: type[T], adapter: CollectionAdapter, **kwargs: Unpack[_ModelListOptionInputs]) -> None:
@@ -84,6 +86,7 @@ class ModelList:
         self._select_handlers = []
         self._auto_update_registered = False
         self._chrome_style = kwargs.pop('chrome_style', None)
+        self._model_repositories = {}
         self.widget = None
 
         visible = [n for n in self._fields if not self._fields[n].hidden]
@@ -139,14 +142,40 @@ class ModelList:
 
     # --- data and rendering -----------------------------------------------
 
+    def _display_value(self, field_name: str, value: Any) -> str:
+        """The text shown for a field value. A modelselect key field resolves through its
+        repository to the referenced item's label; everything else is shown via str()."""
+        if value is None:
+            return ''
+        fi = self._fields.get(field_name)
+        if fi is not None and fi.widget_type == 'modelselect' and not isinstance(value, BaseModel):
+            repo = resolve_repository(self._model_repositories, field_name, fi.item_type)
+            if repo is not None:
+                try:
+                    return str(repo.read(str(value)))
+                except (KeyError, ValueError):
+                    return str(value)  # stale key — show it rather than nothing
+        return str(value)
+
     def _item_title(self, item: Any) -> str:
-        return str(getattr(item, self._title_field, '')) if self._title_field else str(item)
+        if not self._title_field:
+            return str(item)
+        return self._display_value(self._title_field, getattr(item, self._title_field, None))
 
     def _item_subtitle(self, item: Any) -> str:
         parts = []
         for field_name in self._subtitle_fields:
-            parts.append(f'{getattr(item, field_name, "")}')
+            parts.append(self._display_value(field_name, getattr(item, field_name, None)))
         return ' · '.join(parts)
+
+    def with_repositories(self, repositories: 'dict') -> Self:
+        """Register repositories for modelselect fields shown as title/subtitle, so a stored key
+        displays the referenced item's label. Keys are a field name (preferred) or the related
+        model type — the same form the other components accept."""
+        self._model_repositories = {**self._model_repositories, **repositories}  # merge; new wins
+        if self.widget is not None:
+            self.update_rows()
+        return self
 
     def _render_items(self) -> None:
         style = self._chrome_style or get_chrome_style()

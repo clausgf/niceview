@@ -129,7 +129,7 @@ class EditGridWrapper():
     action_buttons: dict[str, ui.button]
 
     _change_handlers: list[Handler[TableItemEventArguments]]
-    _model_repositories: dict[type[BaseModel], CollectionAdapter]
+    _model_repositories: dict[type[BaseModel] | str, CollectionAdapter]
 
     def __init__(self, grid: ModelGrid, **kwargs: Unpack[_EditGridWrapperInputs]) -> None:
         self.grid = grid
@@ -219,9 +219,10 @@ class EditGridWrapper():
     def with_repositories(self, repositories: 'dict') -> Self:
         """Set repositories for modelselect fields — the create/edit dialogs and the grid itself,
         so modelselect columns show their labels (and offer a select where applicable). Keys are
-        a field name (preferred) or the related model type."""
-        self._model_repositories = repositories
-        self.grid.with_repositories(repositories)
+        a field name (preferred) or the related model type. Additive, and merged into the grid's
+        own registrations rather than replacing them."""
+        self._model_repositories = {**self._model_repositories, **repositories}  # merge; new wins
+        self.grid.with_repositories(self._model_repositories)  # merge the full view into the grid
         return self
 
     def on_change(self, callback: Handler[TableItemEventArguments]) -> Self:
@@ -660,8 +661,8 @@ class EditFormWrapper():
 
     # --- delegation --------------------------------------------------------
 
-    def with_repositories(self, repositories: 'dict[type[BaseModel], CollectionAdapter]') -> Self:
-        """Delegate to the inner ModelForm."""
+    def with_repositories(self, repositories: 'dict') -> Self:
+        """Delegate to the inner ModelForm (which merges rather than replaces)."""
         self.form.with_repositories(repositories)
         return self
 

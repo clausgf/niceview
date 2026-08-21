@@ -462,6 +462,12 @@ A modelselect bound to a relationship **object** (e.g. `author: Author`) is labe
 the grid — its write-back needs the form's FK sync, so edit it through the Add/Edit dialog. A
 scalar FK (`author_id`) is edited inline like any other choice.
 
+`with_repositories()` is uniform across `ModelForm`, `ModelGrid`, `ModelList` and the wrappers
+(`EditFormWrapper`, `EditGridWrapper`, `DrillDownWrapper`) — so a `ModelList` or drilldown list
+shows a key field's label too. Keys are a field name (preferred) or the related model type, and
+registrations are **additive**: repeated calls merge, and a wrapper merges its own into the
+component it embeds rather than replacing them (a later entry wins on key collision).
+
 
 EditGridWrapper / EditFormWrapper
 ----------------------------------

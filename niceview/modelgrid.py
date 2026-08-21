@@ -156,7 +156,7 @@ class ModelGrid:
     _defaultColDef: dict
     _rowSelection: Literal[None, 'single', 'multiple']
     _cell_renderers: dict[str, Callable[[Any], Any]]
-    _model_repositories: dict[type[BaseModel], CollectionAdapter]
+    _model_repositories: dict[type[BaseModel] | str, CollectionAdapter]
 
     def __init__(self, item_type: type[T], adapter: CollectionAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> None:
         """
@@ -231,7 +231,7 @@ class ModelGrid:
         when inline-editable, offers a select of the related items). Keys are a field name
         (preferred) or the related model type. May be called after render() — the columns and
         rows are refreshed in place."""
-        self._model_repositories = dict(repositories)
+        self._model_repositories = {**self._model_repositories, **repositories}  # merge; new wins
         if self.widget is not None:
             self.widget.options['columnDefs'] = _collect_aggrid_cols(self._fields, self._model_repositories)
             self.update_rows()

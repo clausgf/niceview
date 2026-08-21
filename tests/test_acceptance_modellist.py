@@ -12,6 +12,9 @@ import pytest
 from nicegui import ui
 from nicegui.testing import User
 
+from typing import Annotated
+
+import niceview
 from niceview.dataadapter import ListAdapter, DirectoryAdapter, FileEntry
 from niceview.modellist import ModelList
 from niceview.drilldown import DrillDownWrapper
@@ -22,6 +25,53 @@ class Contact(pydantic.BaseModel):
     name: str = pydantic.Field(default='', title='Name')
     email: str = pydantic.Field(default='', title='Email')
     phone: str = pydantic.Field(default='', title='Phone')
+
+
+class Building(pydantic.BaseModel):
+    name: str = ''
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class Room(pydantic.BaseModel):
+    name: str = ''
+    building: Annotated[
+        str | None, niceview.Field(widget_type='modelselect', item_type=Building)
+    ] = None
+
+
+# ---------------------------------------------------------------------------
+# ModelList / DrillDownWrapper — modelselect key fields show the label
+# ---------------------------------------------------------------------------
+
+class TestKeySelectLabelRendering:
+    async def test_modellist_shows_label_not_key(self, user: User) -> None:
+        buildings = ListAdapter(Building, [Building(name='Main building')])
+        key = buildings.key_from_item(next(iter(buildings)))
+
+        @ui.page('/')
+        def page():
+            ModelList.from_list(Room, [Room(name='101', building=key)],
+                                subtitle_fields=['building']) \
+                .with_repositories({'building': buildings}).render()
+
+        await user.open('/')
+        await user.should_see('Main building')
+        await user.should_not_see(f'· {key}')
+
+    async def test_drilldown_forwards_repositories_to_list(self, user: User) -> None:
+        buildings = ListAdapter(Building, [Building(name='Annex')])
+        key = buildings.key_from_item(next(iter(buildings)))
+
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_list(Room, [Room(name='102', building=key)],
+                                      item_subtitle_fields=['building']) \
+                .with_repositories({'building': buildings}).render()
+
+        await user.open('/')
+        await user.should_see('Annex')
 
 
 # ---------------------------------------------------------------------------

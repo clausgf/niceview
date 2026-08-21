@@ -5,8 +5,28 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-[0.25.0] - 2026-08-21
+[0.26.0] - 2026-08-21
 ---------------------
+
+### Added
+
+- **`with_repositories()` is uniform across every component** — `ModelForm`, `ModelGrid`,
+  `ModelList` and all three wrappers (`EditFormWrapper`, `EditGridWrapper`, `DrillDownWrapper`).
+  `ModelList` (and a `DrillDownWrapper` list) now resolves a modelselect key field shown as
+  title/subtitle to the referenced item's **label** instead of its raw key; a stale key falls back
+  to the key. `DrillDownWrapper.with_repositories()` forwards to both views (the list rows and the
+  default detail form).
+
+### Changed
+
+- **`with_repositories()` is now additive (merge, not replace).** Repeated calls combine, a later
+  entry overriding an earlier one for the same key; a wrapper merges its registrations into the
+  component it embeds instead of clobbering that component's own. First-call behaviour is unchanged.
+
+### Fixed
+
+- **Embedded `editgrid` child persistence now honours field-name-keyed repositories.** It resolved
+  the repository by model type only, missing a repository registered under the field name.
 
 ### Added
 
