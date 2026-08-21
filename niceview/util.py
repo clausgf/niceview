@@ -8,6 +8,18 @@ from niceview.style import (ChromeStyle, chrome_button, chrome_dialog, chrome_di
 from niceview.text import ChromeText, get_chrome_text, text_of
 
 
+def meta_option(item_type: type, kwargs: dict, key: str, default: Any, *, meta_key: str | None = None) -> Any:
+    """Resolve a wrapper option from (descending priority) kwargs, the model's Meta, or default.
+
+    Pops `key` from `kwargs`: an explicitly passed value (even None) wins over Meta, mirroring
+    how ModelForm reads its own Meta options. `meta_key` reads a differently named Meta attribute
+    (e.g. a collection wrapper's `title` kwarg defaulting from `Meta.title_plural`).
+    """
+    meta = getattr(item_type, 'Meta', None)
+    value = getattr(meta, meta_key or key, default) if meta is not None else default
+    return kwargs.pop(key, value)
+
+
 async def maybe_await(result: Any) -> Any:
     """
     Await `result` if it is awaitable, pass it through otherwise.

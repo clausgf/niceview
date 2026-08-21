@@ -101,7 +101,7 @@ class TestDrillDownWrapperListView:
     async def test_title_visible(self, user: User) -> None:
         @ui.page('/')
         def page():
-            DrillDownWrapper.from_list(Contact, [Contact(name='Alice')], list_title='My Contacts').render()
+            DrillDownWrapper.from_list(Contact, [Contact(name='Alice')], title='My Contacts').render()
 
         await user.open('/')
         await user.should_see('My Contacts')
@@ -111,7 +111,7 @@ class TestDrillDownWrapperListView:
 
         @ui.page('/')
         def page():
-            DrillDownWrapper.from_list(Contact, contacts, list_title='Contacts').render()
+            DrillDownWrapper.from_list(Contact, contacts, title='Contacts').render()
 
         await user.open('/')
         await user.should_see('Alice Müller')
@@ -130,7 +130,7 @@ class TestDrillDownWrapperListView:
     async def test_add_button_visible_by_default(self, user: User) -> None:
         @ui.page('/')
         def page():
-            DrillDownWrapper.from_list(Contact, [], list_title='Contacts').render()
+            DrillDownWrapper.from_list(Contact, [], title='Contacts').render()
 
         await user.open('/')
         await user.should_see(ui.button)
@@ -138,7 +138,7 @@ class TestDrillDownWrapperListView:
     async def test_add_button_hidden_when_none(self, user: User) -> None:
         @ui.page('/')
         def page():
-            DrillDownWrapper.from_list(Contact, [], list_title='Contacts', add_button=None).render()
+            DrillDownWrapper.from_list(Contact, [], title='Contacts', add_button=None).render()
 
         await user.open('/')
         await user.should_not_see(ui.button)

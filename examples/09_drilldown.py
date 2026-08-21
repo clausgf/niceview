@@ -33,7 +33,7 @@ def page():
     with ui.card().classes('w-full'):
         DrillDownWrapper.from_list(
             Contact, contacts,
-            list_title='Contacts',
+            title='Contacts',
             item_title_field='name',
             item_subtitle_fields=['email', 'phone'],
         ).render()

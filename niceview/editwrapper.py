@@ -17,7 +17,8 @@ from niceview.style import (ChromeStyle, NotifyKind, Place, chrome_button, chrom
                             chrome_dialog, chrome_dialog_buttons, chrome_notify, chrome_row,
                             chrome_title, get_chrome_style)
 from niceview.text import ChromeText, get_chrome_text, text_of
-from niceview.util import confirm_dialog
+from niceview.util import confirm_dialog, maybe_await, meta_option
+from niceview.drilldown import ActionHandler
 
 log = logging.getLogger('niceview')
 
@@ -40,7 +41,14 @@ class GridActionEventArguments(UiEventArguments):
 
 class _EditGridWrapperInputs(typing_extensions.TypedDict, total=False):
     title: str | None
+    """Title above the grid; omitted or None auto-generates '{ItemType} List', '' shows none,
+    any other string is used verbatim. Defaults from Meta.title_plural (the collection heading)
+    when this kwarg is not passed — never from the singular Meta.title."""
     description: str | None
+    """Markdown below the title row. Defaults from Meta.description when not passed."""
+    on_add: ActionHandler | None
+    """Replaces the default Add action (create item_type() and open the create dialog). Sync or
+    async — an async handler can ask for input via util.input_dialog() before creating anything."""
     delete_button: str | None
     add_button: str | None
     edit_button: str | None
@@ -71,10 +79,13 @@ class EditGridWrapper():
     Chrome wrapper for ModelGrid: renders title, description, and CRUD buttons
     (add, edit, delete, refresh) above the grid.
 
-    Title semantics: omitted or '' → auto-generated title '{ItemType} List';
-    None → no title; any other string → that title.
+    Title semantics: omitted or None → auto-generated title '{ItemType} List';
+    '' → no title; any other string → that title.
     Button semantics ('' and None differ from the title!): '' → icon-only
     button (the default), a string → labeled button, None → button hidden.
+
+    `on_add` replaces the default Add action (create item_type() and open the create dialog)
+    with a handler of your own; the other CRUD buttons keep their built-in behaviour.
 
     `chrome_actions` adds the application's own buttons to that row — the same `FormAction` a
     form places between its fields, here left of niceview's own so those keep the right edge
@@ -97,6 +108,7 @@ class EditGridWrapper():
     _rendered: bool
     _title: str | None
     _description: str | None
+    _on_add: ActionHandler | None
     _delete_button: str | None
     _add_button: str | None
     _edit_button: str | None
@@ -126,9 +138,11 @@ class EditGridWrapper():
         self.grid._rowSelection = 'single'
 
         default_edit = None if isinstance(self.grid, ModelGridInlineEdit) else ''
-        title = kwargs.pop('title', '')
-        self._title = f'{self.grid._fields._item_type.__name__} List' if title == '' else title
-        self._description = kwargs.pop('description', None)
+        item_type = self.grid._fields._item_type
+        title = meta_option(item_type, kwargs, 'title', None, meta_key='title_plural')
+        self._title = f'{item_type.__name__} List' if title is None else (title or None)
+        self._description = meta_option(item_type, kwargs, 'description', None)
+        self._on_add = kwargs.pop('on_add', None)
         self._delete_button = kwargs.pop('delete_button', '')
         self._add_button = kwargs.pop('add_button', '')
         self._edit_button = kwargs.pop('edit_button', default_edit)
@@ -339,6 +353,9 @@ class EditGridWrapper():
             self._notify(self._text.create_cancelled, 'negative')
 
     async def _on_create_clicked(self, event: ClickEventArguments) -> None:
+        if self._on_add is not None:
+            await maybe_await(self._on_add())
+            return
         await self.create_item()
 
     async def update_item(self) -> None:
@@ -521,6 +538,11 @@ class EditFormWrapper():
     Chrome wrapper for ModelForm: renders title, description, and action buttons
     (save, refresh) above the form fields.
 
+    Title semantics: a form edits a single item, so there is no auto-generated title —
+    omitted, None or '' all show no title; any other string is used verbatim. `title` defaults
+    from the singular `Meta.title` (the collection wrappers use `Meta.title_plural` instead),
+    `description` from `Meta.description`; both are overridden by these kwargs.
+
     Intelligent button presets based on the factory method used:
     - from_item():    no buttons by default (in-memory, no adapter)
     - from_json():    save + refresh shown by default (adapter exists)
@@ -560,8 +582,8 @@ class EditFormWrapper():
         has_adapter = form.adapter_bound
         autosave = form.autosave
 
-        self._title = kwargs.pop('title', None)
-        self._description = kwargs.pop('description', None)
+        self._title = meta_option(form._item_type, kwargs, 'title', None) or None
+        self._description = meta_option(form._item_type, kwargs, 'description', None)
 
         # Intelligent presets: show save/refresh when adapter exists, hide when autosave
         default_save = None if autosave else ('' if has_adapter else None)

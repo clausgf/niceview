@@ -151,7 +151,7 @@ def page():
             ui.label('Open a server to see Ping appear left of Delete: those buttons belong to '
                      'the detail view, where there is an item to act on.').classes('text-caption')
             DrillDownWrapper.from_list(
-                Connection, replicas, list_title='Replicas', item_title_field='host',
+                Connection, replicas, title='Replicas', item_title_field='host',
                 chrome_actions={'ping': FormAction('Ping', icon='wifi_tethering', on_click=ping_open,
                                                    tooltip='Ping the server on screen')},
             ).render()

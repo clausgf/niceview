@@ -444,6 +444,11 @@ EditGridWrapper / EditFormWrapper
 ----------------------------------
 
 Both wrappers add a title, optional description, and action buttons as chrome above their inner component.
+`title` and `description` default from the model's `Meta` and are overridden by the kwarg — so a model can
+carry its own heading without repeating it at every call site. The cardinality is kept apart: the form wrapper
+reads the singular `Meta.title`, the grid (like `DrillDownWrapper`'s list) reads the plural `Meta.title_plural`,
+and `Meta.description` is shared. A model with only `Meta.title` set never bleeds that singular into a grid —
+the grid stays on its auto `'{Type} List'` title until `Meta.title_plural` is given.
 
 ```python
 from niceview import EditGridWrapper, EditFormWrapper
@@ -683,8 +688,9 @@ ships no gettext of its own.
 **`EditGridWrapper` options:**
 ```python
 wrapper = EditGridWrapper.from_list(User, users,
-    title='Users',        # shown as text-h6; omitted or '' = auto title '{Type} List'; None = no title row
+    title='Users',        # shown as text-h6; omitted/None = Meta.title_plural or auto '{Type} List'; '' = no title row
     description='...',    # markdown below the title row
+    on_add=my_handler,    # replaces the default Add (create + open dialog); sync or async
     add_button='Add',     # label or '' for icon-only; None = hidden
     edit_button='',       # same
     delete_button='',     # same
@@ -699,7 +705,7 @@ wrapper.render()
 **`EditFormWrapper` options** (all `ModelForm` options also accepted):
 ```python
 EditFormWrapper.from_item(user,
-    title='Edit User',           # shown as text-h6; None = no title row
+    title='Edit User',           # shown as text-h6; omitted/None = Meta.title (singular); '' = no title; no auto title
     description='...',           # markdown below the title row
     save_button='Save',          # label or '' for icon-only; None = hidden
     refresh_button='',           # same
@@ -794,20 +800,20 @@ list_view.render()
 # Drill-down: embed inside your own page/card, then render()
 with ui.card().classes('w-full'):
     DrillDownWrapper.from_list(User, users,
-        list_title='Users',
+        title='Users',
         item_title_field='name',
         item_subtitle_fields=['email', 'active'],
     ).render()
 
 # Works with any adapter
-DrillDownWrapper.from_json(User, Path('users.json'), list_title='Users').render()
-DrillDownWrapper.from_adapter(User, adapter, list_title='Users').render()
+DrillDownWrapper.from_json(User, Path('users.json'), title='Users').render()
+DrillDownWrapper.from_adapter(User, adapter, title='Users').render()
 ```
 
 **`DrillDownWrapper` options:**
 ```python
 DrillDownWrapper.from_list(User, users,
-    list_title='Users',              # list view title; None or '' = none (the detail view shows the item title)
+    title='Users',              # list title; omitted/None = Meta.title_plural or auto '{Type} List'; '' = none (detail shows the item title)
     description='...',               # markdown below the title row, in both views
     item_title_field='name',         # field shown as detail title (auto-detected if omitted)
     item_subtitle_fields=['email'],  # fields shown as subtitle (next two visible fields if omitted)

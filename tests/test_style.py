@@ -201,7 +201,7 @@ class TestChromeConsistency:
     async def test_drilldown_buttons_carry_tooltips(self, user: User) -> None:
         @ui.page('/')
         def page():
-            DrillDownWrapper.from_list(Contact, [], list_title='Contacts').render()
+            DrillDownWrapper.from_list(Contact, [], title='Contacts').render()
 
         await user.open('/')
         with user._client:
@@ -214,7 +214,7 @@ class TestChromeConsistency:
         @ui.page('/')
         def page():
             buttons['grid'] = EditGridWrapper.from_list(Contact, [], title='Grid').render().add_button
-            buttons['drilldown'] = DrillDownWrapper.from_list(Contact, [], list_title='List').render().add_button
+            buttons['drilldown'] = DrillDownWrapper.from_list(Contact, [], title='List').render().add_button
 
         await user.open('/')
         grid_props = dict(buttons['grid'].props)
@@ -232,7 +232,7 @@ class TestChromeConsistency:
         def page():
             rows.append(EditGridWrapper.from_list(Contact, [], title='Grid').render().title_row)
             rows.append(EditFormWrapper.from_json(Contact, tmp_path / 'c.json', title='Form').render().title_row)
-            rows.append(DrillDownWrapper.from_list(Contact, [], list_title='List').render().title_row)
+            rows.append(DrillDownWrapper.from_list(Contact, [], title='List').render().title_row)
 
         await user.open('/')
         assert all(row is not None for row in rows)
@@ -294,7 +294,7 @@ class TestButtonGrouping:
         # detail view — only one of them is ever on screen.
         @ui.page('/')
         def page():
-            DrillDownWrapper.from_list(Contact, [], list_title='Contacts').render()
+            DrillDownWrapper.from_list(Contact, [], title='Contacts').render()
 
         await user.open('/')
         with user._client:
@@ -334,7 +334,7 @@ class TestButtonShape:
     async def test_nothing_is_shaped_by_default(self, user: User) -> None:
         @ui.page('/')
         def page():
-            DrillDownWrapper.from_list(Contact, [], list_title='Contacts').render()
+            DrillDownWrapper.from_list(Contact, [], title='Contacts').render()
 
         await user.open('/')
         with user._client:
@@ -345,7 +345,7 @@ class TestButtonShape:
 
         @ui.page('/')
         def page():
-            DrillDownWrapper.from_list(Contact, [], list_title='Contacts').render()
+            DrillDownWrapper.from_list(Contact, [], title='Contacts').render()
 
         await user.open('/')
         with user._client:
@@ -356,7 +356,7 @@ class TestButtonShape:
 
         @ui.page('/')
         def page():
-            DrillDownWrapper.from_list(Contact, [], list_title='Contacts',
+            DrillDownWrapper.from_list(Contact, [], title='Contacts',
                                        add_button='Add', delete_button='Delete').render()
 
         await user.open('/')
@@ -369,7 +369,7 @@ class TestButtonShape:
 
         @ui.page('/')
         def page():
-            DrillDownWrapper.from_list(Contact, [], list_title='Contacts',
+            DrillDownWrapper.from_list(Contact, [], title='Contacts',
                                        add_button='Add', delete_button=None).render()
 
         await user.open('/')
@@ -384,7 +384,7 @@ class TestButtonShape:
 
         @ui.page('/')
         def page():
-            DrillDownWrapper.from_list(Contact, [], list_title='Contacts').render()
+            DrillDownWrapper.from_list(Contact, [], title='Contacts').render()
 
         await user.open('/')
         with user._client:
@@ -576,22 +576,32 @@ class TestDrillDownChromeOptions:
 
         @ui.page('/')
         def page():
-            wrapper.append(DrillDownWrapper.from_list(Contact, [], list_title='Contacts',
+            wrapper.append(DrillDownWrapper.from_list(Contact, [], title='Contacts',
                                                       description='Pick a *contact*.').render())
 
         await user.open('/')
         assert isinstance(wrapper[0].description, ui.markdown)
         assert wrapper[0].description.content == 'Pick a *contact*.'
 
-    async def test_list_title_none_shows_no_title(self, user: User) -> None:
+    async def test_title_empty_shows_no_title(self, user: User) -> None:
         @ui.page('/')
         def page():
-            DrillDownWrapper.from_list(Contact, [], list_title=None).render()
+            DrillDownWrapper.from_list(Contact, [], title='').render()
 
         await user.open('/')
         with user._client:
             titles = [e.text for e in user.client.layout.descendants() if isinstance(e, ui.label)]
         assert 'Contact List' not in titles
+
+    async def test_title_none_shows_auto_title(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_list(Contact, [], title=None).render()
+
+        await user.open('/')
+        with user._client:
+            titles = [e.text for e in user.client.layout.descendants() if isinstance(e, ui.label)]
+        assert 'Contact List' in titles
 
 
 # ---------------------------------------------------------------------------

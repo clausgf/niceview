@@ -95,7 +95,7 @@ def drilldown() -> None:
         with ui.card().classes('shot-card w-full max-w-sm'):
             DrillDownWrapper.from_list(
                 Deployment, _sample(),
-                list_title='Deployments',
+                title='Deployments',
                 item_title_field='name',
                 item_subtitle_fields=['environment'],
                 render_detail=_compact_detail,

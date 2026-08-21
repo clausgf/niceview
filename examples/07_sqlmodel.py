@@ -47,6 +47,8 @@ class Author(sqlmodel.SQLModel, table=True):
     updated_at: Annotated[datetime.datetime, sqlmodel.Field(default_factory=_now), niceview.Field(hidden=True)]
 
     class Meta:
+        title = 'Author'          # singular: the form heading
+        title_plural = 'Authors'  # collection: the grid heading
         # provide field order because SQLModel doesn't preserve declaration order
         field_order = ['name', 'email', 'books']
 
@@ -63,6 +65,8 @@ class Book(sqlmodel.SQLModel, table=True):
     updated_at: Annotated[datetime.datetime, sqlmodel.Field(default_factory=_now), niceview.Field(hidden=True)]
 
     class Meta:
+        title = 'Book'          # singular: the form heading
+        title_plural = 'Books'  # collection: the grid heading
         field_infos = {
             'author': niceview.Field(label='Author', tooltip='Select the author of this book'),
         }
@@ -76,9 +80,9 @@ class Book(sqlmodel.SQLModel, table=True):
 def authors_page():
     ui.markdown(__doc__ or '')
     ui.separator()
-    ui.label('Authors').classes('text-h5')
     authors = SqlModelAdapter(Author, engine)
-    EditGridWrapper.from_adapter(Author, authors, title='Authors').render()
+    # No title= here: the grid heading comes from Author.Meta.title_plural ('Authors').
+    EditGridWrapper.from_adapter(Author, authors).render()
     ui.button('→ Books', on_click=lambda: ui.navigate.to('/books')).props('flat')
 
 
@@ -94,8 +98,8 @@ def author_edit_page(author_id: int):
 def books_page():
     books = SqlModelAdapter(Book, engine)
     authors = SqlModelAdapter(Author, engine)
-    ui.label('Books').classes('text-h5')
-    wrapper = EditGridWrapper.from_adapter(Book, books, title='Books').render()
+    # Grid heading from Book.Meta.title_plural ('Books'); the edit form below overrides Meta.title.
+    wrapper = EditGridWrapper.from_adapter(Book, books).render()
     wrapper.with_repositories({Author: authors})
     ui.button('← Authors', on_click=lambda: ui.navigate.to('/')).props('flat')
 

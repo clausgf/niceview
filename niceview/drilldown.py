@@ -21,7 +21,7 @@ from niceview.modellist import ModelList
 from niceview.style import (ChromeStyle, NotifyKind, Place, chrome_button, chrome_buttons,
                             chrome_notify, chrome_row, chrome_title, get_chrome_style)
 from niceview.text import ChromeText, get_chrome_text, text_of
-from niceview.util import confirm_dialog, maybe_await
+from niceview.util import confirm_dialog, maybe_await, meta_option
 
 log = logging.getLogger('niceview')
 
@@ -82,11 +82,14 @@ def _slide_class(direction: str) -> str:
 
 class _DrillDownWrapperOptionInputs(typing_extensions.TypedDict, total=False):
     """Keyword options for DrillDownWrapper and its factory methods."""
-    list_title: str | None
-    """Title shown in the list view; None or '' shows none. The detail view always shows the
-    current item's title instead."""
+    title: str | None
+    """Title shown in the list view; omitted or None auto-generates '{ItemType} List', '' shows
+    none. Defaults from Meta.title_plural (the collection heading) when this kwarg is not passed
+    — never from the singular Meta.title. The detail view always shows the current item's title
+    instead."""
     description: str | None
-    """Markdown shown below the title row, in both views."""
+    """Markdown shown below the title row, in both views. Defaults from Meta.description when
+    this kwarg is not passed."""
     item_title_field: str | None
     item_subtitle_fields: list[str] | None
     add_button: str | None
@@ -165,12 +168,12 @@ class DrillDownWrapper:
     would be silently lost on the next navigation.
 
     Usage:
-        wrapper = DrillDownWrapper.from_list(User, items, list_title='Users')
+        wrapper = DrillDownWrapper.from_list(User, items, title='Users')
         wrapper.render()
     """
     _item_type: type[BaseModel]
     _adapter: CollectionAdapter
-    _list_title: str | None
+    _title: str | None
     _description: str | None
     _item_title_field: str | None
     _item_subtitle_fields: list[str] | None
@@ -206,8 +209,9 @@ class DrillDownWrapper:
             raise TypeError(f"item_type must be a subclass of BaseModel, got {type(item_type)}")
         self._item_type = item_type
         self._adapter = adapter
-        self._list_title = kwargs.pop('list_title', item_type.__name__ + ' List')
-        self._description = kwargs.pop('description', None)
+        title = meta_option(item_type, kwargs, 'title', None, meta_key='title_plural')
+        self._title = (item_type.__name__ + ' List') if title is None else (title or None)
+        self._description = meta_option(item_type, kwargs, 'description', None)
         self._item_title_field = kwargs.pop('item_title_field', None)
         self._item_subtitle_fields = kwargs.pop('item_subtitle_fields', None)
         self._render_list_item = kwargs.pop('render_list_item', None)
@@ -372,7 +376,7 @@ class DrillDownWrapper:
         is_detail = self._state['view'] == 'detail'
         if self.back_button is not None:
             self.back_button.set_visibility(is_detail or self._on_back is not None)
-        self.title.set_text(self._detail_title() if is_detail else (self._list_title or ''))
+        self.title.set_text(self._detail_title() if is_detail else (self._title or ''))
         if self.add_button is not None:
             self.add_button.set_visibility(not is_detail)
         if self.delete_button is not None:

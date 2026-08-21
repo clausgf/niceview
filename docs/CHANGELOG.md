@@ -5,6 +5,37 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+[0.23.0] - 2026-08-21
+---------------------
+
+### Changed
+
+- **`DrillDownWrapper`'s `list_title=` is renamed to `title=`** (hard cut, no alias), so all three
+  chrome wrappers name their title the same way. Rename the keyword at every call site.
+
+- **Unified title semantics across the wrappers.** For the collection wrappers `DrillDownWrapper`
+  and `EditGridWrapper`: **omitted or `None` → auto title `'{Type} List'`, `''` → no title**, any
+  other string verbatim. This matches the field-label rule (unset → auto, `''` → off). Two
+  behaviour changes: `EditGridWrapper(title='')` now shows **no** title (was the auto title), and
+  `DrillDownWrapper(title=None)` now shows the **auto** title (was none). `EditFormWrapper` is
+  unchanged — a single-item form has no auto title, so omitted, `None` and `''` all mean no title.
+
+### Added
+
+- **`EditGridWrapper(on_add=...)`** — replaces the default Add action (create `item_type()` and open
+  the create dialog) with a handler of your own, sync or async, mirroring `DrillDownWrapper.on_add`.
+  The other CRUD buttons keep their built-in behaviour.
+
+- **`title` and `description` now default from the model's `Meta`** on all three chrome wrappers
+  (`DrillDownWrapper`, `EditGridWrapper`, `EditFormWrapper`), overridden by the kwarg. The title
+  is split by cardinality (like Django's `verbose_name` / `verbose_name_plural`): the form wrapper
+  reads the singular **`Meta.title`**, the collection wrappers (grid and drilldown list) read the
+  plural **`Meta.title_plural`**, and **`Meta.description`** is shared. Resolution is
+  kwargs → Meta → (auto `'{Type} List'` for the collection title, else None); a model with only
+  `Meta.title` set never bleeds that singular into a grid heading. `EditFormWrapper` thereby gains
+  a `Meta`-sourced heading it previously had no layer for. The `DrillDownWrapper` detail title
+  stays the per-item title (`item_title_field`); only its `description` is `Meta`-sourced.
+
 [0.22.1] - 2026-08-20
 ---------------------
 

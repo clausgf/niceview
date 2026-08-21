@@ -75,7 +75,7 @@ def page():
     with ui.card().classes('w-full max-w-2xl'):
         wrapper = DrillDownWrapper.from_adapter(
             FileEntry, directory,
-            list_title='Notes',
+            title='Notes',
             item_title_field='name',
             item_subtitle_fields=[],
             on_add=handle_add,

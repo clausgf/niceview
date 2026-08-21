@@ -7,3 +7,5 @@
 - Always add API changes to CHANGELOG.md.
 - Keep docs and code comments short and precise.
 - Keep the doc well structured.
+- Playwright is available, but not used in regular tests for performance.
+- Keep the communication to the user concise and precise. 

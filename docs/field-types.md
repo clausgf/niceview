@@ -155,6 +155,8 @@ class User(pydantic.BaseModel):
 
 `Meta.field_order` is a list of field names that sets the display order. Fields not listed are appended at the end in their natural order. This is especially useful for SQLModel table classes, which do not guarantee declaration order. A form layout (below) defines the order itself, so `field_order` does not apply on top of it.
 
+**Model title & description:** `Meta.title` (singular), `Meta.title_plural` (collection) and `Meta.description` give a model its default chrome text, so a heading is declared once instead of at every call site. The chrome wrappers pick it up — `EditFormWrapper` reads `title`, the collection wrappers (`EditGridWrapper`, `DrillDownWrapper`'s list) read `title_plural`, and all share `description` — and each is overridden by the wrapper's own `title=` / `description=` kwarg. The cardinalities stay apart: a model with only `title` set never bleeds that singular into a grid heading, which stays on its auto `'{Type} List'` until `title_plural` is given.
+
 **Context-specific layouts (profiles):** Define named field sets in `Meta.profiles` and select them via `profile=` when creating a form or grid. This lets you render the same model differently in different contexts — e.g. a compact summary list vs a full detail form — without repeating `include=` at every call site:
 
 ```python

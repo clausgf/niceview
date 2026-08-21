@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from nicegui import ui
 
 from niceview.dataadapter import ListAdapter
+from niceview.drilldown import DrillDownWrapper
 from niceview.modelform import ModelForm
 from niceview.modelgrid import ModelGrid
 from niceview.editwrapper import EditFormWrapper, EditGridWrapper
@@ -16,6 +17,22 @@ from niceview.editwrapper import EditFormWrapper, EditGridWrapper
 class User(pydantic.BaseModel):
     name: str = pydantic.Field(default='', max_length=20)
     age: int = pydantic.Field(default=0, ge=0, le=120)
+
+
+class Titled(pydantic.BaseModel):
+    name: str = ''
+
+    class Meta:
+        title = 'Person'          # singular: the form
+        title_plural = 'People'   # collection: grid / drilldown list
+        description = 'All people'
+
+
+class SingularOnly(pydantic.BaseModel):
+    name: str = ''
+
+    class Meta:
+        title = 'Person'  # no title_plural -> must NOT bleed into the collection title
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +176,100 @@ class TestOnChange:
         wrapper.on_change(cb1).on_change(cb2)
         assert cb1 in wrapper._change_handlers
         assert cb2 in wrapper._change_handlers
+
+
+# ---------------------------------------------------------------------------
+# EditGridWrapper title semantics and on_add
+# ---------------------------------------------------------------------------
+
+class TestEditGridWrapperTitle:
+    def _wrapper(self, **kwargs):
+        return EditGridWrapper(ModelGrid.from_list(User, []), **kwargs)
+
+    def test_omitted_is_auto(self):
+        assert self._wrapper()._title == 'User List'
+
+    def test_none_is_auto(self):
+        assert self._wrapper(title=None)._title == 'User List'
+
+    def test_empty_is_no_title(self):
+        assert self._wrapper(title='')._title is None
+
+    def test_string_is_verbatim(self):
+        assert self._wrapper(title='Members')._title == 'Members'
+
+
+class TestEditGridWrapperOnAdd:
+    def test_on_add_replaces_default_create(self):
+        called = []
+        wrapper = EditGridWrapper(ModelGrid.from_list(User, []), on_add=lambda: called.append(True))
+        with patch.object(wrapper, 'create_item', new=AsyncMock()) as create:
+            asyncio.run(wrapper._on_create_clicked(MagicMock()))
+        assert called == [True]
+        create.assert_not_called()
+
+    def test_default_create_runs_without_on_add(self):
+        wrapper = EditGridWrapper(ModelGrid.from_list(User, []))
+        with patch.object(wrapper, 'create_item', new=AsyncMock()) as create:
+            asyncio.run(wrapper._on_create_clicked(MagicMock()))
+        create.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# title / description from the model's Meta (kwargs -> Meta -> auto/None)
+# ---------------------------------------------------------------------------
+
+class TestMetaTitleDescription:
+    def test_grid_reads_meta_plural(self):
+        w = EditGridWrapper(ModelGrid.from_list(Titled, []))
+        assert w._title == 'People'
+        assert w._description == 'All people'
+
+    def test_grid_kwarg_overrides_meta(self):
+        w = EditGridWrapper(ModelGrid.from_list(Titled, []), title='Team', description='d')
+        assert w._title == 'Team'
+        assert w._description == 'd'
+
+    def test_grid_empty_kwarg_beats_meta(self):
+        w = EditGridWrapper(ModelGrid.from_list(Titled, []), title='')
+        assert w._title is None
+
+    def test_grid_without_meta_is_auto(self):
+        w = EditGridWrapper(ModelGrid.from_list(User, []))
+        assert w._title == 'User List'
+        assert w._description is None
+
+    def test_grid_singular_title_does_not_bleed(self):
+        # Meta.title is singular; without title_plural the collection stays on the auto title.
+        w = EditGridWrapper(ModelGrid.from_list(SingularOnly, []))
+        assert w._title == 'SingularOnly List'
+
+    def test_form_reads_meta_singular(self):
+        w = EditFormWrapper(ModelForm.from_item(Titled()))
+        assert w._title == 'Person'
+        assert w._description == 'All people'
+
+    def test_form_ignores_title_plural(self):
+        w = EditFormWrapper(ModelForm.from_item(SingularOnly()))
+        assert w._title == 'Person'
+
+    def test_form_without_meta_is_none(self):
+        w = EditFormWrapper(ModelForm.from_item(User()))
+        assert w._title is None
+        assert w._description is None
+
+    def test_form_empty_kwarg_beats_meta(self):
+        w = EditFormWrapper(ModelForm.from_item(Titled()), title='')
+        assert w._title is None
+
+    def test_drilldown_reads_meta_plural(self):
+        w = DrillDownWrapper.from_list(Titled, [])
+        assert w._title == 'People'
+        assert w._description == 'All people'
+
+    def test_drilldown_kwarg_overrides_meta(self):
+        w = DrillDownWrapper.from_list(Titled, [], title='Team')
+        assert w._title == 'Team'
 
 
 # ---------------------------------------------------------------------------

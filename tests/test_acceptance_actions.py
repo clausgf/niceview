@@ -445,7 +445,7 @@ class TestDrillDownWrapperActions:
 
     async def test_an_action_is_hidden_in_the_list_view(self, user: User) -> None:
         captured = _form(lambda: DrillDownWrapper.from_list(
-            Connection, [Connection()], list_title='Connections',
+            Connection, [Connection()], title='Connections',
             chrome_actions={'ping': FormAction('Ping')},
         ).render())
         await user.open('/')
