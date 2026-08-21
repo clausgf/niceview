@@ -5,6 +5,22 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+[0.24.0] - 2026-08-21
+---------------------
+
+### Added
+
+- **Choice columns render their label in the grid.** A field with `options` (or a bare `Literal`)
+  now shows its label instead of the stored id in `ModelGrid` and `ModelGridInlineEdit`, and — when
+  inline-editable — edits through a select of those labels (aggrid `refData` + `agSelectCellEditor`).
+  No extra config; it mirrors the form's select. The stored value is unchanged.
+
+- **`ModelGrid.with_repositories({Model: adapter})`** resolves modelselect columns against a related
+  model, so they show its labels (and, for a scalar FK, offer the select). May be called after
+  `render()` — columns and rows refresh in place. `EditGridWrapper.with_repositories()` now forwards
+  to the grid as well as the dialogs. A modelselect bound to a relationship *object* is label-display
+  only in the grid (its write-back needs the form's FK sync — edit it via the dialog).
+
 [0.23.1] - 2026-08-21
 ---------------------
 

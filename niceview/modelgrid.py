@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import datetime
 import logging
 from pathlib import Path
-from typing import Any, Callable, Literal, Self, TypeVar, Unpack
+from typing import Any, Callable, Literal, Self, TypeVar, Unpack, get_args
 import typing_extensions
 from pydantic import BaseModel
 from nicegui import ui
@@ -23,7 +23,37 @@ def _notify(template: Any, **params: Any) -> None:
     chrome_notify(text_of(template, **params), 'negative', get_chrome_style())
 
 
-def _collect_aggrid_cols(fields: Fields) -> list[dict[str, Any]]:
+def _field_options(info: FieldInfo, repositories: 'dict | None') -> 'tuple[dict[str, str] | None, list | None]':
+    """Resolve a field's choices for the grid, mirroring how the form's select does it.
+
+    Returns (labels, values): `labels` is a {stored-value -> display-label} map for the column's
+    aggrid `refData` (None when the values are their own labels, e.g. a bare Literal); `values`
+    is the list of stored values for an inline `agSelectCellEditor`, or None when the field must
+    not be inline-edited as a select. (None, None) when the field is not a choice at all.
+
+    Source order: static options, then literal_options, then — for a modelselect field — the
+    registered repository (its keys and each item's str()). A modelselect bound to a relationship
+    *object* gets labels (display) but no values: its write-back needs the form's FK sync, so it
+    stays display-only in the grid and is edited through the dialog instead."""
+    opts: Any = info.options or info.literal_options
+    stores_object = False
+    if not opts and info.widget_type == 'modelselect' and info.item_type in (repositories or {}):
+        repo = repositories[info.item_type]  # type: ignore[index]
+        opts = {repo.key_from_item(item): str(item) for item in repo}
+        # The field stores the related object (needs the form's FK sync on write) when its type
+        # is the model itself or an Optional of it; a scalar FK (str/int key) does not.
+        candidates = (info.field_type, *get_args(info.field_type))
+        stores_object = any(isinstance(t, type) and issubclass(t, BaseModel) for t in candidates)
+    if not opts:
+        return None, None
+    labels = {str(k): str(v) for k, v in opts.items()} if isinstance(opts, dict) else None
+    if stores_object:
+        return labels, None
+    values = list(opts.keys()) if isinstance(opts, dict) else list(opts)
+    return labels, values
+
+
+def _collect_aggrid_cols(fields: Fields, repositories: 'dict | None' = None) -> list[dict[str, Any]]:
     cols = []
     for name in fields:
         info = fields[name]
@@ -56,6 +86,17 @@ def _collect_aggrid_cols(fields: Fields) -> list[dict[str, Any]]:
                 col['filter'] = 'agTextColumnFilter'
             if info.table_floating_filter:
                 col['floatingFilter'] = True
+        # A choice field (select/toggle/radio, a Literal, or a modelselect with a repository)
+        # shows its label via refData and, when editable, edits through a select of its values.
+        labels, values = _field_options(info, repositories)
+        if labels is not None:
+            col['refData'] = labels
+        if values is not None and info.editable:
+            col['cellEditor'] = 'agSelectCellEditor'
+            col['cellEditorParams'] = {'values': values}
+        elif labels is not None and values is None:
+            # A relationship modelselect: label display only, never raw-text inline editing.
+            col['editable'] = False
         # Additional column properties: https://www.ag-grid.com/vue-data-grid/column-properties/
         if info.aggrid:
             col.update(info.aggrid)
@@ -115,6 +156,7 @@ class ModelGrid:
     _defaultColDef: dict
     _rowSelection: Literal[None, 'single', 'multiple']
     _cell_renderers: dict[str, Callable[[Any], Any]]
+    _model_repositories: dict[type[BaseModel], CollectionAdapter]
 
     def __init__(self, item_type: type[T], adapter: CollectionAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> None:
         """
@@ -137,6 +179,7 @@ class ModelGrid:
         self._defaultColDef = kwargs.pop('defaultColDef', {}).copy()
         self._rowSelection = kwargs.pop('rowSelection', None)
         self._cell_renderers = kwargs.pop('cell_renderers', {}).copy()
+        self._model_repositories = {}
         if kwargs:
             raise TypeError(f"Unexpected keyword arguments for {type(self).__name__}: {', '.join(kwargs.keys())}")
 
@@ -183,6 +226,17 @@ class ModelGrid:
         """The backing data adapter."""
         return self._data
 
+    def with_repositories(self, repositories: 'dict[type[BaseModel], CollectionAdapter]') -> Self:
+        """Register repositories for modelselect fields, so the grid shows their labels (and,
+        when inline-editable, offers a select of the related items). May be called after
+        render() — the columns and rows are refreshed in place."""
+        self._model_repositories = dict(repositories)
+        if self.widget is not None:
+            self.widget.options['columnDefs'] = _collect_aggrid_cols(self._fields, self._model_repositories)
+            self.update_rows()
+            self.widget.update()
+        return self
+
     # --- event handler configuration --------------------------------------
 
     def on_select(self, callback: Handler[TableItemSelectEventArguments]) -> Self:
@@ -219,7 +273,10 @@ class ModelGrid:
                 elif isinstance(value, list):
                     row[field_name] = ', '.join(str(v) for v in value)
                 elif isinstance(value, BaseModel):
-                    row[field_name] = str(value)
+                    # A modelselect/relationship: with a repository, store the key so the
+                    # refData column maps it to its label; otherwise fall back to str().
+                    repo = self._model_repositories.get(field_info.item_type)
+                    row[field_name] = repo.key_from_item(value) if repo else str(value)
                 else:
                     row[field_name] = value
             self._rows.append(row)
@@ -229,7 +286,7 @@ class ModelGrid:
 
     def render(self) -> Self:
         """Render the ag-Grid widget into the current NiceGUI context."""
-        cols = _collect_aggrid_cols(self._fields)
+        cols = _collect_aggrid_cols(self._fields, self._model_repositories)
         self.update_rows()
 
         aggrid_kwargs: dict[str, Any] = {}

@@ -439,6 +439,29 @@ grid.render()
 grid.widget.classes('w-full')
 ```
 
+**Choice columns (select / toggle / radio, `Literal`, modelselect).** A field with `options`
+(or a bare `Literal`) shows its **label** in the cell — not the stored id — and, in a
+`ModelGridInlineEdit`, edits through a dropdown of those labels (via aggrid `refData` +
+`agSelectCellEditor`). This needs no extra config; it mirrors the form's select.
+
+```python
+kind: Annotated[RoomType, niceview.Field(widget_type='ui.select', options=ROOM_LABELS)] = 'meeting'
+# grid cell shows 'Meeting room'; inline edit offers the labels; the stored value stays 'meeting'.
+```
+
+For **modelselect** fields (options come from a related model), register the repositories so the
+grid can resolve the labels — on the grid directly or via `EditGridWrapper`. It may be called
+after `render()`; the columns and rows refresh in place:
+
+```python
+grid = ModelGrid.from_adapter(Book, books).render()
+grid.with_repositories({Author: authors_adapter})   # author column now shows the author's name
+```
+
+A modelselect bound to a relationship **object** (e.g. `author: Author`) is label-display only in
+the grid — its write-back needs the form's FK sync, so edit it through the Add/Edit dialog. A
+scalar FK (`author_id`) is edited inline like any other choice.
+
 
 EditGridWrapper / EditFormWrapper
 ----------------------------------

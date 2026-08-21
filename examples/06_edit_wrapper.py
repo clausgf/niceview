@@ -15,14 +15,22 @@ shows its current content.
 """
 
 import pydantic
-from typing import Literal
+from typing import Annotated, Literal
 from nicegui import ElementFilter, ui
+import niceview
 from niceview import ListAdapter, EditGridWrapper, EditFormWrapper
+
+# Stored ids -> display labels: the inline grid edits priority through a dropdown of these labels.
+PRIORITY_LABELS = {'low': 'Low', 'medium': 'Medium', 'high': 'High'}
 
 
 class Task(pydantic.BaseModel):
     title: str = pydantic.Field(default='', min_length=1, max_length=40, title='Title')
-    priority: Literal['low', 'medium', 'high'] = pydantic.Field(default='medium', title='Priority')
+    priority: Annotated[
+        Literal['low', 'medium', 'high'],
+        pydantic.Field(title='Priority'),
+        niceview.Field(widget_type='ui.select', options=PRIORITY_LABELS),
+    ] = 'medium'
     done: bool = pydantic.Field(default=False, title='Done')
 
 

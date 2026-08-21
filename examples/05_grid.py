@@ -12,14 +12,23 @@ Three variants of the AgGrid-based table component:
 from pathlib import Path
 
 import pydantic
-from typing import Literal
+from typing import Annotated, Literal
 from nicegui import ui
+import niceview
 from niceview import ModelGrid, ModelGridInlineEdit
+
+# Stored ids -> display labels. The grid shows the label, stores the id, and (inline) edits
+# through a dropdown of these labels.
+PRIORITY_LABELS = {'low': 'Low', 'medium': 'Medium', 'high': 'High'}
 
 
 class Task(pydantic.BaseModel):
     title: str = pydantic.Field(default='', max_length=40, title='Title')
-    priority: Literal['low', 'medium', 'high'] = pydantic.Field(default='medium', title='Priority')
+    priority: Annotated[
+        Literal['low', 'medium', 'high'],
+        pydantic.Field(title='Priority'),
+        niceview.Field(widget_type='ui.select', options=PRIORITY_LABELS),
+    ] = 'medium'
     done: bool = pydantic.Field(default=False, title='Done')
 
 
