@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import datetime
 import logging
 from pathlib import Path
-from typing import Any, Callable, Literal, Self, TypeVar, Unpack, get_args
+from typing import Any, Callable, Literal, Self, TypeVar, Unpack
 import typing_extensions
 from pydantic import BaseModel
 from nicegui import ui
@@ -13,6 +13,7 @@ from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 from niceview.style import chrome_notify, get_chrome_style
 from niceview.text import get_chrome_text, text_of
+from niceview.util import field_stores_model, resolve_repository
 
 log = logging.getLogger('niceview')
 
@@ -23,7 +24,7 @@ def _notify(template: Any, **params: Any) -> None:
     chrome_notify(text_of(template, **params), 'negative', get_chrome_style())
 
 
-def _field_options(info: FieldInfo, repositories: 'dict | None') -> 'tuple[dict[str, str] | None, list | None]':
+def _field_options(name: str, info: FieldInfo, repositories: 'dict | None') -> 'tuple[dict[str, str] | None, list | None]':
     """Resolve a field's choices for the grid, mirroring how the form's select does it.
 
     Returns (labels, values): `labels` is a {stored-value -> display-label} map for the column's
@@ -32,18 +33,17 @@ def _field_options(info: FieldInfo, repositories: 'dict | None') -> 'tuple[dict[
     not be inline-edited as a select. (None, None) when the field is not a choice at all.
 
     Source order: static options, then literal_options, then — for a modelselect field — the
-    registered repository (its keys and each item's str()). A modelselect bound to a relationship
-    *object* gets labels (display) but no values: its write-back needs the form's FK sync, so it
-    stays display-only in the grid and is edited through the dialog instead."""
+    registered repository (looked up by field name or model type; its keys and each item's str()).
+    A modelselect bound to a relationship *object* gets labels (display) but no values: its
+    write-back needs the form's FK sync, so it stays display-only in the grid and is edited through
+    the dialog. A scalar key-select field is edited inline like any other choice."""
     opts: Any = info.options or info.literal_options
     stores_object = False
-    if not opts and info.widget_type == 'modelselect' and info.item_type in (repositories or {}):
-        repo = repositories[info.item_type]  # type: ignore[index]
-        opts = {repo.key_from_item(item): str(item) for item in repo}
-        # The field stores the related object (needs the form's FK sync on write) when its type
-        # is the model itself or an Optional of it; a scalar FK (str/int key) does not.
-        candidates = (info.field_type, *get_args(info.field_type))
-        stores_object = any(isinstance(t, type) and issubclass(t, BaseModel) for t in candidates)
+    if not opts and info.widget_type == 'modelselect':
+        repo = resolve_repository(repositories or {}, name, info.item_type)
+        if repo is not None:
+            opts = {repo.key_from_item(item): str(item) for item in repo}
+            stores_object = field_stores_model(info)
     if not opts:
         return None, None
     labels = {str(k): str(v) for k, v in opts.items()} if isinstance(opts, dict) else None
@@ -88,7 +88,7 @@ def _collect_aggrid_cols(fields: Fields, repositories: 'dict | None' = None) -> 
                 col['floatingFilter'] = True
         # A choice field (select/toggle/radio, a Literal, or a modelselect with a repository)
         # shows its label via refData and, when editable, edits through a select of its values.
-        labels, values = _field_options(info, repositories)
+        labels, values = _field_options(name, info, repositories)
         if labels is not None:
             col['refData'] = labels
         if values is not None and info.editable:
@@ -228,8 +228,9 @@ class ModelGrid:
 
     def with_repositories(self, repositories: 'dict[type[BaseModel], CollectionAdapter]') -> Self:
         """Register repositories for modelselect fields, so the grid shows their labels (and,
-        when inline-editable, offers a select of the related items). May be called after
-        render() — the columns and rows are refreshed in place."""
+        when inline-editable, offers a select of the related items). Keys are a field name
+        (preferred) or the related model type. May be called after render() — the columns and
+        rows are refreshed in place."""
         self._model_repositories = dict(repositories)
         if self.widget is not None:
             self.widget.options['columnDefs'] = _collect_aggrid_cols(self._fields, self._model_repositories)
@@ -275,7 +276,7 @@ class ModelGrid:
                 elif isinstance(value, BaseModel):
                     # A modelselect/relationship: with a repository, store the key so the
                     # refData column maps it to its label; otherwise fall back to str().
-                    repo = self._model_repositories.get(field_info.item_type)
+                    repo = resolve_repository(self._model_repositories, field_name, field_info.item_type)
                     row[field_name] = repo.key_from_item(value) if repo else str(value)
                 else:
                     row[field_name] = value

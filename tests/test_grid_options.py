@@ -88,7 +88,7 @@ class TestModelselect:
 
     def test_no_repository_leaves_field_plain(self):
         # Without a repository the modelselect column stays as-is (str() display, no refData).
-        labels, values = _field_options(_cols_info(BookRel, 'author'), None)
+        labels, values = _field_options('author', _cols_info(BookRel, 'author'), None)
         assert labels is None and values is None
 
 

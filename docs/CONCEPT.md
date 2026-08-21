@@ -117,6 +117,48 @@ Merging a partial style automatically is not possible: a fresh dataclass carries
 deliberately at its default". Deriving is the price of that, and `derived()` is what makes it
 one call.
 
+Relationships: references vs. composition
+-----------------------------------------
+
+A model field that points at other records is one of two fundamentally different things, and
+niceview renders each with a different widget.
+
+**Composition (`editgrid`)** — the parent *owns* its children; they live inside it. A
+`list[Book]` field on an `Author` is a **one-to-many** composition: the `Book` objects are part
+of the author's data and are edited inline in an embedded grid (`widget_type='editgrid'`,
+inferred automatically from `list[SomeModel]`). Delete the parent, the children go with it.
+
+**Reference (`modelselect`)** — the field *points* at an item that lives in another collection,
+storing only its key. This is the **many-to-one** direction (many rooms → one building). It
+comes in two shapes:
+
+- **Object-select** — the field is the related object (`author: Author`), with a hidden
+  `author_id` FK alongside it (the SQLModel-relationship pattern). niceview writes the key into
+  the `author_id` companion, never the relationship attribute, so SQLAlchemy does not
+  cascade-insert a detached instance. Inferred automatically for a SQLModel `Mapped[Author]`.
+
+- **Key-select** — the field *is* the scalar key (`building: str | None`), referencing a plain
+  niceview `CollectionAdapter`. niceview stores the key directly in the field. The display label
+  and the searchable select come from the registered adapter — `with_repositories({'building':
+  buildings_adapter})`, keyed by field name — which yields `{key: str(item)}`; `item_type` is
+  inferred from the adapter. A validator flags a stored key that no longer exists in the
+  collection. Declared explicitly, since a bare `str` cannot name the model it references:
+
+  ```python
+  building: Annotated[str | None,
+      niceview.Field(widget_type='modelselect', item_type=Building)] = None
+  ```
+
+The mode is chosen by the field's type: a model type → object-select, a scalar → key-select.
+
+**Many-to-many** (a `list` of foreign keys) is the plural of key-select and is not built yet —
+see [TODO](https://github.com/clausgf/niceview/blob/main/TODO.md). It is *not* `editgrid`:
+composition embeds owned objects, a reference list points at shared ones.
+
+Repositories are runtime wiring (live adapters, connections, file paths), so they are provided
+at composition time via `with_repositories()`, never declared in `Meta` — `Meta` holds static
+model metadata, not instances.
+
 Possible extensions
 -------------------
 

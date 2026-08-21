@@ -72,6 +72,7 @@ class ChromeText:
     delete_item_title: TextValue = 'Delete'
     delete_item_message: TextValue = 'Delete this item? This cannot be undone.'
     invalid_input: TextValue = 'Invalid input'
+    unknown_selection: TextValue = 'Unknown selection — no longer in the list'
 
     # --- notifications -----------------------------------------------------
     item_created: TextValue = 'Item created'

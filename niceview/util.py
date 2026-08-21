@@ -1,11 +1,38 @@
 import inspect
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, get_args
+import pydantic
 from nicegui import helpers, ui
 from nicegui.elements.mixins.validation_element import ValidationDict, ValidationFunction
 
 from niceview.style import (ChromeStyle, chrome_button, chrome_dialog, chrome_dialog_buttons,
                             chrome_dialog_title, get_chrome_style)
 from niceview.text import ChromeText, get_chrome_text, text_of
+
+
+def field_stores_model(field_info: Any) -> bool:
+    """True when a modelselect field's declared type is a model itself (a relationship/object,
+    e.g. ``author: Author``), False for a scalar key (e.g. ``author: str | None``). This selects
+    the modelselect mode: object-select (store/return the related object, sync a ``{name}_id``
+    companion) vs. key-select (store the repository key directly in the field)."""
+    field_type = getattr(field_info, 'field_type', None)
+    for candidate in (field_type, *get_args(field_type)):
+        if isinstance(candidate, type) and issubclass(candidate, pydantic.BaseModel):
+            return True
+    return False
+
+
+def resolve_repository(repositories: dict, field_name: str, item_type: Any) -> Any:
+    """Look up the repository for a modelselect field.
+
+    Repositories may be keyed by **field name** (preferred: two fields can reference the same
+    model through different collections) or, for backward compatibility, by the related **model
+    type** (the SQLModel-relationship style). Field name wins. Returns None when neither matches.
+    """
+    if field_name in repositories:
+        return repositories[field_name]
+    if item_type is not None and item_type in repositories:
+        return repositories[item_type]
+    return None
 
 
 def meta_option(item_type: type, kwargs: dict, key: str, default: Any, *, meta_key: str | None = None) -> Any:

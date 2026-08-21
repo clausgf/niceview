@@ -17,6 +17,7 @@ from niceview.fields import Fields, LayoutAction, LayoutField, LayoutGroup
 from niceview.style import (ChromeStyle, NotifyKind, Place, chrome_button, chrome_notify,
                             get_chrome_style, get_field_style)
 from niceview.text import ChromeText, TextValue, get_chrome_text, text_of
+from niceview.util import field_stores_model, resolve_repository
 from niceview.widgets import (
     DESCRIPTION_AS,
     DescriptionTarget,
@@ -579,11 +580,15 @@ class ModelForm():
             )
         return widget  # type: ignore[return-value]
 
-    def with_repositories(self, repositories: 'dict[type[BaseModel], CollectionAdapter]') -> Self:
+    def with_repositories(self, repositories: 'dict') -> Self:
         """
-        Provide adapters for modelselect fields (SQLModel relationships rendered as dropdowns).
-        Keys are model classes (e.g. Author); values are CollectionAdapters for those models.
-        Returns self for chaining.
+        Provide adapters for modelselect fields (dropdowns over a CollectionAdapter).
+
+        Keys are either a **field name** (preferred — two fields can reference the same model
+        through different collections, and a scalar key-select field is resolved by its name) or,
+        for the SQLModel-relationship style, the related **model class**. Values are the
+        CollectionAdapters. When a field-name-keyed adapter is given, the field's `item_type` is
+        inferred from the adapter if not set. Returns self for chaining.
         """
         if not isinstance(repositories, dict):
             raise TypeError(f"repositories must be a dictionary, got {type(repositories)}")
@@ -644,21 +649,30 @@ class ModelForm():
         Returns None on success, or a disabled placeholder widget if no repository is
         registered for the field's item type.
         """
-        if not field_info.item_type:
-            raise ValueError(f"Field {field_name} is a model select but no item type is specified in FieldInfo or as a pydantic model type")
-
-        if field_info.item_type not in self._model_repositories:
+        repo = resolve_repository(self._model_repositories, field_name, field_info.item_type)
+        if repo is None:
+            target = field_info.item_type.__name__ if field_info.item_type else field_name
             log.warning(
-                f"No repository for '{field_info.item_type.__name__}' — "
-                f"rendering '{field_name}' as a disabled placeholder. "
-                f"Call with_repositories() to enable this field."
+                f"No repository for '{target}' — rendering '{field_name}' as a disabled "
+                f"placeholder. Register one with with_repositories() (keyed by field name or type)."
             )
             widget = ui.select(options={}, label=field_info.label or field_name)
             widget.disable()
             return widget
 
-        repo = self._model_repositories[field_info.item_type]
+        # A field-name-keyed repository knows its own model, so item_type can be inferred from it
+        # (a plain scalar key like `author: str` cannot name the model itself).
+        if field_info.item_type is None:
+            field_info.item_type = getattr(repo, '_item_type', None)
         field_info.options = {repo.key_from_item(item): str(item) for item in repo}
+        field_info.with_input = True  # a repository-backed select is searchable
+        # Key-select: validate that a stored key still exists in the collection (a referenced
+        # item may have been deleted). Object-select keys always come from the repo, so are valid.
+        if not field_stores_model(field_info) and field_info.validation is None:
+            valid_keys = set(field_info.options)
+            field_info.validation = {
+                text_of(self._text.unknown_selection): lambda v, _k=valid_keys: v is None or v in _k
+            }
         return None
 
     def _get_fk_info(self, field_name: str) -> tuple[str, Any] | None:
@@ -994,12 +1008,14 @@ class ModelForm():
         value = getattr(self._current_item, field_name)
 
         if widget_type == 'modelselect':
-            # The widget holds the repository key of the related item, not the item itself.
-            item_type = self._fields[field_name].item_type
-            assert item_type is not None, f"item_type for field '{field_name}' must not be None"
-            repository = self._model_repositories[item_type]
-            if not repository:
-                raise ValueError(f"Model repository for {item_type.__name__} not found in form's model repositories")
+            field_info = self._fields[field_name]
+            if not field_stores_model(field_info):
+                widget.value = value  # key-select: the field already holds the repository key
+                return
+            # object-select: the field holds the related item, the widget its key.
+            repository = resolve_repository(self._model_repositories, field_name, field_info.item_type)
+            if repository is None:
+                raise ValueError(f"No repository for modelselect field '{field_name}'")
             widget.value = repository.key_from_item(value) if value is not None else None
             return
 
@@ -1016,12 +1032,14 @@ class ModelForm():
         field_info = self._fields[field_name]
 
         if field_info.widget_type == 'modelselect':
-            item_type = field_info.item_type
-            assert item_type is not None, f"item_type for field '{field_name}' must not be None"
-            repository = self._model_repositories[item_type]
-            if not repository:
-                raise ValueError(f"Model repository for {item_type.__name__} not found in form's model repositories")
             key = widget.value  # type: ignore[attr-defined]
+            if not field_stores_model(field_info):
+                # key-select: store the repository key straight into the (scalar) field.
+                setattr(self._current_item, field_name, key)
+                return
+            repository = resolve_repository(self._model_repositories, field_name, field_info.item_type)
+            if repository is None:
+                raise ValueError(f"No repository for modelselect field '{field_name}'")
             value = repository.read(key) if key is not None else None
             # Sync FK field (e.g. author -> author_id) so pydantic validation sees the selection.
             # Do NOT also set the relationship attribute: SQLAlchemy would cascade-insert the

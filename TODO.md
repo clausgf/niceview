@@ -14,3 +14,8 @@ Open work items and unresolved questions. Design decisions already taken live in
 - Collections: allow querying specific subsets
 - Collections: analyze efficiency, caching, paging
 - **Support dataclasses**: In addition to Pydantic models.
+- **Multi-key modelselect (n:m references)**: the plural of the key-select field — a `list[str]`
+  of foreign keys into a CollectionAdapter, edited via a searchable multi-select showing the
+  collection's labels. Distinct from `editgrid` (which embeds child objects, i.e. composition).
+  Reuse the key-select resolution (field-name repositories, existence validation) with
+  `multiple=True`.

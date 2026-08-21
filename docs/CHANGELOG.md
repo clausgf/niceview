@@ -5,6 +5,33 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+[0.25.0] - 2026-08-21
+---------------------
+
+### Added
+
+- **Key-select `modelselect` over a `CollectionAdapter`.** A scalar field can now reference another
+  collection by **storing the key itself** (`building: str | None` with
+  `niceview.Field(widget_type='modelselect', item_type=Building)`): the form and grid show the
+  collection's label (`str(item)`), edit through a searchable select, and write the key back — no
+  SQLModel or `{name}_id` companion required. The mode is chosen by the field's type (a model type
+  → object-select as before, a scalar → key-select). A validator flags a stored key that no longer
+  exists in the collection (new text `ChromeText.unknown_selection`).
+
+- **`with_repositories` accepts field-name keys.** Repositories may be keyed by **field name**
+  (preferred — two fields can reference the same model through different collections) in addition
+  to the related model type (unchanged, backward compatible). A field-name-keyed adapter also lets
+  `item_type` be inferred from the adapter. Applies to `ModelForm`, `ModelGrid` and
+  `EditGridWrapper`.
+
+- **`JsonDirectoryAdapter(Type, dir_path, key_field=)`** — a `CollectionAdapter` over a directory
+  of one-parsed-model-per-file JSON documents, each file named by a model-owned key (`key_field`,
+  default `'id'`). The parsed sibling of `DirectoryAdapter` and the per-directory sibling of
+  `JsonListAdapter`; a natural backing store for key-select foreign keys. Now exported from the
+  top level, implements `ReloadableAdapter`, and takes `strict=` (like the other JSON adapters).
+  A file that cannot yield a keyed record (malformed JSON, non-object root, missing/invalid key)
+  is skipped from the listing rather than surfacing as an empty ghost record.
+
 [0.24.0] - 2026-08-21
 ---------------------
 

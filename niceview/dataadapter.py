@@ -635,6 +635,163 @@ class JsonListAdapter(ListAdapter[T], ReloadableAdapter):
         self._persist()
 
 
+class JsonDirectoryAdapter(_ChangeNotifier, CollectionAdapter[T], ReloadableAdapter):
+    """
+    A CollectionAdapter over a directory of JSON files, one Pydantic model per
+    file. Unlike DirectoryAdapter (items are FileEntry metadata), this yields the
+    *parsed* model, and unlike JsonListAdapter (all items in one array file), each
+    item lives in its own file named by its own key.
+
+    The key is the value of ``key_field`` on the model (e.g. a stable surrogate
+    ``id``), and it is also the file name: item ``x`` is stored as
+    ``<dir>/<x.key_field><suffix>``. So a model must own its key -- typically a
+    field with a ``default_factory=lambda: uuid4().hex`` -- and the key never
+    changes, which lets other records reference an item by key across renames of
+    any other field.
+
+    Per-file IO goes through JsonAdapter (atomic .tmp -> rename, optional
+    ``created_field``/``lock_field`` optimistic locking forwarded here). Reads always
+    hit disk, so the listing is always fresh; on_change() handlers fire for mutations
+    made *through* this adapter (create/update/delete), and reload() fires one too so a
+    grid's Refresh re-pulls (there is no cache to reload). ``strict`` (default False)
+    matches JsonAdapter/JsonListAdapter: lenient recovers a valid JSON object with a bad
+    field, strict rejects it. Either way a file that cannot yield a keyed record --
+    malformed JSON, a non-object root, or a missing/invalid key -- is skipped from the
+    listing (logged), never listed as an empty ghost; read(key) honours ``strict`` too.
+
+    CRUD semantics are strict: create() refuses an existing key, update() an
+    absent one. The DrillDownWrapper/ModelForm default flow fits this (Add creates
+    a fresh-id item, the form autosaves via update()).
+
+    sort_key: orders __iter__/items() for a stable, human list order (e.g.
+    ``lambda r: (r.name.lower(), r.number)``). Defaults to ordering by key.
+    """
+
+    def __init__(
+        self,
+        item_type: type[T],
+        dir_path: Path,
+        *,
+        key_field: str = 'id',
+        suffix: str = '.json',
+        sort_key: Callable[[T], Any] | None = None,
+        created_field: str | None = None,
+        lock_field: str | None = None,
+        strict: bool = False,
+    ) -> None:
+        if not isinstance(item_type, type) or not issubclass(item_type, pydantic.BaseModel):
+            raise TypeError(f"item_type must be a subclass of pydantic.BaseModel, got {item_type}")
+        if key_field not in item_type.model_fields:
+            raise ValueError(f"Item type {item_type} does not have a field named {key_field}")
+        if not dir_path.is_dir():
+            raise ValueError(f"{dir_path} is not a directory")
+        self._item_type = item_type
+        self._dir_path = dir_path
+        self._key_field = key_field
+        self._suffix = suffix
+        self._sort_key = sort_key
+        self._created_field = created_field
+        self._lock_field = lock_field
+        self._strict = strict
+        self._init_notifier()
+
+    # --- keys / paths ------------------------------------------------------
+    @staticmethod
+    def _is_valid_key(key: str) -> bool:
+        return bool(key) and key not in ('.', '..') and '/' not in key and '\\' not in key
+
+    def _path(self, key: str) -> Path:
+        if not self._is_valid_key(key):
+            raise ValueError(f"Invalid key: {key!r}")
+        return self._dir_path / f'{key}{self._suffix}'
+
+    def _file_adapter(self, key: str) -> 'JsonAdapter[T]':
+        # create_if_not_exist=False: merely opening a missing key must not write a
+        # file whose name would then disagree with the item's own key_field.
+        return JsonAdapter(
+            self._item_type, self._path(key), create_if_not_exist=False,
+            created_field=self._created_field, lock_field=self._lock_field, strict=self._strict,
+        )
+
+    def key_from_item(self, item: T) -> str:
+        # Derived from the field, not verified against disk (cheap; the key is the
+        # model's own identity). read()/delete() are the operations that assert
+        # existence.
+        return str(getattr(item, self._key_field))
+
+    # --- listing -----------------------------------------------------------
+    def _parse_file(self, path: Path) -> T:
+        """Parse one file into an item, honouring `strict`. Raises when the file cannot yield a
+        keyed record — so `_load_all` skips it instead of listing a ghost. In lenient mode a valid
+        JSON object with a bad field is recovered (like JsonListAdapter), but malformed JSON, a
+        non-object root, or a missing/invalid key are always rejected."""
+        text = path.read_text(encoding='utf-8')
+        if self._strict:
+            item = self._item_type.model_validate_json(text)
+        else:
+            data = json.loads(text)  # malformed JSON raises -> caller skips (never a ghost)
+            if not isinstance(data, dict):
+                raise ValueError('JSON root is not an object')
+            item = _lenient_validate(self._item_type, data, str(path))
+        if not self._is_valid_key(self.key_from_item(item)):
+            raise ValueError(f'missing or invalid {self._key_field!r}')
+        return item
+
+    def _load_all(self) -> list[T]:
+        items: list[T] = []
+        for path in self._dir_path.glob(f'*{self._suffix}'):
+            if path.name.startswith('.') or not path.is_file():
+                continue
+            try:
+                items.append(self._parse_file(path))
+            except Exception as exc:  # one bad file must not break the listing
+                log.warning(f"Skipping unreadable {path}: {exc}")
+        items.sort(key=self._sort_key or self.key_from_item)
+        return items
+
+    def __iter__(self) -> Iterator[T]:
+        return iter(self._load_all())
+
+    def items(self) -> Iterator[tuple[str, T]]:
+        for item in self._load_all():
+            yield self.key_from_item(item), item
+
+    # --- CRUD --------------------------------------------------------------
+    def read(self, key: str) -> T:
+        if not self._path(key).is_file():
+            raise KeyError(key)
+        return self._file_adapter(key).read()
+
+    def create(self, item: T) -> T:
+        key = self.key_from_item(item)
+        if self._path(key).exists():
+            raise ValueError(f"Item already exists: {key!r}")
+        self._file_adapter(key).save(item)
+        self._notify()
+        return item
+
+    def update(self, item: T) -> T:
+        key = self.key_from_item(item)
+        if not self._path(key).is_file():
+            raise KeyError(key)
+        self._file_adapter(key).save(item)
+        self._notify()
+        return item
+
+    def delete(self, key: str) -> None:
+        path = self._path(key)
+        if not path.is_file():
+            raise KeyError(key)
+        path.unlink()
+        self._notify()
+
+    def reload(self) -> None:
+        """Re-read from disk. There is no in-memory cache — every read already hits the disk — so
+        this only fires on_change() to prompt observers (e.g. a grid's Refresh button) to re-pull
+        the now-current listing, matching the ReloadableAdapter other collection adapters offer."""
+        self._notify()
+
+
 class FileEntry(pydantic.BaseModel):
     """
     Metadata for one file in a DirectoryAdapter — NOT the file's parsed content.

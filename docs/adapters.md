@@ -17,13 +17,15 @@ or let the `from_*` factory methods create them transparently.
 | `ListAdapter(Type, list)` | Grid | In-memory list |
 | `JsonAdapter(Type, path)` | Form | Single object in a JSON file; supports `lock_field=`, `created_field=`, `strict=` |
 | `JsonListAdapter(Type, path)` | Grid | List of objects in a JSON file; supports `created_field=`, `strict=` |
+| `JsonDirectoryAdapter(Type, dir_path, key_field=)` | Grid, Form, `DrillDownWrapper` | One **parsed** object per file, named by a model-owned key; supports `sort_key=`, `created_field=`, `lock_field=`, `strict=` |
 | `SqlModelAdapter(Type, engine)` | Grid, Form | SQLModel / SQLAlchemy table *(requires the `sqlmodel` extra, see [Installation](index.md#installation))* |
 | `DirectoryAdapter(dir_path)` | `DrillDownWrapper` | One file per item in a directory; items are filename metadata (`FileEntry`), not parsed content — supports `rename()`; `suffix=None` for a mixed-extension file browser |
 | `FilteredAdapter(inner, predicate, defaults=)` | Grid, `DrillDownWrapper` | Filtered view of another `CollectionAdapter` (see below) |
 
 All JSON adapters write atomically (`.tmp` → rename).
-`JsonListAdapter` and `SqlModelAdapter` both implement `ReloadableAdapter`: `reload()` re-reads
-from disk (JSON) or fires a grid-refresh notification (SQL, where every `read()` is already live).
+`JsonListAdapter`, `JsonDirectoryAdapter` and `SqlModelAdapter` all implement `ReloadableAdapter`:
+`reload()` re-reads from disk (`JsonListAdapter`) or fires a grid-refresh notification
+(`SqlModelAdapter` and `JsonDirectoryAdapter`, where every `read()` is already live from disk).
 
 **`DirectoryAdapter`** models "files in a directory" for `DrillDownWrapper`'s file-per-item use
 case. `items()`/`read()` return `FileEntry(name, mtime, size)` — metadata only, never the parsed
@@ -36,6 +38,24 @@ suffix anyway, `create()`/`rename()` strip a trailing match rather than doubling
 on disk. Both are meant to be called directly by application code (an "Add" handler, a "Name"
 widget's `blur` handler), not through `DrillDownWrapper`'s generic `item_type()`-based Add flow
 — see `examples/13_directory_drilldown.py`.
+
+**`JsonDirectoryAdapter`** is the parsed sibling of `DirectoryAdapter`: each file holds one
+Pydantic model (like `JsonAdapter`), but the collection is a *directory* of them (like
+`JsonListAdapter`), one item per file. The key is the value of a model field (`key_field=`,
+default `'id'`) and is also the file name — item `x` lives at `<dir>/<x.id>.json`. So a model
+must **own a stable key** (typically `id: str = Field(default_factory=lambda: uuid4().hex)`) that
+never changes, which is what lets other records reference an item by key across renames of any
+other field — the natural backing store for a key-select foreign key (see
+[Concepts → Relationships](CONCEPT.md#relationships-references-vs-composition)). CRUD is strict:
+`create()` refuses an existing key, `update()`/`delete()` an absent one, matching the
+`DrillDownWrapper` Add-then-autosave flow. Reads always hit disk, so the listing is always
+fresh (`reload()` just fires a refresh notification — there is no cache); a file that cannot yield
+a keyed record — malformed JSON, a non-object root, or a missing/invalid key — is skipped from the
+listing (logged), never listed as an empty ghost. `strict=` (default `False`, like the other JSON
+adapters) decides what happens to a *recoverable* file — a valid object with one bad field: lenient
+drops the field, strict rejects (and skips) it. Per-file IO goes through `JsonAdapter`, so
+`created_field=`/`lock_field=` optimistic locking work per item. `sort_key=` orders the listing
+(default: by key).
 
 Passing `suffix=None` (or `''`) switches `DirectoryAdapter` into **all-files mode** — a general
 file browser over a directory with mixed extensions. Keys become the *full* filename (extension

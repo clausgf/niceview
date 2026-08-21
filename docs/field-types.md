@@ -30,6 +30,14 @@ NiceView automatically selects a widget based on the Python type annotation:
 | `Optional[T]` | Unwrapped to `T`, then same as above |
 | SQLModel relationship (single) | `modelselect` (select backed by model repository) |
 | SQLModel relationship (list) | Inline `EditGridWrapper` |
+| Scalar key + explicit `modelselect` (e.g. `building: str`) | `modelselect` key-select over a `CollectionAdapter` |
+
+A `modelselect` field references another collection. When the field is the related **object**
+(SQLModel relationship), niceview stores the key in the `{name}_id` companion; when the field is
+a **scalar key** (`building: str \| None` with `niceview.Field(widget_type='modelselect',
+item_type=Building)`), it stores the key directly. Register the source with
+`with_repositories({'building': adapter})` (keyed by field name). See
+[Concepts → Relationships](CONCEPT.md#relationships-references-vs-composition).
 
 For `list[Literal[...]]` the widget is a multi-select (`multiple=True`) whose options are the
 `Literal` values. With `Optional[list[Literal[...]]]`, a `None` model value shows as an empty

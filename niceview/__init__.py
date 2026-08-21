@@ -12,6 +12,7 @@ from niceview.dataadapter import (
     FilteredAdapter,
     ItemAdapter,
     JsonAdapter,
+    JsonDirectoryAdapter,
     JsonListAdapter,
     ListAdapter,
     ReactiveAdapter,
@@ -49,7 +50,7 @@ __all__ = [
     # Data adapters
     'ItemAdapter', 'CollectionAdapter', 'ReloadableAdapter', 'ReactiveAdapter',
     'BoundItem', 'BoundFieldAdapter', 'ListAdapter', 'JsonAdapter', 'JsonListAdapter',
-    'DirectoryAdapter', 'FileEntry', 'FilteredAdapter', 'SqlModelAdapter',
+    'JsonDirectoryAdapter', 'DirectoryAdapter', 'FileEntry', 'FilteredAdapter', 'SqlModelAdapter',
     'lenient_model_load', 'lenient_list_load',
     # Errors
     'ConflictError', 'StorageError',

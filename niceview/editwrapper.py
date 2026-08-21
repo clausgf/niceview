@@ -216,9 +216,10 @@ class EditGridWrapper():
 
     # --- configuration -----------------------------------------------------
 
-    def with_repositories(self, repositories: 'dict[type[BaseModel], CollectionAdapter]') -> Self:
-        """Set model repositories for modelselect fields — the create/edit dialogs and the grid
-        itself, so modelselect columns show their labels (and offer a select where applicable)."""
+    def with_repositories(self, repositories: 'dict') -> Self:
+        """Set repositories for modelselect fields — the create/edit dialogs and the grid itself,
+        so modelselect columns show their labels (and offer a select where applicable). Keys are
+        a field name (preferred) or the related model type."""
         self._model_repositories = repositories
         self.grid.with_repositories(repositories)
         return self
