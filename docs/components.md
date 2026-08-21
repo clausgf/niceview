@@ -844,8 +844,8 @@ DrillDownWrapper.from_adapter(User, adapter, title='Users').render()
 DrillDownWrapper.from_list(User, users,
     title='Users',              # list title; omitted/None = Meta.title_plural or auto '{Type} List'; '' = none (detail shows the item title)
     description='...',               # markdown below the title row, in both views
-    item_title_field='name',         # field shown as detail title (auto-detected if omitted)
-    item_subtitle_fields=['email'],  # fields shown as subtitle (next two visible fields if omitted)
+    item_title_field='name',         # field shown as detail title (auto-detected if omitted); alias: title_field
+    item_subtitle_fields=['email'],  # fields shown as subtitle (next two visible if omitted); alias: subtitle_fields
     add_button='',                   # '' = icon only; None = hidden
     delete_button='',                # same
     back_button='',                  # same — None leaves the detail view without a way back

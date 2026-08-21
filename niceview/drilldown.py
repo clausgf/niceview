@@ -92,6 +92,10 @@ class _DrillDownWrapperOptionInputs(typing_extensions.TypedDict, total=False):
     this kwarg is not passed."""
     item_title_field: str | None
     item_subtitle_fields: list[str] | None
+    title_field: str | None
+    """Alias of item_title_field (the name ModelList uses); item_title_field wins if both given."""
+    subtitle_fields: list[str] | None
+    """Alias of item_subtitle_fields (the name ModelList uses)."""
     add_button: str | None
     delete_button: str | None
     back_button: str | None
@@ -212,8 +216,21 @@ class DrillDownWrapper:
         title = meta_option(item_type, kwargs, 'title', None, meta_key='title_plural')
         self._title = (item_type.__name__ + ' List') if title is None else (title or None)
         self._description = meta_option(item_type, kwargs, 'description', None)
-        self._item_title_field = kwargs.pop('item_title_field', None)
-        self._item_subtitle_fields = kwargs.pop('item_subtitle_fields', None)
+        # title_field / subtitle_fields are accepted as aliases of item_title_field /
+        # item_subtitle_fields (the names ModelList uses), so switching ModelList <-> DrillDown
+        # needs no rename. The item_* form wins if both are given.
+        title_field = kwargs.pop('item_title_field', None)
+        if title_field is None:
+            title_field = kwargs.pop('title_field', None)
+        else:
+            kwargs.pop('title_field', None)
+        subtitle_fields = kwargs.pop('item_subtitle_fields', None)
+        if subtitle_fields is None:
+            subtitle_fields = kwargs.pop('subtitle_fields', None)
+        else:
+            kwargs.pop('subtitle_fields', None)
+        self._item_title_field = title_field
+        self._item_subtitle_fields = subtitle_fields
         self._render_list_item = kwargs.pop('render_list_item', None)
         self._render_list_container = kwargs.pop('render_list_container', None)
         self._render_detail = kwargs.pop('render_detail', None)

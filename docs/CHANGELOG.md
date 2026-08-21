@@ -5,6 +5,19 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+[0.26.1] - 2026-08-21
+---------------------
+
+### Added
+
+- **`Meta.include` / `Meta.exclude` now apply to `ModelGrid` and `ModelList`** (as they already did
+  to `ModelForm`), so a model can declare its default field set once for every view; the
+  `include=` / `exclude=` kwarg still overrides per call.
+
+- **`DrillDownWrapper` accepts `title_field` / `subtitle_fields`** as aliases of
+  `item_title_field` / `item_subtitle_fields` (the names `ModelList` uses), so switching between a
+  `ModelList` and a `DrillDownWrapper` needs no rename. The `item_*` form wins if both are given.
+
 [0.26.0] - 2026-08-21
 ---------------------
 

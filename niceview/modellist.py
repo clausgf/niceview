@@ -16,7 +16,7 @@ from nicegui.events import Handler, ClickEventArguments, handle_event
 
 from niceview.dataadapter import CollectionAdapter, ListAdapter, JsonListAdapter, ReactiveAdapter
 from niceview.fieldinfo import FieldInfo
-from niceview.util import resolve_repository
+from niceview.util import meta_option, resolve_repository
 from niceview.fields import Fields
 from niceview.style import ChromeStyle, get_chrome_style
 
@@ -79,8 +79,10 @@ class ModelList:
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {type(item_type)}")
 
-        self._fields = Fields(item_type, kwargs.pop('include', '__all__'),
-                              kwargs.pop('exclude', ''), kwargs.pop('field_infos', {}),
+        # include/exclude fall back to the model's Meta (like ModelForm); profile stays kwargs-only.
+        include = meta_option(item_type, kwargs, 'include', '__all__')
+        exclude = meta_option(item_type, kwargs, 'exclude', '')
+        self._fields = Fields(item_type, include, exclude, kwargs.pop('field_infos', {}),
                               profile=kwargs.pop('profile', None))
         self._data = adapter
         self._select_handlers = []

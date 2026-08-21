@@ -13,7 +13,7 @@ from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 from niceview.style import chrome_notify, get_chrome_style
 from niceview.text import get_chrome_text, text_of
-from niceview.util import field_stores_model, resolve_repository
+from niceview.util import field_stores_model, meta_option, resolve_repository
 
 log = logging.getLogger('niceview')
 
@@ -166,8 +166,10 @@ class ModelGrid:
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {type(item_type)}")
 
-        self._fields = Fields(item_type, kwargs.pop('include', '__all__'),
-                              kwargs.pop('exclude', ''), kwargs.pop('field_infos', {}),
+        # include/exclude fall back to the model's Meta (like ModelForm); profile stays kwargs-only.
+        include = meta_option(item_type, kwargs, 'include', '__all__')
+        exclude = meta_option(item_type, kwargs, 'exclude', '')
+        self._fields = Fields(item_type, include, exclude, kwargs.pop('field_infos', {}),
                               profile=kwargs.pop('profile', None))
         self._data = adapter
         self._selection_handlers = []
