@@ -1,5 +1,5 @@
 - Never change acceptance tests without asking!
-- Before every commit, run and fix the tests. Then update the docs. Finally, commit and push. Increase only the lowest possible digit of the tag, prefer patches over minor over major releases if justifiable.
+- Before every commit, run and fix the full CI check set locally — `uv run ruff check`, `uv run mypy niceview/ --ignore-missing-imports`, and `uv run pytest --cov=niceview --cov-report=term-missing` (see .github/workflows/ci.yml for the exact commands) — not just the tests. Then update the docs. Finally, commit and push. Increase only the lowest possible digit of the tag, prefer patches over minor over major releases if justifiable.
 - Only commit if explicitly ordered so.
 - When unsure, ask before committing and pushing.
 - Ask before removing dead code (commented out, not called, ...).

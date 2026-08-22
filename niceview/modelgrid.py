@@ -228,7 +228,7 @@ class ModelGrid:
         """The backing data adapter."""
         return self._data
 
-    def with_repositories(self, repositories: 'dict[type[BaseModel], CollectionAdapter]') -> Self:
+    def with_repositories(self, repositories: 'dict[type[BaseModel] | str, CollectionAdapter]') -> Self:
         """Register repositories for modelselect fields, so the grid shows their labels (and,
         when inline-editable, offers a select of the related items). Keys are a field name
         (preferred) or the related model type. May be called after render() — the columns and

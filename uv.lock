@@ -1379,7 +1379,7 @@ wheels = [
 
 [[package]]
 name = "niceview"
-version = "0.20.0"
+version = "0.26.2"
 source = { editable = "." }
 dependencies = [
     { name = "annotated-types" },

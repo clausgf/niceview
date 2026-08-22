@@ -35,12 +35,16 @@ def resolve_repository(repositories: dict, field_name: str, item_type: Any) -> A
     return None
 
 
-def meta_option(item_type: type, kwargs: dict, key: str, default: Any, *, meta_key: str | None = None) -> Any:
+def meta_option(item_type: type, kwargs: Any, key: str, default: Any, *, meta_key: str | None = None) -> Any:
     """Resolve a wrapper option from (descending priority) kwargs, the model's Meta, or default.
 
     Pops `key` from `kwargs`: an explicitly passed value (even None) wins over Meta, mirroring
     how ModelForm reads its own Meta options. `meta_key` reads a differently named Meta attribute
     (e.g. a collection wrapper's `title` kwarg defaulting from `Meta.title_plural`).
+
+    `kwargs` is typed `Any` rather than `dict`: callers pass their `**kwargs: Unpack[SomeTypedDict]`
+    directly, and a TypedDict is not assignable to `dict[Any, Any]` under mypy (it may reject
+    arbitrary key mutation), even though `.pop()` on an optional key is safe at runtime.
     """
     meta = getattr(item_type, 'Meta', None)
     value = getattr(meta, meta_key or key, default) if meta is not None else default

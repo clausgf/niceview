@@ -5,6 +5,18 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+[0.26.2] - 2026-08-22
+---------------------
+
+### Fixed
+
+- **CI mypy failures from the 0.26.0/0.26.1 releases** — `meta_option()` now types its `kwargs`
+  parameter as `Any` instead of `dict`, since a `**kwargs: Unpack[SomeTypedDict]` value is not
+  assignable to `dict[Any, Any]` under mypy; `ModelGrid.with_repositories()`'s type hint now
+  matches its `dict[type[BaseModel] | str, CollectionAdapter]` field-or-type key union like every
+  other component; and a modelselect validation lambda no longer uses a default-argument capture
+  that mypy could not infer the type of. No behavior change.
+
 [0.26.1] - 2026-08-21
 ---------------------
 

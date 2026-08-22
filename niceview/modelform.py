@@ -673,7 +673,7 @@ class ModelForm():
         if not field_stores_model(field_info) and field_info.validation is None:
             valid_keys = set(field_info.options)
             field_info.validation = {
-                text_of(self._text.unknown_selection): lambda v, _k=valid_keys: v is None or v in _k
+                text_of(self._text.unknown_selection): lambda v: v is None or v in valid_keys
             }
         return None
 
