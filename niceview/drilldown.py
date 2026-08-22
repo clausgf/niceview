@@ -259,7 +259,7 @@ class DrillDownWrapper:
             if helpers.is_coroutine_function(getattr(self, f'_{option}')):
                 raise TypeError(f"DrillDownWrapper's {option} must be synchronous; "
                                 f"load data before render() or fill a placeholder from a task.")
-        self._state = {'view': 'list', 'key': None, 'direction': 'right'}
+        self._state = {'view': 'list', 'key': None, 'direction': 'right', 'animate': True}
         self._auto_update_registered = False
 
         self.title_row = None
@@ -319,13 +319,13 @@ class DrillDownWrapper:
 
     def open(self, key: str) -> Self:
         """Navigate to the detail view for key — e.g. from a custom on_add handler."""
-        self._state.update(view='detail', key=key, direction='right')
+        self._state.update(view='detail', key=key, direction='right', animate=True)
         self._update_title_row()
         self._body.refresh()
         return self
 
     def _back(self) -> None:
-        self._state.update(view='list', key=None, direction='left')
+        self._state.update(view='list', key=None, direction='left', animate=True)
         self._update_title_row()
         self._body.refresh()
 
@@ -336,6 +336,9 @@ class DrillDownWrapper:
         return lambda: self._select(key)
 
     def _on_adapter_change(self) -> None:
+        # Data changed under us (e.g. an autosaving form's own field edit) -- rebuild the body
+        # to reflect it, but this is not a list<->detail navigation, so don't replay the slide.
+        self._state['animate'] = False
         self._body.refresh()
 
     # --- title row -----------------------------------------------------------
@@ -417,7 +420,10 @@ class DrillDownWrapper:
         # Not exposed for styling: unlike title_row, this container is genuinely torn down
         # and rebuilt on every navigation (list and detail are structurally different content),
         # so any styling applied to it would be silently lost on the next swap.
-        with ui.column().classes(f'w-full gap-2 {_slide_class(self._state["direction"])}'):
+        classes = 'w-full gap-2'
+        if self._state['animate']:
+            classes += f' {_slide_class(self._state["direction"])}'
+        with ui.column().classes(classes):
             if self._state['view'] == 'detail' and self._state['key'] is not None:
                 self._render_detail_view(self._state['key'])
             else:
@@ -472,7 +478,7 @@ class DrillDownWrapper:
 
     def _set_detail_key(self, new_key: str) -> None:
         if new_key != self._state['key']:
-            self._state['key'] = new_key
+            self._state.update(key=new_key, animate=False)
             self._update_title_row()
             self._body.refresh()
 

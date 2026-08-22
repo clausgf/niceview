@@ -625,3 +625,31 @@ class TestDrillDownWrapperExposedElements:
             animated = [e for e in ui.context.client.layout.descendants()
                         if 'niceview-slide-in-right' in e.classes]
         assert len(animated) == 1
+
+    async def test_adapter_change_refresh_does_not_replay_slide(self, user: User) -> None:
+        # An autosaving form's own field update fires the adapter's on_change, which
+        # DrillDownWrapper uses to refresh the body -- that must not replay the slide
+        # animation, which is reserved for actual open()/_back() navigation.
+        contacts = [Contact(name='Alice')]
+        adapter = ListAdapter(Contact, contacts)
+        key = adapter.key_from_item(contacts[0])
+        holder = {}
+
+        @ui.page('/')
+        def page():
+            holder['wrapper'] = DrillDownWrapper.from_adapter(Contact, adapter).render()
+
+        await user.open('/')
+        wrapper = holder['wrapper']
+        wrapper.open(key)
+        await user.should_see('Name')
+
+        item = adapter.read(key)
+        item.name = 'Bob'
+        adapter.update(item)
+        await user.should_see('Bob')
+
+        with user._client:
+            animated = [e for e in ui.context.client.layout.descendants()
+                        if 'niceview-slide-in-right' in e.classes or 'niceview-slide-in-left' in e.classes]
+        assert len(animated) == 0

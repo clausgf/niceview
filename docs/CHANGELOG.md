@@ -5,6 +5,17 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+[0.26.3] - 2026-08-22
+---------------------
+
+### Fixed
+
+- **`DrillDownWrapper` no longer replays its slide-in animation on every data change** — a
+  reactive adapter's `on_change` (e.g. an autosaving detail form's own field edit) refreshes the
+  body to reflect the new data, but was unconditionally re-applying the `niceview-slide-in-*` CSS
+  class every time, making unrelated field edits visually slide the whole detail view in from the
+  side. The animation now only plays on actual navigation (`open()` / the Back button).
+
 [0.26.2] - 2026-08-22
 ---------------------
 
