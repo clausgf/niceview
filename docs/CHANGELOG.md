@@ -5,6 +5,15 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+[0.26.4] - 2026-08-27
+---------------------
+
+### Added
+
+- **`EditGridWrapper` accepts `search=True`** for a free-text search box in the title row,
+  filtering grid rows across all columns as the user types (ag-grid's client-side quick filter,
+  no adapter reload). Off by default.
+
 [0.26.3] - 2026-08-22
 ---------------------
 

@@ -7,7 +7,7 @@ from fastapi import HTTPException
 import typing_extensions
 from pydantic import BaseModel
 from nicegui import ui
-from nicegui.events import Handler, ClickEventArguments, UiEventArguments, handle_event
+from nicegui.events import Handler, ClickEventArguments, UiEventArguments, ValueChangeEventArguments, handle_event
 
 from niceview.dataadapter import CollectionAdapter, ConflictError, StorageError, ItemAdapter, ReloadableAdapter
 from niceview.modelform import (FieldChangeEventArguments, FormAction, ModelForm,
@@ -65,6 +65,9 @@ class _EditGridWrapperInputs(typing_extensions.TypedDict, total=False):
     place: Place
     """Where this wrapper's buttons sit in the chrome cascade: 'toolbar' (default) for a wrapper
     of its own, 'form' for one embedded in a form."""
+    search: bool
+    """Show a free-text search box in the title row, filtering grid rows across all columns
+    (ag-grid's client-side quick filter) as the user types. Off by default."""
 
 
 class _EditGridWrapperFactoryInputs(_EditGridWrapperInputs, _InlineEditableModelGridOptionInputs, total=False):
@@ -92,10 +95,14 @@ class EditGridWrapper():
     they have everywhere. Their `on_click` receives a `GridActionEventArguments`, with the
     selected row rather than a form's item.
 
+    `search=True` adds a free-text search box to the title row, filtering rows across all
+    columns as the user types — ag-grid's client-side quick filter, not a server round-trip.
+
     After render(), the NiceGUI elements are exposed for further styling:
         wrapper.title          → ui.label | None
         wrapper.description    → ui.markdown | None
         wrapper.title_row      → ui.row | None
+        wrapper.search_input   → ui.input | None
         wrapper.add_button     → ui.button | None
         wrapper.edit_button    → ui.button | None
         wrapper.delete_button  → ui.button | None
@@ -122,6 +129,7 @@ class EditGridWrapper():
     title: ui.label | None
     description: ui.markdown | None
     title_row: ui.row | None
+    search_input: ui.input | None
     delete_button: ui.button | None
     add_button: ui.button | None
     edit_button: ui.button | None
@@ -152,11 +160,13 @@ class EditGridWrapper():
         self._chrome_style = kwargs.pop('chrome_style', None)
         self._chrome_text = kwargs.pop('chrome_text', None)
         self._place = kwargs.pop('place', 'toolbar')
+        self._search = kwargs.pop('search', False)
 
         self._rendered = False
         self.title = None
         self.description = None
         self.title_row = None
+        self.search_input = None
         self.delete_button = None
         self.add_button = None
         self.edit_button = None
@@ -271,6 +281,7 @@ class EditGridWrapper():
         self.title = None
         self.description = None
         self.title_row = None
+        self.search_input = None
         self.delete_button = None
         self.add_button = None
         self.edit_button = None
@@ -279,14 +290,20 @@ class EditGridWrapper():
 
         style, text, place = self._style, self._text, self._place
         button_count = sum(b is not None for b in [self._refresh_button, self._delete_button, self._add_button, self._edit_button]) + len(self._chrome_actions)
-        has_chrome = bool(self._title) or button_count > 0
+        has_chrome = bool(self._title) or button_count > 0 or self._search
         if has_chrome:
             with chrome_row(style) as self.title_row:
                 if self._title:
                     self.title = chrome_title(self._title, style)
+                elif self._search or button_count:
+                    ui.space()
+                if self._search:
+                    self.search_input = ui.input(placeholder=text_of(text.search_placeholder)) \
+                        .props('type=search outlined dense clearable').classes('w-48') \
+                        .on_value_change(self._on_search_changed)
+                    with self.search_input.add_slot('append'):
+                        ui.icon('search')
                 if button_count:
-                    if not self._title:
-                        ui.space()
                     with chrome_buttons(style, button_count):
                         for name, action in self._chrome_actions.items():
                             self.action_buttons[name] = render_action_button(
@@ -318,6 +335,11 @@ class EditGridWrapper():
 
     def _on_refresh_clicked(self, event: ClickEventArguments) -> None:
         self.refresh()
+
+    def _on_search_changed(self, event: ValueChangeEventArguments) -> None:
+        """Drive ag-grid's quick filter from the search box — client-side, no adapter reload."""
+        if self.grid.widget is not None:
+            self.grid.widget.run_grid_method('setGridOption', 'quickFilterText', event.value or '')
 
     def _apply_create(self, item: BaseModel) -> BaseModel:
         """Persist a new item via the adapter. Raises on type mismatch or adapter error."""

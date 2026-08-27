@@ -560,6 +560,22 @@ class TestEditGridWrapperRender:
         await user.open('/')
         await user.should_see(ui.aggrid)
 
+    async def test_search_box_absent_by_default(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            EditGridWrapper.from_list(Person, []).render()
+
+        await user.open('/')
+        await user.should_not_see(ui.input)
+
+    async def test_search_box_present_when_enabled(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            EditGridWrapper.from_list(Person, [], search=True).render()
+
+        await user.open('/')
+        await user.should_see(ui.input)
+
 
 # ---------------------------------------------------------------------------
 # render_field / render_nonfield_errors

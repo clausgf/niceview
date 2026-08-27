@@ -59,6 +59,7 @@ class ChromeText:
     refresh_tooltip: TextValue = 'Refresh'
     save_tooltip: TextValue = 'Save'
     back_tooltip: TextValue = 'Back'
+    search_placeholder: TextValue = 'Search'
 
     # --- dialog labels -----------------------------------------------------
     ok_label: TextValue = 'OK'
