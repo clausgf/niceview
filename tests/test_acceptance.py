@@ -522,6 +522,29 @@ class TestModelGridRender:
         await user.open('/')
         await user.should_see(ui.aggrid)
 
+    async def test_html_fields_maps_to_column_index(self, user: User) -> None:
+        # Person's fields render in declaration order: name=0, age=1, active=2.
+        grid = ModelGrid.from_list(Person, [Person(name='Alice', age=30)], html_fields=['age'])
+
+        @ui.page('/')
+        def page():
+            grid.render()
+
+        await user.open('/')
+        assert grid.widget is not None
+        assert grid.widget.html_columns == [1]
+
+    async def test_without_html_fields_html_columns_stays_empty(self, user: User) -> None:
+        grid = ModelGrid.from_list(Person, [Person(name='Alice', age=30)])
+
+        @ui.page('/')
+        def page():
+            grid.render()
+
+        await user.open('/')
+        assert grid.widget is not None
+        assert grid.widget.html_columns == []
+
 
 # ---------------------------------------------------------------------------
 # EditGridWrapper — render

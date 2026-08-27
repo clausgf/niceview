@@ -117,6 +117,11 @@ class _ModelGridOptionInputs(typing_extensions.TypedDict, total=False):
     defaultColDef: dict
     rowSelection: Literal[None, 'single', 'multiple']
     cell_renderers: dict[str, Callable[[Any], str]]
+    html_fields: list[str]
+    """Field names whose cell_renderers output is raw HTML (e.g. an icon <span>) rather than
+    plain text — translated to ag-grid's column-index-based html_columns at render() time, so
+    it stays stable across include/exclude field ordering. A field listed here without a
+    cell_renderers entry renders its raw value as HTML verbatim, which is rarely what you want."""
 
 
 T = TypeVar('T', bound=BaseModel)
@@ -156,6 +161,7 @@ class ModelGrid:
     _defaultColDef: dict
     _rowSelection: Literal[None, 'single', 'multiple']
     _cell_renderers: dict[str, Callable[[Any], Any]]
+    _html_fields: list[str]
     _model_repositories: dict[type[BaseModel] | str, CollectionAdapter]
 
     def __init__(self, item_type: type[T], adapter: CollectionAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> None:
@@ -181,6 +187,7 @@ class ModelGrid:
         self._defaultColDef = kwargs.pop('defaultColDef', {}).copy()
         self._rowSelection = kwargs.pop('rowSelection', None)
         self._cell_renderers = kwargs.pop('cell_renderers', {}).copy()
+        self._html_fields = kwargs.pop('html_fields', []).copy()
         self._model_repositories = {}
         if kwargs:
             raise TypeError(f"Unexpected keyword arguments for {type(self).__name__}: {', '.join(kwargs.keys())}")
@@ -297,6 +304,8 @@ class ModelGrid:
             aggrid_kwargs['theme'] = self._theme
         if self._auto_size_columns is not None:
             aggrid_kwargs['auto_size_columns'] = self._auto_size_columns
+        if self._html_fields:
+            aggrid_kwargs['html_columns'] = [i for i, c in enumerate(cols) if c['field'] in self._html_fields]
         config: dict[str, Any] = {
             'columnDefs': cols,
             'rowData': self._rows,

@@ -5,6 +5,16 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+[0.26.5] - 2026-08-27
+---------------------
+
+### Added
+
+- **`ModelGrid`/`EditGridWrapper` accept `html_fields`**: a list of field names whose
+  `cell_renderers` output is raw HTML (e.g. an icon `<span>`) instead of plain text —
+  translated to ag-grid's index-based `html_columns` at `render()` time, so it stays
+  correct across `include`/`exclude` field ordering.
+
 [0.26.4] - 2026-08-27
 ---------------------
 
