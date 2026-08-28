@@ -115,14 +115,21 @@ class ChromeStyle:
 
     # --- role layer --------------------------------------------------------
     add_button_props: str = ''
+    """Props of the Add button."""
     edit_button_props: str = ''
+    """Props of the Edit button."""
     delete_button_props: str = 'color=negative'
     """The only default in the whole style — and only because it is meaning, not taste."""
     save_button_props: str = ''
+    """Props of the Save button."""
     refresh_button_props: str = ''
+    """Props of the Refresh button."""
     back_button_props: str = ''
+    """Props of the Back button."""
     ok_button_props: str = ''
+    """Props of a dialog's confirm button."""
     cancel_button_props: str = ''
+    """Props of a dialog's cancel button."""
 
     button_group: bool = True
     """Whether chrome buttons that show at the same time are joined in a ui.button_group."""

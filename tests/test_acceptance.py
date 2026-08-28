@@ -546,6 +546,81 @@ class TestModelGridRender:
         assert grid.widget.html_columns == []
 
 
+class ScheduleItem(pydantic.BaseModel):
+    label: str = ''
+    starts_at: datetime.datetime = datetime.datetime(2024, 1, 15, 9, 30, tzinfo=datetime.timezone.utc)
+    duration: datetime.timedelta = datetime.timedelta(hours=1, minutes=30)
+
+
+class TestModelGridDateTimeFields:
+    async def test_timedelta_field_does_not_crash(self, user: User) -> None:
+        # Previously: orjson (NiceGUI's JSON encoder) can't serialize a raw timedelta, so
+        # putting one in rowData crashed page build entirely.
+        grid = ModelGrid.from_list(ScheduleItem, [ScheduleItem(label='Standup')])
+
+        @ui.page('/')
+        def page():
+            grid.render()
+
+        await user.open('/')
+        assert grid.widget is not None
+        assert grid.widget.options['rowData'][0]['duration'] == 'PT1H30M'
+
+    async def test_datetime_field_uses_local_tz(self, user: User) -> None:
+        grid = ModelGrid.from_list(
+            ScheduleItem, [ScheduleItem(label='Standup')], local_tz='Europe/Berlin',
+        )
+
+        @ui.page('/')
+        def page():
+            grid.render()
+
+        await user.open('/')
+        assert grid.widget is not None
+        # 09:30 UTC in January (CET, UTC+1) is 10:30 local.
+        assert grid.widget.options['rowData'][0]['starts_at'] == '2024-01-15T10:30:00'
+
+    async def test_datetime_field_without_local_tz_uses_system_time(self, user: User) -> None:
+        grid = ModelGrid.from_list(ScheduleItem, [ScheduleItem(label='Standup')])
+
+        @ui.page('/')
+        def page():
+            grid.render()
+
+        await user.open('/')
+        assert grid.widget is not None
+        expected = ScheduleItem().starts_at.astimezone(None).replace(tzinfo=None, microsecond=0).isoformat()
+        assert grid.widget.options['rowData'][0]['starts_at'] == expected
+
+
+class TestModelGridBooleanFields:
+    async def test_bool_column_gets_boolean_cell_data_type(self, user: User) -> None:
+        grid = ModelGrid.from_list(Person, [Person(name='Alice', active=True)])
+
+        @ui.page('/')
+        def page():
+            grid.render()
+
+        await user.open('/')
+        assert grid.widget is not None
+        cols = {c['field']: c for c in grid.widget.options['columnDefs']}
+        assert cols['active']['cellDataType'] == 'boolean'
+        assert 'editable' not in cols['active']  # ag-grid's own default (non-editable) applies
+
+    async def test_bool_column_is_editable_in_inline_edit_grid(self, user: User) -> None:
+        grid = ModelGridInlineEdit.from_list(Person, [Person(name='Alice', active=True)])
+
+        @ui.page('/')
+        def page():
+            grid.render()
+
+        await user.open('/')
+        assert grid.widget is not None
+        cols = {c['field']: c for c in grid.widget.options['columnDefs']}
+        assert cols['active']['cellDataType'] == 'boolean'
+        assert 'editable' not in cols['active']  # inline-editable via defaultColDef, not per-column False
+
+
 # ---------------------------------------------------------------------------
 # EditGridWrapper — render
 # ---------------------------------------------------------------------------

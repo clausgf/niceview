@@ -32,6 +32,17 @@ NiceView automatically selects a widget based on the Python type annotation:
 | SQLModel relationship (list) | Inline `EditGridWrapper` |
 | Scalar key + explicit `modelselect` (e.g. `building: str`) | `modelselect` key-select over a `CollectionAdapter` |
 
+`ModelGrid` and `ModelList` render the same types consistently with `ModelForm`, not just the
+same widget selection: a `datetime`/`date`/`time`/`timedelta` value goes through the same
+conversion (`local_tz=`, Meta-sourceable, included — a `ModelGrid` without one used to crash on
+`timedelta` entirely, since it has no native JSON representation), a choice field's stored value
+resolves to its label, a list-valued field joins its items instead of showing a Python repr, a
+`bool` renders as a real checkbox in `ModelGrid`/`ModelGridInlineEdit` (AG Grid's own
+`cellDataType: 'boolean'`, clickable when editable) and as `'✓'`/`'✗'` in `ModelList`, and a
+`ui.number` field with `precision`/`number_format`/`prefix`/`suffix` set is formatted the same
+way the widget itself would — in `ModelGrid` via a `valueFormatter` so the column keeps sorting
+and filtering by the real number rather than the formatted text.
+
 A `modelselect` field references another collection. When the field is the related **object**
 (SQLModel relationship), niceview stores the key in the `{name}_id` companion; when the field is
 a **scalar key** (`building: str \| None` with `niceview.Field(widget_type='modelselect',
@@ -163,7 +174,7 @@ class User(pydantic.BaseModel):
 
 `Meta.field_order` is a list of field names that sets the display order. Fields not listed are appended at the end in their natural order. This is especially useful for SQLModel table classes, which do not guarantee declaration order. A form layout (below) defines the order itself, so `field_order` does not apply on top of it.
 
-`Meta.include` / `Meta.exclude` declare the default field set on the model itself, honoured by `ModelForm`, `ModelGrid` and `ModelList` alike (and the wrappers around them) — the `include=` / `exclude=` kwarg overrides them per call.
+`Meta.include` / `Meta.exclude` / `Meta.field_infos` declare the default field set and overrides on the model itself, honoured by `ModelForm`, `ModelGrid` and `ModelList` alike (and the wrappers around them) — the matching kwarg overrides them per call.
 
 **Model title & description:** `Meta.title` (singular), `Meta.title_plural` (collection) and `Meta.description` give a model its default chrome text, so a heading is declared once instead of at every call site. The chrome wrappers pick it up — `EditFormWrapper` reads `title`, the collection wrappers (`EditGridWrapper`, `DrillDownWrapper`'s list) read `title_plural`, and all share `description` — and each is overridden by the wrapper's own `title=` / `description=` kwarg. The cardinalities stay apart: a model with only `title` set never bleeds that singular into a grid heading, which stays on its auto `'{Type} List'` until `title_plural` is given.
 
@@ -193,6 +204,16 @@ ModelForm.from_item(user, profile='detail').render()
 
 # Works the same on ModelList and DrillDownWrapper
 ModelList.from_list(User, users, profile='summary').render()
+```
+
+`Meta.default_profile` names the profile used when no `profile=` kwarg is given — unlike an
+explicit `profile=`, a name that is absent or no longer in `Meta.profiles` degrades to no
+profile at all rather than raising, since it is a hint on the model, not a per-call request:
+
+```python
+class Meta:
+    profiles = {'summary': ['name', 'email']}
+    default_profile = 'summary'   # every call defaults to it; profile='detail' still overrides
 ```
 
 A profile entry may also be **nested** — then it is not just a field selection but a form
@@ -247,4 +268,5 @@ instead of coming from the annotation.
 Validation
 ----------
 
-Field-level and model-level (`@model_validator`) errors are displayed in the form. Field errors appear inline below the widget; model-level errors appear at the bottom of the form.
+The three layers (`required`, `FieldInfo.validation`, model validation), and how field-level vs.
+model-level errors are displayed, are covered in [Components → Validation](components.md#validation).

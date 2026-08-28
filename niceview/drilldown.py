@@ -11,9 +11,11 @@ from typing import Any, Awaitable, Callable, Self, TypeVar, Unpack, cast
 import typing_extensions
 from pydantic import BaseModel
 from nicegui import helpers, ui
-from nicegui.events import ClickEventArguments, Handler, UiEventArguments, handle_event
+from nicegui.events import (ClickEventArguments, Handler, UiEventArguments, ValueChangeEventArguments,
+                            handle_event)
 
-from niceview.dataadapter import CollectionAdapter, ListAdapter, JsonListAdapter, ReactiveAdapter
+from niceview.dataadapter import (CollectionAdapter, FilteredAdapter, ListAdapter, JsonListAdapter,
+                                  ReactiveAdapter)
 from niceview.fieldinfo import FieldInfo
 from niceview.fields import Fields
 from niceview.modelform import FormAction, ModelForm, render_action_button
@@ -30,16 +32,38 @@ T = TypeVar('T', bound=BaseModel)
 @dataclass(kw_only=True, slots=True)
 class DrillDownActionEventArguments(UiEventArguments):
     """
-    What an action's `on_click` receives in a DrillDownWrapper's title row.
+    What a `detail_actions` action's `on_click` receives in a DrillDownWrapper's title row.
 
     Those buttons belong to the detail view — `key` and `item` are the item on screen, never
-    None, because there is nothing to click them on in the list view.
+    None, because there is nothing to click them on in the list view. See
+    DrillDownListActionEventArguments for `list_actions`, which has neither.
     """
     wrapper: 'DrillDownWrapper'
+    """The wrapper the action belongs to."""
     name: str
+    """The action's name, as declared in detail_actions."""
     action: FormAction
+    """The FormAction itself (label, icon, on_click, ...)."""
     key: str
+    """Key of the item on screen."""
     item: BaseModel
+    """The item on screen."""
+
+
+@dataclass(kw_only=True, slots=True)
+class DrillDownListActionEventArguments(UiEventArguments):
+    """
+    What a `list_actions` action's `on_click` receives in a DrillDownWrapper's title row.
+
+    Those buttons belong to the list view — there is no single item on screen there, so unlike
+    DrillDownActionEventArguments (for `detail_actions`) this carries no key/item.
+    """
+    wrapper: 'DrillDownWrapper'
+    """The wrapper the action belongs to."""
+    name: str
+    """The action's name, as declared in list_actions."""
+    action: FormAction
+    """The FormAction itself (label, icon, on_click, ...)."""
 
 
 ActionHandler = Callable[[], None | Awaitable[None]]
@@ -83,29 +107,38 @@ def _slide_class(direction: str) -> str:
 class _DrillDownWrapperOptionInputs(typing_extensions.TypedDict, total=False):
     """Keyword options for DrillDownWrapper and its factory methods."""
     title: str | None
-    """Title shown in the list view; omitted or None auto-generates '{ItemType} List', '' shows
-    none. Defaults from Meta.title_plural (the collection heading) when this kwarg is not passed
-    — never from the singular Meta.title. The detail view always shows the current item's title
-    instead."""
+    """List title; None auto-generates '{ItemType} List', '' hides it. Defaults to
+    Meta.title_plural; the detail view always shows the item's own title instead."""
     description: str | None
-    """Markdown shown below the title row, in both views. Defaults from Meta.description when
-    this kwarg is not passed."""
+    """Markdown below the title row, in both views. Defaults to Meta.description."""
     item_title_field: str | None
+    """Field shown as the detail title; auto-detected (first visible field) if omitted."""
     item_subtitle_fields: list[str] | None
+    """Fields shown as list-row subtitles; the next two visible fields if omitted."""
     title_field: str | None
     """Alias of item_title_field (the name ModelList uses); item_title_field wins if both given."""
     subtitle_fields: list[str] | None
     """Alias of item_subtitle_fields (the name ModelList uses)."""
     add_button: str | None
+    """Add button label; '' for icon-only (default), None hides it."""
     delete_button: str | None
+    """Delete button label; '' for icon-only (default), None hides it."""
     back_button: str | None
-    """Label of the Back button, '' for icon-only (the default). None hides it — the detail
-    view then has no way back other than one you render yourself."""
+    """Back button label; '' for icon-only (default). None omits it — the detail view then
+    needs its own way back."""
+    search: bool
+    """Show a free-text search box in the list view's title row, left of list_actions/Add,
+    filtering rows across all visible fields (client-side) as the user types. Off by default;
+    hidden in the detail view."""
+    list_actions: dict[str, FormAction]
+    """Buttons in the list view's title row, left of Add; hidden in the detail view. on_click
+    gets a DrillDownListActionEventArguments (no key/item), and requires_valid is rejected."""
+    detail_actions: dict[str, FormAction]
+    """Buttons in the detail view's title row, left of Delete; hidden in the list view. on_click
+    gets a DrillDownActionEventArguments with the item on screen; chrome_actions is an alias
+    (detail_actions wins if both given)."""
     chrome_actions: dict[str, FormAction]
-    """The application's own buttons in the title row, by name, right-aligned just left of
-    Delete. Same FormAction as a form's `actions`; they belong to the detail view and are
-    hidden in the list, so their `on_click` gets a DrillDownActionEventArguments with the item
-    on screen."""
+    """Deprecated alias of detail_actions, kept for backward compatibility."""
     chrome_style: ChromeStyle | None
     """Look of the title row, its buttons and the list rows. Replaces the application-wide
     default of niceview.style.set_chrome_style() wholesale — derive it with ChromeStyle.derived()."""
@@ -122,13 +155,21 @@ class _DrillDownWrapperOptionInputs(typing_extensions.TypedDict, total=False):
     """Shows a Back button in the list view too (for nesting) and runs on its click. Sync or
     async — an async handler can confirm via util.confirm_dialog() before leaving."""
     render_list_item: ListItemRenderer | None
+    """Custom renderer for one list row, replacing the default ModelList row."""
     render_list_container: ListContainerRenderer | None
+    """Wraps the rendered rows in a custom container, e.g. for make_sortable."""
     render_detail: DetailRenderer | None
+    """Custom renderer for the detail view, replacing the default autosaving form."""
     # ModelList options forwarded when render_list_item is not set:
     include: list[str] | str
+    """Fields to show; forwarded to ModelList when render_list_item is not set."""
     exclude: list[str] | str
+    """Fields to hide; forwarded to ModelList when render_list_item is not set."""
     field_infos: dict[str, FieldInfo]
+    """Per-field FieldInfo overrides; forwarded to ModelList when render_list_item is not set."""
     profile: str | None
+    """Named field layout profile from Meta.profiles; forwarded when render_list_item is not set.
+    Defaults to Meta.default_profile when omitted."""
 
 
 class DrillDownWrapper:
@@ -143,11 +184,15 @@ class DrillDownWrapper:
       - list view:   ModelList-style rows (title/subtitle from field values)
       - detail view: an autosaving ModelForm.from_adapter(item_type, adapter, key)
 
-    `chrome_actions` adds the application's own buttons to the title row of the *detail* view —
-    the same `FormAction` a form places between its fields, here right-aligned just left of
-    Delete, so niceview's own button keeps the right edge it has everywhere. They are hidden in
-    the list view, which is about no single item, and their `on_click` receives a
-    `DrillDownActionEventArguments` naming the one on screen.
+    `list_actions` and `detail_actions` add the application's own buttons to the title row — the
+    same `FormAction` a form places between its fields — right-aligned just left of niceview's
+    own button of that view (Add, Delete), so niceview's own button keeps the right edge it has
+    everywhere. `list_actions` sit in the list view and are hidden in the detail view, and vice
+    versa: each view shows only its own actions, since an action about no single item and one
+    about the item on screen are different things. `list_actions` get a
+    `DrillDownListActionEventArguments` (no key/item — there is no single item in the list
+    view); `detail_actions` get a `DrillDownActionEventArguments` naming the item on screen.
+    `chrome_actions` is accepted as an alias of `detail_actions`.
 
     Override render_list_item / render_detail for custom layout, heterogeneous
     item types (resolve the concrete pydantic type per item inside
@@ -161,9 +206,11 @@ class DrillDownWrapper:
         wrapper.title         → ui.label | None (list title, or the current item's title in detail view)
         wrapper.description   → ui.markdown | None (None entirely if description= is unset)
         wrapper.back_button   → ui.button | None (visible in detail always; in list only if on_back= is set)
+        wrapper.search_input  → ui.input | None (visible in list view; None entirely unless search=True)
         wrapper.add_button    → ui.button | None (visible in list view; None entirely if add_button=None)
         wrapper.delete_button → ui.button | None (visible in detail view; None entirely if delete_button=None)
-        wrapper.action_buttons → dict[str, ui.button] (visible in detail view; from chrome_actions=)
+        wrapper.list_action_buttons → dict[str, ui.button] (visible in list view; from list_actions=)
+        wrapper.action_buttons → dict[str, ui.button] (visible in detail view; from detail_actions= / chrome_actions=)
     For the shared look of the title row rather than a single instance of it, see
     niceview.style.set_chrome_style() and the chrome_style= option.
     The body (list/detail content) is not exposed: unlike the title row, it is genuinely
@@ -189,7 +236,11 @@ class DrillDownWrapper:
     _add_button: str | None
     _delete_button: str | None
     _back_button: str | None
-    _chrome_actions: dict[str, FormAction]
+    _search: bool
+    _search_field_names: list[str]
+    _search_adapter: 'FilteredAdapter | None'
+    _list_actions: dict[str, FormAction]
+    _detail_actions: dict[str, FormAction]
     _chrome_style: ChromeStyle | None
     _chrome_text: ChromeText | None
     _place: Place
@@ -204,8 +255,10 @@ class DrillDownWrapper:
     title: ui.label | None
     description: ui.markdown | None
     back_button: ui.button | None
+    search_input: ui.input | None
     add_button: ui.button | None
     delete_button: ui.button | None
+    list_action_buttons: dict[str, ui.button]
     action_buttons: dict[str, ui.button]
 
     def __init__(self, item_type: type[BaseModel], adapter: CollectionAdapter, **kwargs: Unpack[_DrillDownWrapperOptionInputs]) -> None:
@@ -239,11 +292,20 @@ class DrillDownWrapper:
         self._add_button = kwargs.pop('add_button', '')
         self._delete_button = kwargs.pop('delete_button', '')
         self._back_button = kwargs.pop('back_button', '')
+        self._search = kwargs.pop('search', False)
         # requires_valid can only be answered by the form the wrapper builds itself: a
         # render_detail of its own may put anything into the detail view, a form or not.
-        self._chrome_actions = ModelForm._checked_actions(
-            kwargs.pop('chrome_actions', {}),
+        detail_actions = kwargs.pop('detail_actions', None)
+        if detail_actions is None:
+            detail_actions = kwargs.pop('chrome_actions', {})
+        else:
+            kwargs.pop('chrome_actions', None)  # detail_actions wins if both are given
+        self._detail_actions = ModelForm._checked_actions(
+            detail_actions,
             no_form='' if self._render_detail is None else 'a render_detail of your own owns the detail view')
+        # The list view is never backed by a single form -- requires_valid always needs one.
+        self._list_actions = ModelForm._checked_actions(
+            kwargs.pop('list_actions', {}), no_form='the list view has no single item to validate')
         self._chrome_style = kwargs.pop('chrome_style', None)
         self._chrome_text = kwargs.pop('chrome_text', None)
         self._place = kwargs.pop('place', 'toolbar')
@@ -259,19 +321,23 @@ class DrillDownWrapper:
             if helpers.is_coroutine_function(getattr(self, f'_{option}')):
                 raise TypeError(f"DrillDownWrapper's {option} must be synchronous; "
                                 f"load data before render() or fill a placeholder from a task.")
-        self._state = {'view': 'list', 'key': None, 'direction': 'right', 'animate': True}
+        self._state = {'view': 'list', 'key': None, 'direction': 'right', 'animate': True, 'search': ''}
         self._auto_update_registered = False
 
         self.title_row = None
         self.title = None
         self.description = None
         self.back_button = None
+        self.search_input = None
         self.add_button = None
         self.delete_button = None
+        self.list_action_buttons = {}
         self.action_buttons = {}
 
-        # Resolve the display title field once so the detail title row is consistent
-        if self._item_title_field is None:
+        # Resolve the display title field once so the detail title row is consistent; search
+        # needs every visible field's name too, so it runs the same resolution either way.
+        self._search_field_names = []
+        if self._item_title_field is None or self._search:
             fields = Fields(
                 item_type,
                 self._list_kwargs.get('include', '__all__'),
@@ -279,10 +345,16 @@ class DrillDownWrapper:
                 self._list_kwargs.get('field_infos', {}),
                 profile=self._list_kwargs.get('profile', None),
             )
-            for name in fields:
-                if not fields[name].hidden:
-                    self._item_title_field = name
-                    break
+            visible = [name for name in fields if not fields[name].hidden]
+            if self._item_title_field is None and visible:
+                self._item_title_field = visible[0]
+            if self._search:
+                self._search_field_names = visible
+        # One instance for the wrapper's lifetime, not one per render: the predicate reads
+        # self._state['search'] dynamically, and a fresh FilteredAdapter on every body refresh
+        # would register a fresh on_change forwarder on self._adapter each time -- a growing
+        # leak, the same one ModelList's own dedup (see _render_list_view) already guards against.
+        self._search_adapter = FilteredAdapter(self._adapter, self._matches_search) if self._search else None
 
     # --- factory methods ---------------------------------------------------
 
@@ -355,6 +427,17 @@ class DrillDownWrapper:
         except (KeyError, ValueError):
             return key
 
+    def _matches_search(self, item: Any) -> bool:
+        query = self._state['search'].strip().lower()
+        if not query:
+            return True
+        return any(query in str(getattr(item, name, '')).lower() for name in self._search_field_names)
+
+    def _on_search_changed(self, event: ValueChangeEventArguments) -> None:
+        self._state['search'] = event.value or ''
+        self._state['animate'] = False
+        self._body.refresh()
+
     async def _handle_back_click(self) -> None:
         if self._state['view'] == 'detail':
             self._back()
@@ -385,16 +468,32 @@ class DrillDownWrapper:
             if self._back_button is not None:
                 self.back_button = chrome_button('back', self._back_button, 'arrow_back', text_of(text.back_tooltip), style, self._handle_back_click, place)
             self.title = chrome_title('', style)
-            if self._add_button is not None or self._delete_button is not None or self._chrome_actions:
-                # Add belongs to the list view, the actions and Delete to the detail view, so the
-                # count is whichever view shows more at once — never the sum of all that is built.
-                count = max(1 if self._add_button is not None else 0,
-                            len(self._chrome_actions) + (1 if self._delete_button is not None else 0))
-                with chrome_buttons(style, count):
-                    for name, action in self._chrome_actions.items():
+            if self._search:
+                self.search_input = ui.input(placeholder=text_of(text.search_placeholder)) \
+                    .props('type=search outlined dense clearable').classes('w-48') \
+                    .on_value_change(self._on_search_changed)
+                with self.search_input.add_slot('append'):
+                    ui.icon('search')
+            if (self._list_actions or self._add_button is not None
+                    or self._detail_actions or self._delete_button is not None):
+                # list_actions + Add belong to the list view, detail_actions + Delete to the
+                # detail view, so the count is whichever side is wider at once — never the sum.
+                list_count = len(self._list_actions) + (1 if self._add_button is not None else 0)
+                detail_count = len(self._detail_actions) + (1 if self._delete_button is not None else 0)
+                with chrome_buttons(style, max(list_count, detail_count)):
+                    # detail_actions are built first (kept from chrome_actions' original spot)
+                    # so an existing wrapper without list_actions keeps its exact button order;
+                    # each view only ever shows its own contiguous run (the other is hidden), so
+                    # visually list_actions still sits right before Add, detail_actions right
+                    # before Delete.
+                    for name, action in self._detail_actions.items():
                         self.action_buttons[name] = render_action_button(
                             action, style, place, None,
-                            lambda event, n=name, a=action: self._handle_chrome_action(n, a, event))
+                            lambda event, n=name, a=action: self._handle_detail_action(n, a, event))
+                    for name, action in self._list_actions.items():
+                        self.list_action_buttons[name] = render_action_button(
+                            action, style, place, None,
+                            lambda event, n=name, a=action: self._handle_list_action(n, a, event))
                     if self._add_button is not None:
                         self.add_button = chrome_button('add', self._add_button, 'add', text_of(text.add_tooltip), style, self._handle_add, place)
                     if self._delete_button is not None:
@@ -406,12 +505,16 @@ class DrillDownWrapper:
         if self.back_button is not None:
             self.back_button.set_visibility(is_detail or self._on_back is not None)
         self.title.set_text(self._detail_title() if is_detail else (self._title or ''))
+        if self.search_input is not None:
+            self.search_input.set_visibility(not is_detail)
+        for button in self.list_action_buttons.values():
+            button.set_visibility(not is_detail)
         if self.add_button is not None:
             self.add_button.set_visibility(not is_detail)
-        if self.delete_button is not None:
-            self.delete_button.set_visibility(is_detail)
         for button in self.action_buttons.values():
             button.set_visibility(is_detail)
+        if self.delete_button is not None:
+            self.delete_button.set_visibility(is_detail)
 
     # --- body ------------------------------------------------------------------
 
@@ -430,8 +533,9 @@ class DrillDownWrapper:
                 self._render_list_view()
 
     def _render_list_view(self) -> None:
+        adapter = self._search_adapter or self._adapter
         if self._render_list_item is not None:
-            items = list(self._adapter.items())
+            items = list(adapter.items())
             if not items:
                 ui.label(text_of(self._text.no_items)).classes('italic')
                 return
@@ -447,7 +551,7 @@ class DrillDownWrapper:
                 render_rows()
             return
         model_list = ModelList(
-            self._item_type, self._adapter,
+            self._item_type, adapter,
             title_field=self._item_title_field,
             subtitle_fields=self._item_subtitle_fields,
             chrome_style=self._chrome_style,  # a style set on the wrapper styles its rows too
@@ -472,7 +576,7 @@ class DrillDownWrapper:
         form.render()  # render() already places the non-field error label
         # The title row outlives the form -- every navigation builds a new one -- so a
         # requires_valid action is handed to whichever form is currently below it.
-        for name, action in self._chrome_actions.items():
+        for name, action in self._detail_actions.items():
             if action.requires_valid and (button := self.action_buttons.get(name)) is not None:
                 form._gate_on_validity(button)
 
@@ -500,8 +604,8 @@ class DrillDownWrapper:
         item = self._adapter.create(self._item_type())
         self.open(self._adapter.key_from_item(item))
 
-    def _handle_chrome_action(self, name: str, action: FormAction, event: ClickEventArguments) -> None:
-        """Call one of the application's own title-row actions with the item on screen."""
+    def _handle_detail_action(self, name: str, action: FormAction, event: ClickEventArguments) -> None:
+        """Call one of the application's own detail-view title-row actions with the item on screen."""
         if action.on_click is None:
             return
         key = self._state['key']
@@ -516,6 +620,14 @@ class DrillDownWrapper:
                      DrillDownActionEventArguments(sender=event.sender, client=event.client,
                                                    wrapper=self, name=name, action=action,
                                                    key=key, item=item))
+
+    def _handle_list_action(self, name: str, action: FormAction, event: ClickEventArguments) -> None:
+        """Call one of the application's own list-view title-row actions."""
+        if action.on_click is None:
+            return
+        handle_event(cast('Handler[DrillDownListActionEventArguments]', action.on_click),
+                     DrillDownListActionEventArguments(sender=event.sender, client=event.client,
+                                                       wrapper=self, name=name, action=action))
 
     async def _handle_delete(self) -> None:
         key = self._state['key']

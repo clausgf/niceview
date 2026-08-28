@@ -513,3 +513,73 @@ class TestDrillDownWrapperActions:
         with pytest.raises(ValueError, match='requires_valid needs a form'):
             DrillDownWrapper.from_list(Connection, [], render_detail=lambda adapter, key, set_key: None,
                                        chrome_actions={'go': FormAction('Go', requires_valid=True)})
+
+    async def test_detail_actions_is_the_same_as_chrome_actions(self, user: User) -> None:
+        items = [Connection(host='alpha')]
+        adapter = ListAdapter(Connection, items)
+        key = adapter.key_from_item(items[0])
+        captured = _form(lambda: DrillDownWrapper.from_adapter(
+            Connection, adapter, detail_actions={'ping': FormAction('Ping')},
+        ).render().open(key))
+        await user.open('/')
+        assert captured[0].action_buttons['ping'].visible is True
+
+    def test_detail_actions_wins_over_chrome_actions(self) -> None:
+        wrapper = DrillDownWrapper.from_list(
+            Connection, [],
+            detail_actions={'ping': FormAction('Ping')},
+            chrome_actions={'pong': FormAction('Pong')},
+        )
+        assert 'ping' in wrapper._detail_actions and 'pong' not in wrapper._detail_actions
+
+
+class TestDrillDownWrapperListActions:
+    """DrillDownWrapper's title row: list_actions belong to the list view, left of Add."""
+
+    async def test_a_list_action_shows_in_the_list_view(self, user: User) -> None:
+        captured = _form(lambda: DrillDownWrapper.from_list(
+            Connection, [Connection()], title='Connections',
+            list_actions={'export': FormAction('Export')},
+        ).render())
+        await user.open('/')
+        assert captured[0].list_action_buttons['export'].visible is True
+
+    async def test_a_list_action_is_hidden_in_the_detail_view(self, user: User) -> None:
+        items = [Connection(host='alpha')]
+        adapter = ListAdapter(Connection, items)
+        key = adapter.key_from_item(items[0])
+        captured = _form(lambda: DrillDownWrapper.from_adapter(
+            Connection, adapter, list_actions={'export': FormAction('Export')},
+        ).render().open(key))
+        await user.open('/')
+        assert captured[0].list_action_buttons['export'].visible is False
+
+    async def test_a_list_action_sits_left_of_add(self, user: User) -> None:
+        captured = _form(lambda: DrillDownWrapper.from_list(
+            Connection, [], list_actions={'export': FormAction('Export')},
+        ).render())
+        await user.open('/')
+        wrapper = captured[0]
+
+        order = _buttons(_parent(wrapper.list_action_buttons['export']))
+        assert order.index(wrapper.list_action_buttons['export']) < order.index(wrapper.add_button)
+
+    async def test_a_click_names_the_wrapper_only(self, user: User) -> None:
+        seen: list = []
+        captured = _form(lambda: DrillDownWrapper.from_list(
+            Connection, [],
+            list_actions={'export': FormAction('Export', on_click=lambda e: seen.append(e))},
+        ).render())
+        await user.open('/')
+
+        user.find('Export').click()
+        await user.should_see('Export')
+        assert seen[0].name == 'export'
+        assert seen[0].wrapper is captured[0]
+        assert not hasattr(seen[0], 'key')
+        assert not hasattr(seen[0], 'item')
+
+    def test_requires_valid_is_refused_for_list_actions(self) -> None:
+        with pytest.raises(ValueError, match='requires_valid needs a form'):
+            DrillDownWrapper.from_list(Connection, [],
+                                       list_actions={'go': FormAction('Go', requires_valid=True)})

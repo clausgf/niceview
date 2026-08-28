@@ -452,6 +452,24 @@ def to_widget_value(field_info: FieldInfo, value: Any, *, local_tz: str | None =
     return value
 
 
+def format_number(field_info: FieldInfo, value: float) -> str:
+    """
+    Render a number as ui.number's own widget would display it, as plain text.
+
+    Mirrors ui.number's sanitize(): round to `precision`, then apply `number_format` (a
+    '%.2f'-style pattern) if given, then wrap with `prefix`/`suffix`. For a read-only place
+    (a ModelList row) rather than the live, editable widget.
+    """
+    if field_info.precision is not None:
+        value = round(value, field_info.precision)
+    text = (field_info.number_format % value) if field_info.number_format else str(value)
+    if field_info.prefix:
+        text = field_info.prefix + text
+    if field_info.suffix:
+        text = text + field_info.suffix
+    return text
+
+
 def field_value(widget: Any, field_info: FieldInfo, *, local_tz: str | None = None) -> Any:
     """
     Read a widget rendered by render_field() and convert its value to the field's Python type.

@@ -1,11 +1,14 @@
 """Harmonization of options across components:
-- Meta.include / Meta.exclude are honoured by ModelGrid and ModelList (as they already were by
-  ModelForm), overridable by the kwarg.
+- Meta.include / Meta.exclude / Meta.field_infos are honoured by ModelGrid and ModelList (as
+  they already were by ModelForm), overridable by the kwarg.
+- Meta.default_profile picks a profile when no profile=/layout= kwarg is given, honoured
+  wherever Fields() is built (ModelForm, ModelGrid, ModelList alike).
 - DrillDownWrapper accepts title_field / subtitle_fields as aliases of item_title_field /
   item_subtitle_fields (the names ModelList uses), easing a ModelList <-> DrillDown switch.
 """
 import pydantic
 
+from niceview.fieldinfo import FieldInfo
 from niceview.modelform import ModelForm
 from niceview.modelgrid import ModelGrid
 from niceview.modellist import ModelList
@@ -28,6 +31,24 @@ class ExcludeMeta(pydantic.BaseModel):
 
     class Meta:
         exclude = ['secret']
+
+
+class FieldInfosMeta(pydantic.BaseModel):
+    a: str = ''
+    secret: str = ''
+
+    class Meta:
+        field_infos = {'secret': FieldInfo(hidden=True)}
+
+
+class DefaultProfileMeta(pydantic.BaseModel):
+    a: str = ''
+    b: str = ''
+    c: str = ''
+
+    class Meta:
+        profiles = {'flat': ['a', 'b']}
+        default_profile = 'flat'
 
 
 class Person(pydantic.BaseModel):
@@ -54,6 +75,30 @@ class TestMetaIncludeExclude:
 
     def test_kwarg_overrides_meta_include(self):
         assert list(ModelGrid.from_list(IncludeMeta, [], include=['c'])._fields) == ['c']
+
+    def test_grid_honours_meta_field_infos(self):
+        assert ModelGrid.from_list(FieldInfosMeta, [])._fields['secret'].hidden is True
+
+    def test_list_honours_meta_field_infos(self):
+        assert ModelList.from_list(FieldInfosMeta, [])._fields['secret'].hidden is True
+
+    def test_kwarg_overrides_meta_field_infos(self):
+        grid = ModelGrid.from_list(FieldInfosMeta, [], field_infos={'secret': FieldInfo(hidden=False)})
+        assert grid._fields['secret'].hidden is False
+
+
+class TestMetaDefaultProfile:
+    def test_form_honours_default_profile(self):
+        assert list(ModelForm.from_item(DefaultProfileMeta())._fields) == ['a', 'b']
+
+    def test_grid_honours_default_profile(self):
+        assert list(ModelGrid.from_list(DefaultProfileMeta, [])._fields) == ['a', 'b']
+
+    def test_list_honours_default_profile(self):
+        assert list(ModelList.from_list(DefaultProfileMeta, [])._fields) == ['a', 'b']
+
+    def test_profile_kwarg_overrides_default_profile(self):
+        assert list(ModelGrid.from_list(DefaultProfileMeta, [], include=['c'])._fields) == ['c']
 
 
 class TestDrillDownFieldAliases:

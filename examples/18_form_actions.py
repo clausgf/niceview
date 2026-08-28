@@ -32,10 +32,14 @@ place is about:
 |---|---|
 | `ModelForm`, `EditFormWrapper` | `e.form`, as above |
 | `EditGridWrapper` | `e.row_key`, `e.item` — the selected row, both `None` when nothing is selected |
-| `DrillDownWrapper` | `e.key`, `e.item` — the item on screen; hidden in the list view, where there is none |
+| `DrillDownWrapper`'s `detail_actions` | `e.key`, `e.item` — the item on screen; shown in the detail view only, left of Delete |
+| `DrillDownWrapper`'s `list_actions` | no `key`/`item` — the list view is about no single item; shown in the list view only, left of Add |
 
-`requires_valid` goes only where a form can answer it: not on a grid, and not on a drill-down
-whose detail view you render yourself.
+`DrillDownWrapper` has two views and therefore two action tables — `chrome_actions=` is still
+accepted as an alias of `detail_actions=`.
+
+`requires_valid` goes only where a form can answer it: not on a grid, not on `list_actions`, and
+not on a drill-down whose detail view you render yourself.
 
 An action carries no *role* — those are niceview's closed vocabulary (add, delete, save, …) — so
 it styles itself with `props`, on top of the place and shape of the surrounding chrome.
@@ -90,8 +94,14 @@ def ping_selected(e) -> None:
 
 
 def ping_open(e) -> None:
-    """A drill-down action lives in the detail view, so there is always an item."""
+    """A detail_actions action lives in the detail view, so there is always an item."""
     ui.notify(f'Pinging {e.item.host} (key {e.key}) …', type='info')
+
+
+def ping_all(e) -> None:
+    """A list_actions action lives in the list view — no item, just the wrapper itself."""
+    count = sum(1 for _ in e.wrapper.adapter.items())
+    ui.notify(f'Pinging all {count} replicas …', type='info')
 
 
 @ui.page('/')
@@ -148,11 +158,14 @@ def page():
 
         with ui.card().classes('flex-1'):
             ui.label('In a drill-down title row').classes('text-h6')
-            ui.label('Open a server to see Ping appear left of Delete: those buttons belong to '
-                     'the detail view, where there is an item to act on.').classes('text-caption')
+            ui.label('"Ping all" sits left of Add in the list view; open a server to see it '
+                     'swap for "Ping" left of Delete in the detail view — one table per view.') \
+                .classes('text-caption')
             DrillDownWrapper.from_list(
                 Connection, replicas, title='Replicas', item_title_field='host',
-                chrome_actions={'ping': FormAction('Ping', icon='wifi_tethering', on_click=ping_open,
+                list_actions={'ping_all': FormAction('Ping all', icon='wifi_tethering', on_click=ping_all,
+                                                      tooltip='Ping every replica')},
+                detail_actions={'ping': FormAction('Ping', icon='wifi_tethering', on_click=ping_open,
                                                    tooltip='Ping the server on screen')},
             ).render()
 

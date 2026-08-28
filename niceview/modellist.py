@@ -19,6 +19,7 @@ from niceview.fieldinfo import FieldInfo
 from niceview.util import meta_option, resolve_repository
 from niceview.fields import Fields
 from niceview.style import ChromeStyle, get_chrome_style
+from niceview.widgets import format_number, to_widget_value
 
 log = logging.getLogger('niceview')
 
@@ -27,19 +28,30 @@ T = TypeVar('T', bound=BaseModel)
 
 @dataclass(kw_only=True, slots=True)
 class ListItemSelectEventArguments(ClickEventArguments):
+    """Fired by ModelList.on_select when a row is tapped."""
     row_key: str
+    """Key of the tapped row."""
     item: Any
+    """The tapped row's item."""
 
 
 class _ModelListOptionInputs(typing_extensions.TypedDict, total=False):
     """Keyword options for ModelList and its factory methods."""
     include: list[str] | str
+    """Fields to show; '__all__' (default) or a list of names."""
     exclude: list[str] | str
+    """Fields to hide; combines with include."""
     field_infos: dict[str, FieldInfo]
+    """Per-field FieldInfo overrides, by field name."""
     profile: str | None
-    """Named field layout profile from Meta.profiles (e.g. 'summary', 'detail')."""
+    """Named field layout profile from Meta.profiles (e.g. 'summary', 'detail'). Defaults to
+    Meta.default_profile when omitted."""
+    local_tz: str | None
+    """Timezone for datetime display (e.g. 'Europe/Berlin'), like ModelForm's."""
     title_field: str | None
+    """Field shown as each row's title; the first visible field if omitted."""
     subtitle_fields: list[str] | None
+    """Fields shown as each row's subtitle; the next two visible fields if omitted."""
     chrome_style: ChromeStyle | None
     """Look of the list and its rows. Replaces the application-wide default of
     niceview.style.set_chrome_style() wholesale — derive it with get_chrome_style().replace()."""
@@ -73,17 +85,21 @@ class ModelList:
     _auto_update_registered: bool
     _chrome_style: ChromeStyle | None
     _model_repositories: dict[type[BaseModel] | str, CollectionAdapter]
+    _local_tz: str | None
     widget: ui.list | None
 
     def __init__(self, item_type: type[T], adapter: CollectionAdapter, **kwargs: Unpack[_ModelListOptionInputs]) -> None:
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {type(item_type)}")
 
-        # include/exclude fall back to the model's Meta (like ModelForm); profile stays kwargs-only.
+        # include/exclude/field_infos fall back to the model's Meta (like ModelForm); profile
+        # stays kwargs-only -- Fields() itself resolves Meta.default_profile as its fallback.
         include = meta_option(item_type, kwargs, 'include', '__all__')
         exclude = meta_option(item_type, kwargs, 'exclude', '')
-        self._fields = Fields(item_type, include, exclude, kwargs.pop('field_infos', {}),
+        field_infos = meta_option(item_type, kwargs, 'field_infos', {})
+        self._fields = Fields(item_type, include, exclude, field_infos,
                               profile=kwargs.pop('profile', None))
+        self._local_tz = meta_option(item_type, kwargs, 'local_tz', None)
         self._data = adapter
         self._select_handlers = []
         self._auto_update_registered = False
@@ -145,18 +161,40 @@ class ModelList:
     # --- data and rendering -----------------------------------------------
 
     def _display_value(self, field_name: str, value: Any) -> str:
-        """The text shown for a field value. A modelselect key field resolves through its
-        repository to the referenced item's label; everything else is shown via str()."""
+        """The text shown for a field value: a modelselect key resolves through its repository
+        to the referenced item's label; a choice field's stored value resolves to its label
+        (static options/literal_options only — an async options= callable can't be awaited
+        here); a date/time-family value goes through the same conversion as ModelForm's widgets
+        (local_tz included); a checkbox/switch field shows '✓'/'✗'; a ui.number field with any
+        of precision/number_format/prefix/suffix set is formatted the same way ui.number itself
+        would; a list joins its items with ', ', each resolved the same way; everything else is
+        shown via str()."""
         if value is None:
             return ''
         fi = self._fields.get(field_name)
-        if fi is not None and fi.widget_type == 'modelselect' and not isinstance(value, BaseModel):
+        if fi is None:
+            return str(value)
+        if fi.widget_type == 'modelselect' and not isinstance(value, BaseModel):
             repo = resolve_repository(self._model_repositories, field_name, fi.item_type)
             if repo is not None:
                 try:
                     return str(repo.read(str(value)))
                 except (KeyError, ValueError):
                     return str(value)  # stale key — show it rather than nothing
+            return str(value)
+        if fi.widget_type in ('datetime', 'date', 'time', 'timedelta'):
+            return str(to_widget_value(fi, value, local_tz=self._local_tz))
+        if fi.widget_type in ('ui.checkbox', 'ui.switch'):
+            return '✓' if value else '✗'
+        if fi.widget_type == 'ui.number' and (fi.precision is not None or fi.number_format
+                                              or fi.prefix or fi.suffix):
+            return format_number(fi, value)
+        options = fi.options or fi.literal_options
+        labels = {str(k): str(v) for k, v in options.items()} if isinstance(options, dict) else None
+        if isinstance(value, list):
+            return ', '.join(labels.get(str(v), str(v)) if labels else str(v) for v in value)
+        if labels is not None:
+            return labels.get(str(value), str(value))
         return str(value)
 
     def _item_title(self, item: Any) -> str:

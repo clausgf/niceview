@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import datetime
 import logging
+import re
 from pathlib import Path
 from typing import Any, Callable, Literal, Self, TypeVar, Unpack
 import typing_extensions
@@ -14,6 +15,7 @@ from niceview.fields import Fields
 from niceview.style import chrome_notify, get_chrome_style
 from niceview.text import get_chrome_text, text_of
 from niceview.util import field_stores_model, meta_option, resolve_repository
+from niceview.widgets import to_widget_value
 
 log = logging.getLogger('niceview')
 
@@ -53,6 +55,34 @@ def _field_options(name: str, info: FieldInfo, repositories: 'dict | None') -> '
     return labels, values
 
 
+_NUMBER_FORMAT_PRECISION = re.compile(r'%\.(\d+)f$')
+
+
+def _number_value_formatter_js(info: FieldInfo) -> str | None:
+    """
+    A `:valueFormatter` JS expression that displays a number field the way ui.number itself
+    would (precision, prefix, suffix), while keeping the cell's underlying value numeric —
+    so sorting and agNumberColumnFilter stay correct, unlike writing a formatted string
+    straight into rowData (AG Grid renders client-side; a Python callback can't reach it,
+    hence a small JS expression instead of reusing widgets.format_number()).
+
+    number_format is only honoured when it is a plain '%.<n>f' pattern (precision extracted
+    from it); other patterns are ignored here, though they still apply to ui.number itself.
+    None if nothing to format (prefix/suffix/precision/number_format all unset).
+    """
+    precision = info.precision
+    if precision is None and info.number_format:
+        m = _NUMBER_FORMAT_PRECISION.match(info.number_format)
+        if m:
+            precision = int(m.group(1))
+    if precision is None and not info.prefix and not info.suffix:
+        return None
+    value_expr = f'params.value.toFixed({precision})' if precision is not None else 'params.value'
+    prefix = (info.prefix or '').replace("'", "\\'")
+    suffix = (info.suffix or '').replace("'", "\\'")
+    return f"(params) => params.value == null ? '' : '{prefix}' + ({value_expr}) + '{suffix}'"
+
+
 def _collect_aggrid_cols(fields: Fields, repositories: 'dict | None' = None) -> list[dict[str, Any]]:
     cols = []
     for name in fields:
@@ -77,12 +107,21 @@ def _collect_aggrid_cols(fields: Fields, repositories: 'dict | None' = None) -> 
             col['cellStyle'] = cell_style
         if info.table_sort:
             col['sort'] = info.table_sort
+        if info.field_type is bool:
+            # AG Grid's own boolean cellDataType brings its own renderer (a real checkbox,
+            # clickable when editable) and its own filter -- forcing agTextColumnFilter below
+            # would fight it, so booleans are excluded from that branch.
+            col['cellDataType'] = 'boolean'
+        elif info.field_type in [int, float]:
+            formatter = _number_value_formatter_js(info)
+            if formatter:
+                col[':valueFormatter'] = formatter
         if info.table_filterable:
             if info.field_type in [int, float]:
                 col['filter'] = 'agNumberColumnFilter'
             elif info.field_type in [datetime.datetime, datetime.date, datetime.time]:
                 col['filter'] = 'agDateColumnFilter'
-            else:
+            elif info.field_type is not bool:
                 col['filter'] = 'agTextColumnFilter'
             if info.table_floating_filter:
                 col['floatingFilter'] = True
@@ -107,21 +146,31 @@ def _collect_aggrid_cols(fields: Fields, repositories: 'dict | None' = None) -> 
 class _ModelGridOptionInputs(typing_extensions.TypedDict, total=False):
     """Keyword options for ModelGrid and its factory methods."""
     include: list[str] | str
+    """Fields to show; '__all__' (default) or a list of names."""
     exclude: list[str] | str
+    """Fields to hide; combines with include."""
     field_infos: dict[str, FieldInfo]
+    """Per-field FieldInfo overrides, by field name."""
     profile: str | None
-    """Named field layout profile from Meta.profiles (e.g. 'summary', 'detail')."""
+    """Named field layout profile from Meta.profiles (e.g. 'summary', 'detail'). Defaults to
+    Meta.default_profile when omitted."""
+    local_tz: str | None
+    """Timezone for datetime column display (e.g. 'Europe/Berlin'), like ModelForm's."""
 
     theme: str
+    """ag-grid theme name, e.g. 'ag-theme-balham'."""
     auto_size_columns: bool
+    """Auto-size columns to fit their content."""
     defaultColDef: dict
+    """ag-grid defaultColDef, merged into every column."""
     rowSelection: Literal[None, 'single', 'multiple']
+    """ag-grid row selection mode."""
     cell_renderers: dict[str, Callable[[Any], str]]
+    """Per-field value -> display-string converters, by field name."""
     html_fields: list[str]
-    """Field names whose cell_renderers output is raw HTML (e.g. an icon <span>) rather than
-    plain text — translated to ag-grid's column-index-based html_columns at render() time, so
-    it stays stable across include/exclude field ordering. A field listed here without a
-    cell_renderers entry renders its raw value as HTML verbatim, which is rarely what you want."""
+    """Field names whose cell_renderers output is raw HTML, not plain text — translated to
+    ag-grid's html_columns at render(). Without a cell_renderers entry, the raw value renders
+    as HTML verbatim."""
 
 
 T = TypeVar('T', bound=BaseModel)
@@ -131,8 +180,11 @@ T = TypeVar('T', bound=BaseModel)
 class TableItemSelectEventArguments(ClickEventArguments):
     """Fired by ModelGrid.on_select. row_key/item are None when the selection was cleared."""
     grid: 'ModelGrid'
+    """The grid the selection belongs to."""
     row_key: str | None
+    """Key of the selected row, or None when the selection was cleared."""
     item: Any
+    """The selected row's item, or None when the selection was cleared."""
 
 
 class ModelGrid:
@@ -162,6 +214,7 @@ class ModelGrid:
     _rowSelection: Literal[None, 'single', 'multiple']
     _cell_renderers: dict[str, Callable[[Any], Any]]
     _html_fields: list[str]
+    _local_tz: str | None
     _model_repositories: dict[type[BaseModel] | str, CollectionAdapter]
 
     def __init__(self, item_type: type[T], adapter: CollectionAdapter, **kwargs: Unpack[_ModelGridOptionInputs]) -> None:
@@ -172,11 +225,14 @@ class ModelGrid:
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {type(item_type)}")
 
-        # include/exclude fall back to the model's Meta (like ModelForm); profile stays kwargs-only.
+        # include/exclude/field_infos fall back to the model's Meta (like ModelForm); profile
+        # stays kwargs-only -- Fields() itself resolves Meta.default_profile as its fallback.
         include = meta_option(item_type, kwargs, 'include', '__all__')
         exclude = meta_option(item_type, kwargs, 'exclude', '')
-        self._fields = Fields(item_type, include, exclude, kwargs.pop('field_infos', {}),
+        field_infos = meta_option(item_type, kwargs, 'field_infos', {})
+        self._fields = Fields(item_type, include, exclude, field_infos,
                               profile=kwargs.pop('profile', None))
+        self._local_tz = meta_option(item_type, kwargs, 'local_tz', None)
         self._data = adapter
         self._selection_handlers = []
         self._auto_update_registered = False
@@ -280,6 +336,11 @@ class ModelGrid:
                 value = getattr(item, field_name)
                 if field_name in self._cell_renderers:
                     row[field_name] = self._cell_renderers[field_name](value)
+                elif field_info.widget_type in ('datetime', 'date', 'time', 'timedelta'):
+                    # Also fixes a crash: orjson (NiceGUI's JSON encoder) has no timedelta
+                    # support, and to_widget_value() already turns all four into plain,
+                    # JSON-safe ISO strings for ModelForm -- local_tz-aware for datetime.
+                    row[field_name] = to_widget_value(field_info, value, local_tz=self._local_tz)
                 elif isinstance(value, list):
                     row[field_name] = ', '.join(str(v) for v in value)
                 elif isinstance(value, BaseModel):
@@ -346,19 +407,28 @@ class ModelGrid:
 
 @dataclass(kw_only=True, slots=True)
 class TableItemEventArguments(ClickEventArguments):
+    """Fired by EditGridWrapper.on_change after a successful create, update, or delete."""
     grid: ModelGrid
+    """The grid the item belongs to."""
     row_key: str
+    """Key of the affected row."""
     item: Any
+    """The affected item."""
 
 
 @dataclass(kw_only=True, slots=True)
 class TableItemFieldEventArguments(TableItemEventArguments):
+    """Fired by ModelGridInlineEdit.on_change after one cell is edited."""
     field_name: str
+    """Name of the edited field."""
     new_value: Any
+    """The field's new value."""
 
 
 class _InlineEditableModelGridOptionInputs(_ModelGridOptionInputs, total=False):
     cell_readers: dict[str, Callable[[str], Any]]
+    """Per-field display-string -> value parsers, by field name — the inverse of
+    cell_renderers, used to compare/commit an inline edit."""
 
 
 class ModelGridInlineEdit(ModelGrid):

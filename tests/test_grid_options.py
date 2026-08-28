@@ -9,7 +9,8 @@ import pydantic
 
 import niceview
 from niceview.dataadapter import ListAdapter
-from niceview.modelgrid import ModelGrid, _collect_aggrid_cols, _field_options
+from niceview.modelgrid import (ModelGrid, _collect_aggrid_cols, _field_options,
+                                _number_value_formatter_js)
 
 
 ROOM_LABELS = {'meeting': 'Meeting room', 'lab': 'Lab', 'other': 'Other'}
@@ -95,3 +96,52 @@ class TestModelselect:
 def _cols_info(model, field_name):
     grid = ModelGrid.from_list(model, [])
     return grid._fields[field_name]
+
+
+class Flags(pydantic.BaseModel):
+    active: bool = True
+    name: str = ''
+
+
+class Prices(pydantic.BaseModel):
+    plain: float = 0.0
+    rounded: Annotated[float, niceview.Field(precision=2)] = 0.0
+    formatted: Annotated[float, niceview.Field(number_format='%.2f')] = 0.0
+    with_prefix_suffix: Annotated[float, niceview.Field(prefix='$', suffix=' USD')] = 0.0
+    weird_format: Annotated[float, niceview.Field(number_format='%05d')] = 0.0
+
+
+class TestBooleanColumn:
+    def test_bool_field_gets_boolean_cell_data_type(self):
+        col = _cols(Flags)['active']
+        assert col['cellDataType'] == 'boolean'
+
+    def test_bool_field_gets_no_forced_text_filter(self):
+        col = _cols(Flags)['active']
+        assert 'filter' not in col
+
+    def test_non_bool_field_untouched(self):
+        col = _cols(Flags)['name']
+        assert 'cellDataType' not in col
+
+
+class TestNumberValueFormatter:
+    def test_plain_number_gets_no_formatter(self):
+        col = _cols(Prices)['plain']
+        assert ':valueFormatter' not in col
+
+    def test_precision_becomes_a_fixed_formatter(self):
+        col = _cols(Prices)['rounded']
+        assert col[':valueFormatter'] == "(params) => params.value == null ? '' : '' + (params.value.toFixed(2)) + ''"
+
+    def test_number_format_pattern_extracts_precision(self):
+        col = _cols(Prices)['formatted']
+        assert 'toFixed(2)' in col[':valueFormatter']
+
+    def test_prefix_and_suffix_without_precision(self):
+        col = _cols(Prices)['with_prefix_suffix']
+        assert col[':valueFormatter'] == "(params) => params.value == null ? '' : '$' + (params.value) + ' USD'"
+
+    def test_unrecognized_number_format_pattern_is_ignored(self):
+        info = _cols_info(Prices, 'weird_format')
+        assert _number_value_formatter_js(info) is None

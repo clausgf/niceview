@@ -17,7 +17,7 @@ from niceview.fields import Fields, LayoutAction, LayoutField, LayoutGroup
 from niceview.style import (ChromeStyle, NotifyKind, Place, chrome_button, chrome_notify,
                             get_chrome_style, get_field_style)
 from niceview.text import ChromeText, TextValue, get_chrome_text, text_of
-from niceview.util import field_stores_model, resolve_repository
+from niceview.util import field_stores_model, meta_option, resolve_repository
 from niceview.widgets import (
     DESCRIPTION_AS,
     DescriptionTarget,
@@ -39,25 +39,33 @@ if typing.TYPE_CHECKING:
     # to avoid a circular import (editwrapper.py imports ModelForm from this module).
     from niceview.modelgrid import ModelGrid
     from niceview.editwrapper import EditGridWrapper, GridActionEventArguments
-    from niceview.drilldown import DrillDownActionEventArguments
+    from niceview.drilldown import DrillDownActionEventArguments, DrillDownListActionEventArguments
 
 log = logging.getLogger('niceview')
 
 
 @dataclass(kw_only=True, slots=True)
 class FieldChangeEventArguments(UiEventArguments):
+    """What ModelForm's `on_change` receives when a field's value changes."""
     form: 'ModelForm'
+    """The form the field belongs to."""
     field_name: str
+    """Name of the changed field."""
     previous_value: Any
+    """The field's value before this change."""
     value: Any
+    """The field's new value."""
 
 
 @dataclass(kw_only=True, slots=True)
 class FormActionEventArguments(UiEventArguments):
     """What an action's `on_click` receives. `form.item` and `form.draft` are the point of it."""
     form: 'ModelForm'
+    """The form the action belongs to."""
     name: str
+    """The action's name, as declared in `actions`."""
     action: 'FormAction'
+    """The FormAction itself (label, icon, on_click, ...)."""
 
 
 @dataclass(frozen=True)
@@ -73,27 +81,22 @@ class FormAction:
     """
     label: TextValue = ''
     """The button's text. '' makes it an icon-only button, so it needs an `icon` then."""
-    on_click: 'Handler[FormActionEventArguments] | Handler[GridActionEventArguments] | Handler[DrillDownActionEventArguments] | None' = None
-    """Called with the event arguments of the place the button sits in — sync or async, like
-    every niceview handler. A form and an EditFormWrapper's title row send a
-    FormActionEventArguments (`e.form`), an EditGridWrapper's a GridActionEventArguments
-    (`e.row_key`, `e.item` — the selected row, None when nothing is selected), a
-    DrillDownWrapper's a DrillDownActionEventArguments (`e.key`, `e.item` — the item on
-    screen)."""
+    on_click: ('Handler[FormActionEventArguments] | Handler[GridActionEventArguments] | '
+               'Handler[DrillDownActionEventArguments] | Handler[DrillDownListActionEventArguments] | None') = None
+    """Event arguments of where the button sits, sync or async: FormActionEventArguments (a
+    form), GridActionEventArguments (a grid selection), DrillDownActionEventArguments
+    (detail_actions), or DrillDownListActionEventArguments (list_actions, no key/item)."""
     icon: str = ''
     """A Material icon name. Empty renders no icon."""
     tooltip: TextValue = ''
     """Shown on hover, unless the chrome style turns tooltips off."""
     props: str = ''
-    """Quasar props, merged on top of the place and shape layers of the chrome style. An
-    application's own action has no role, so it styles itself."""
+    """Quasar props, merged on top of the place and shape layers of the chrome style."""
     classes: str = ''
     """CSS classes of the button. In a row, they replace the default 'self-center'."""
     requires_valid: bool = False
-    """Disable the button while the form has validation errors. The one bit of state worth
-    taking over: niceview knows `has_validation_errors`, the application would have to wire it.
-    It needs a form to ask, so the title rows that have none — an EditGridWrapper's, a
-    DrillDownWrapper's with a `render_detail` of its own — reject it instead of ignoring it."""
+    """Disable the button while the form has validation errors. Needs a form to ask —
+    EditGridWrapper, list_actions, and a custom render_detail reject it instead."""
 
     def __post_init__(self) -> None:
         if not self.label and not self.icon:
@@ -104,7 +107,8 @@ def render_action_button(action: FormAction, style: ChromeStyle, place: Place, c
                          on_click: Callable[..., Any]) -> ui.button:
     """
     Build one action button in the current NiceGUI context — the same button wherever an action
-    sits, so a form's '@name' and a wrapper's `chrome_actions` cannot drift apart.
+    sits, so a form's '@name' and a wrapper's `chrome_actions` / `list_actions` / `detail_actions`
+    cannot drift apart.
 
     It goes through the same chrome layers as a Save or a Delete — the props of its place and
     the shape its label asks for — minus the role layer: the roles are niceview's closed
@@ -139,17 +143,18 @@ class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
     Chrome (title, description, save/refresh buttons) belongs to EditFormWrapper.
     """
     include: list[str] | str
+    """Fields to show; '__all__' (default) or a list of names."""
     exclude: list[str] | str
+    """Fields to hide; combines with include."""
     field_infos: dict[str, FieldInfo]
+    """Per-field FieldInfo overrides, by field name."""
     profile: str | None
-    """Named field layout profile from Meta.profiles (e.g. 'summary', 'detail')."""
+    """Named field layout profile from Meta.profiles (e.g. 'summary', 'detail'). Defaults to
+    Meta.default_profile when omitted."""
 
     layout: list
-    """Inline field layout: a nested list of field names. Same notation as a Meta.profiles
-    entry — a nested list opens a row (rows and columns alternate), a leading '# Title' makes
-    the group a card, '## Title' gives it the same heading without the card, a leading
-    ':classes' replaces the container's classes, and a field name may carry its own classes
-    after a colon ('street:sm:w-2/3'), and '@name' places one of the form's actions."""
+    """Inline field layout: a nested list of field names — rows/columns, '# Title' cards,
+    '@name' places an action. Same notation as a Meta.profiles entry."""
 
     actions: dict[str, 'FormAction']
     """The form's action buttons, by name: buttons that are not fields ('Test connection').
@@ -179,9 +184,8 @@ class _ModelFormOptionInputs(typing_extensions.TypedDict, total=False):
     """Validation message for an empty required field. Defaults to 'Required'."""
 
     description_as: 'DescriptionTarget'
-    """Where a field's `description` (from pydantic's `description=`) is shown: 'tooltip'
-    (default), 'hint' below the widget, or None to not show it at all. A field that sets `hint`
-    or `tooltip` explicitly always wins over this."""
+    """Where a field's pydantic `description` shows: 'tooltip' (default), 'hint', or None. An
+    explicit `hint`/`tooltip` on the field always wins."""
 
     chrome_style: 'ChromeStyle | None'
     """Look of the section titles of this form's layout. Replaces the application-wide default
@@ -239,13 +243,6 @@ class ModelForm():
         calling the constructor directly.
         """
 
-        def _get_param(param: str, default: Any) -> Any:
-            """Get a parameter from (in descending priority) kwargs, Meta class or default value."""
-            meta = getattr(self._item_type, 'Meta', None)
-            value = getattr(meta, param, default) if meta else default
-            value = kwargs.pop(param, value)  # type: ignore[misc]  # dynamic TypedDict key
-            return value
-
         if not isinstance(item_type, type) or not issubclass(item_type, BaseModel):
             raise TypeError(f"item_type must be a subclass of BaseModel, got {item_type}")
 
@@ -254,11 +251,12 @@ class ModelForm():
         self._model_repositories: dict[type[BaseModel] | str, CollectionAdapter] = {}
         self._change_handlers: list[Handler[FieldChangeEventArguments]] = []
 
-        include = _get_param('include', '__all__')
-        exclude = _get_param('exclude', '')
-        field_infos = _get_param('field_infos', {})
+        include = meta_option(item_type, kwargs, 'include', '__all__')
+        exclude = meta_option(item_type, kwargs, 'exclude', '')
+        field_infos = meta_option(item_type, kwargs, 'field_infos', {})
+        # profile stays kwargs-only -- Fields() itself resolves Meta.default_profile as its fallback.
         profile = kwargs.pop('profile', None)  # type: ignore[misc]
-        layout = _get_param('layout', None)
+        layout = meta_option(item_type, kwargs, 'layout', None)
         # Actions are kwargs-only, deliberately: a Meta entry is data, and an action carries a
         # callback — behaviour does not belong on the model class.
         self._actions = self._checked_actions(kwargs.pop('actions', {}))  # type: ignore[misc]
@@ -278,13 +276,13 @@ class ModelForm():
         self._chrome_text = kwargs.pop('chrome_text', None)  # type: ignore[misc]
         text = self._chrome_text or get_chrome_text()
 
-        self.autosave = _get_param('autosave', False)
-        self.local_tz = _get_param('local_tz', None)
-        self.required_marker = _get_param('required_marker', text_of(text.required_marker))
-        self.required_message = _get_param('required_message', text_of(text.required_message))
-        self.description_as = _get_param('description_as', DESCRIPTION_AS)
-        self.base_props = _get_param('base_props', None)
-        self.default_classes = _get_param('default_classes', None)
+        self.autosave = meta_option(item_type, kwargs, 'autosave', False)
+        self.local_tz = meta_option(item_type, kwargs, 'local_tz', None)
+        self.required_marker = meta_option(item_type, kwargs, 'required_marker', text_of(text.required_marker))
+        self.required_message = meta_option(item_type, kwargs, 'required_message', text_of(text.required_message))
+        self.description_as = meta_option(item_type, kwargs, 'description_as', DESCRIPTION_AS)
+        self.base_props = meta_option(item_type, kwargs, 'base_props', None)
+        self.default_classes = meta_option(item_type, kwargs, 'default_classes', None)
 
         if on_change_callback := kwargs.pop('on_change', None):
             self.on_change(on_change_callback)

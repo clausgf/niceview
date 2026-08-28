@@ -430,6 +430,16 @@ class Fields(typing.Mapping[str, FieldInfo]):
                 available = list(profiles.keys())
                 raise ValueError(f"Profile '{profile}' not found in {item_type.__name__}.Meta.profiles. Available: {available}")
             include = profiles[profile]
+        elif layout is None and include == '__all__':
+            # Only the untouched default falls back to it -- an explicit include=/Meta.include
+            # already answered "which fields", same rank as profile=/layout= above. Meta.default_profile
+            # is a hint, not a request, though: unlike an explicit profile=, a stale or absent
+            # name degrades to no profile rather than raising.
+            default_profile = getattr(meta, 'default_profile', None) if meta else None
+            if default_profile is not None:
+                profiles = getattr(meta, 'profiles', {}) if meta else {}
+                if default_profile in profiles:
+                    include = profiles[default_profile]
         if layout is not None:
             include = layout  # an explicit layout is an inline profile: it defines the field set
 

@@ -220,6 +220,47 @@ class TestFieldsIntegration:
         assert list(fields) == ['a', 'b', 'c']
 
 
+class ModelWithDefaultProfile(pydantic.BaseModel):
+    a: str = ''
+    b: str = ''
+    c: str = ''
+
+    class Meta:
+        profiles = {'flat': ['a', 'b'], 'full': '__all__'}
+        default_profile = 'flat'
+
+
+class ModelWithStaleDefaultProfile(pydantic.BaseModel):
+    a: str = ''
+    b: str = ''
+
+    class Meta:
+        profiles = {'flat': ['a']}
+        default_profile = 'gone'  # no longer (or never) in profiles
+
+
+class TestDefaultProfile:
+    def test_default_profile_applies_when_nothing_else_is_given(self):
+        fields = Fields(ModelWithDefaultProfile)
+        assert list(fields.field_names) == ['a', 'b']
+
+    def test_explicit_profile_wins_over_default_profile(self):
+        fields = Fields(ModelWithDefaultProfile, profile='full')
+        assert list(fields.field_names) == ['a', 'b', 'c']
+
+    def test_explicit_layout_wins_over_default_profile(self):
+        fields = Fields(ModelWithDefaultProfile, layout=['c'])
+        assert list(fields.field_names) == ['c']
+
+    def test_an_unknown_default_profile_is_not_an_error(self):
+        fields = Fields(ModelWithStaleDefaultProfile)
+        assert list(fields.field_names) == ['a', 'b']
+
+    def test_an_unknown_explicit_profile_still_raises(self):
+        with pytest.raises(ValueError, match='not found'):
+            Fields(ModelWithStaleDefaultProfile, profile='gone')
+
+
 class TestFieldOrderInteraction:
     def test_field_order_applies_without_a_layout(self):
         class Ordered(pydantic.BaseModel):

@@ -188,12 +188,9 @@ allows `0`. Pydantic still rejects it — the value is refused on validation, no
 any of them explicitly to override the inference — an empty string counts as explicit, so
 `niceview.Field(placeholder='')` renders no placeholder at all.
 
-`hint` and `tooltip` are deliberately *not* in that list: nothing is inferred into them, they
-are the form author's. Instead, `description_as` decides at render time where the description is
-shown — `'tooltip'` (default), `'hint'`, or `None` for nowhere — per form
-(`ModelForm(description_as=...)`, `Meta.description_as`) or per call
-(`render_field(..., description_as=...)`). A field that sets `hint` or `tooltip` explicitly
-always wins: the description then does not fill that slot, and never spills into the other one.
+`hint` and `tooltip` are deliberately *not* in that list — nothing is inferred into them. Where
+`description` ends up instead (`description_as`, `'tooltip'`/`'hint'`/`None`) is covered in
+[Field Types → Texts](field-types.md#field-customization).
 
 **D3 — Widgets without a hint slot ignore `hint`.** Checkbox, switch, radio, toggle, slider,
 rating and `checkbox_group` have nowhere to put it. Use the `label` or a `tooltip` there —
@@ -248,12 +245,8 @@ declared in `WIDGET_OPTIONS` and enforced by `tests/test_widget_option_coverage.
 `{member: member.name}`, so the widget's value is the enum member itself, not its `.value` and
 not its name — which is what a JSON Schema `enum` would list.
 
-**D14 — Three validation layers, in this order.** Layer 1 is the widget's own: `required`
-first, then `field_info.validation` (a callable or a `{message: predicate}` dict, exactly as in
-NiceGUI). Layer 2 is the conversion of the widget value to the field's Python type. Layer 3 is
-`ModelForm`'s addition: the whole item is validated against the model after every change, and
-its message for the field is shown when layer 1 passed. A value rejected by layer 1 is never
-converted and never reaches the model. Nothing is written to `form.item` while any layer
-reports an error, including model-level (`@model_validator`) errors, which have no field to
-attach to and are shown by `render_nonfield_errors()`. One exception: an **async** validation
-function is displayed by the widget but cannot block a synchronous commit.
+**D14 — Three validation layers, in this order.** Layer 1 is the widget's own (`required`,
+`field_info.validation`), layer 2 the type conversion — neither pydantic nor JSON Schema
+corresponds to either. Layer 3 is `ModelForm`'s addition: the whole item against the model. Full
+detail, including `form.item`/`form.draft` and model-level errors, is in
+[Components → Validation](components.md#validation).

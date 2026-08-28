@@ -5,6 +5,60 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+[0.27.0] - 2026-08-28
+---------------------
+
+### Added
+
+- **`DrillDownWrapper` accepts `list_actions`** for the application's own buttons in the list
+  view's title row, right-aligned just left of Add — the list-view counterpart of the existing
+  detail-view actions. Their `on_click` receives a new `DrillDownListActionEventArguments`
+  (`e.wrapper`, `e.name`, `e.action` — no `key`/`item`, since the list view is about no single
+  item); `requires_valid` is rejected there, since there is no form to ask.
+- **`DrillDownWrapper` accepts `detail_actions`** as the new name for the existing detail-view
+  actions, exposed via `wrapper.list_action_buttons`/`wrapper.action_buttons`. `chrome_actions`
+  is still accepted as an alias (`detail_actions` wins if both are given), so existing callers
+  are unaffected.
+- **`DrillDownWrapper` accepts `search=True`** for a free-text search box in the list view's
+  title row, left of `list_actions`/Add — filters rows across all visible fields, client-side,
+  as the user types (`EditGridWrapper`'s `search=` counterpart for the drill-down's list view).
+  Exposed as `wrapper.search_input`; hidden in the detail view.
+- **`ModelGrid`/`ModelList` honour `Meta.field_infos`**, like `ModelForm` already did.
+- **`Meta.default_profile`** picks a profile when no `profile=`/`layout=` kwarg is given, for
+  `ModelForm`/`ModelGrid`/`ModelList` alike (and the wrappers around them). Unlike an explicit
+  `profile=`, a name no longer in `Meta.profiles` degrades to no profile rather than raising.
+- **`ModelGrid`/`ModelList` accept `local_tz`**, like `ModelForm`'s: `datetime`/`date`/`time`
+  values are converted the same way (Meta-sourceable too).
+
+### Fixed
+
+- **`ModelGrid` no longer crashes on a `timedelta` field** — a raw `timedelta` has no JSON
+  representation (orjson, NiceGUI's encoder, does not support it); it now renders as the same
+  canonical ISO-8601 duration string `ModelForm` already shows.
+- **`ModelList` shows a choice field's label, not its raw stored value**, and joins a
+  list-valued field's items instead of showing a Python `repr()` — both already worked correctly
+  in `ModelGrid`.
+- **A `bool` field renders as a real checkbox in `ModelGrid`/`ModelGridInlineEdit`** (AG Grid's
+  own `cellDataType: 'boolean'` — a native, clickable checkbox in the inline-editable grid,
+  non-interactive in the plain one) instead of the text `true`/`false`, and as `'✓'`/`'✗'` in
+  `ModelList` instead of Python's `True`/`False`.
+- **A `ui.number` field with `precision`/`number_format`/`prefix`/`suffix` set is now formatted
+  the same way the widget itself would**, in `ModelGrid` (via a `valueFormatter`, so the column's
+  own sort and `agNumberColumnFilter` still compare the real number, not the formatted text) and
+  in `ModelList`. Previously both showed the plain unformatted number.
+
+### Docs
+
+- Every kwargs `TypedDict` (`_DrillDownWrapperOptionInputs` and friends), `FieldInfo`,
+  `ChromeStyle`/`FieldStyle`/`ChromeText`, and every `*EventArguments` a handler receives now
+  documents every field: mkdocstrings only shows a description for a field that carries an
+  attribute docstring, and many — `item_title_field` among them — had none, so they rendered
+  blank in the generated docs. `tests/test_option_docstring_coverage.py` now fails the build if
+  a field loses its docstring again. Existing descriptions were also shortened throughout.
+- A concept explained in more than one doc page (the chrome place/role/shape cascade, its merge
+  semantics, the field-styling categories, the three validation layers, `description_as`) now has
+  exactly one canonical explanation, with the other pages linking to it instead of restating it.
+
 [0.26.5] - 2026-08-27
 ---------------------
 

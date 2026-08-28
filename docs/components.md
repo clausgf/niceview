@@ -333,7 +333,13 @@ what it is about — plus `e.name`, `e.action`, and `e.wrapper` outside a form:
 |---|---|---|
 | `ModelForm`, `EditFormWrapper` | `FormActionEventArguments` | `e.form`, as above |
 | `EditGridWrapper` | `GridActionEventArguments` | `e.row_key`, `e.item` — the selected row, both `None` when nothing is selected |
-| `DrillDownWrapper` | `DrillDownActionEventArguments` | `e.key`, `e.item` — the item on screen; these buttons sit left of Delete and show in the detail view only |
+| `DrillDownWrapper`'s `detail_actions` | `DrillDownActionEventArguments` | `e.key`, `e.item` — the item on screen; these buttons sit left of Delete and show in the detail view only |
+| `DrillDownWrapper`'s `list_actions` | `DrillDownListActionEventArguments` | no `key`/`item` — there is no single item in the list view; these buttons sit left of Add and show in the list view only |
+
+`DrillDownWrapper` is the one wrapper with two views, so its title row takes two action tables
+instead of one: `list_actions=` (left of Add, list view only) and `detail_actions=` (left of
+Delete, detail view only — `chrome_actions=` is accepted as its alias). The other wrappers have a
+single view, so `chrome_actions=` alone says all there is to say.
 
 ```python
 EditGridWrapper.from_adapter(User, adapter, title='Users',
@@ -349,8 +355,9 @@ buttons are hidden.
 
 `requires_valid` needs a form to ask, so the two places that have one accept it: a form, and the
 detail view a `DrillDownWrapper` builds itself (where the flag follows whichever item is open).
-An `EditGridWrapper`, or a `DrillDownWrapper` with a `render_detail` of its own, raises instead
-of leaving the button enabled without a word.
+An `EditGridWrapper`, a `DrillDownWrapper`'s `list_actions` (the list view is about no single
+item), or a `DrillDownWrapper` with a `render_detail` of its own, raises instead of leaving the
+button enabled without a word.
 
 ### Validation
 
@@ -568,37 +575,10 @@ EditGridWrapper.from_list(User, users,
 ).render()
 ```
 
-#### Two axes: place and role
+#### Attribute reference
 
-Every chrome button sits in exactly one **place** and carries exactly one **role**, and the two
-are independent — a Delete exists in a toolbar and as the confirm button of a dialog. So they
-are two layers, with the mechanical shape layer between them:
-
-```
-{place}_button_props  →  shape  →  {role}_button_props
-```
-
-| place | where |
-|---|---|
-| `toolbar` | a wrapper's own action row (the default) |
-| `form` | the same row for a wrapper embedded in a form — an editgrid field |
-| `dialog` | a dialog footer |
-
-Roles are `add`, `edit`, `delete`, `save`, `refresh`, `back`, `ok`, `cancel`. `delete` is the
-only one with a default (`'color=negative'`) — and only because that is meaning, not taste. The
-list is closed: it is what *niceview* means by a button, so an application's own `FormAction` has
-no role and brings its own `props` instead. Place and shape still reach it.
-
-There is deliberately **no base layer** below the places. "Every button of this application is
-dense" is a statement about a type, and NiceGUI already owns it:
-
-```python
-ui.button.default_props('dense flat')   # NiceGUI, not niceview
-ui.input.default_props('outlined')
-```
-
-niceview styles only what NiceGUI cannot see: the place and the role of the buttons it builds
-itself.
+The cascade itself — place, role, shape, and why there is no base layer below them — is
+explained once in [Concepts](CONCEPT.md#the-chrome-cascade-two-axes). This is the reference:
 
 | Attribute | Default | Applies to |
 |---|---|---|
@@ -625,27 +605,10 @@ itself.
 | `list_chevron_icon` | `'chevron_right'` | drill-down hint at the right edge; `None` renders none |
 | `list_chevron_classes` | `'text-grey'` | that icon |
 
-#### Merge semantics, readable off the type
+#### Merge semantics in practice
 
-| Type | Rule |
-|---|---|
-| `str` | additive layer — props merge per key, the later layer wins |
-| `str \| None` | replacing layer — `None` inherits, `''` suppresses, a value replaces |
-| `*_classes` | replaces wholesale — a CSS class has no key to merge on |
-
-The shape override is the one replacing layer, and it has to be: Quasar's shapes are separate
-boolean props, so `round` and `rounded` are two keys and a later layer cannot cancel an earlier
-one by setting the other. Hence "in a dialog, square; alone in a toolbar, round":
-
-```python
-set_chrome_style(icon_button_props='round', dialog_icon_button_props='')
-```
-
-Rounding icon buttons has one further limit, and it is Quasar's rather than ours: a button group
-joins straight edges, and a circle has none. Inside a group the shape layer is therefore skipped,
-so grouped icon buttons stay square. It is *joined or round, not both* — `button_group=False`
-gives you round icon buttons everywhere, and `shape_in_group=True` lets a group-compatible shape
-through (Quasar's `rounded` survives being joined, `round` does not).
+The merge rule per type (`str` additive, `str | None` replacing, `*_classes` wholesale) is
+explained once in [Concepts](CONCEPT.md#merge-semantics). Two things worth knowing on top of it:
 
 A button group is only used when there is something to join: Quasar styles it as one control —
 squared-off inner edges, a shared border — so a group of one would be a button wearing a group's
@@ -668,9 +631,8 @@ mutated by another.
 
 ### Field styling
 
-The second cascade, keyed by widget **category** rather than by place or role. Two categories,
-because that is what practice asks for: an input and a select take the same props, a switch does
-not — `outlined` says nothing to a checkbox.
+The second cascade, keyed by widget **category** rather than by place or role — see
+[Concepts](CONCEPT.md#the-field-cascade-categories) for why. In practice:
 
 ```python
 from niceview import set_field_style
@@ -849,7 +811,9 @@ DrillDownWrapper.from_list(User, users,
     add_button='',                   # '' = icon only; None = hidden
     delete_button='',                # same
     back_button='',                  # same — None leaves the detail view without a way back
-    chrome_actions={},               # the application's own buttons, in the detail view left of Delete (see Actions)
+    search=False,                    # search box in the list view's title row, left of list_actions/Add (client-side, all visible fields)
+    list_actions={},                 # the application's own buttons, in the list view left of Add (see Actions)
+    detail_actions={},               # the application's own buttons, in the detail view left of Delete (see Actions); chrome_actions= is an alias
     chrome_style=None,               # look of the title row (see Chrome styling)
     on_add=None,                     # override the Add click handler entirely, sync or async (see below)
     on_back=None,                    # if set, shows a Back button in the list view too (for nesting), sync or async
@@ -889,10 +853,11 @@ or render a placeholder and fill it from a task.
 
 **Styling after render():** like `EditGridWrapper`/`EditFormWrapper`, `DrillDownWrapper` exposes
 its title row elements — `wrapper.title_row`, `wrapper.title`, `wrapper.description`,
-`wrapper.back_button`, `wrapper.add_button`, `wrapper.delete_button` (all `| None`; the buttons
-are `None` only if disabled entirely via `add_button=None`/`delete_button=None`/`back_button=None`,
-never just because they're hidden in the current view), plus `wrapper.action_buttons` from
-`chrome_actions=`. Its title row is built by the same
+`wrapper.back_button`, `wrapper.search_input`, `wrapper.add_button`, `wrapper.delete_button` (all
+`| None`; the buttons are `None` only if disabled entirely via
+`add_button=None`/`delete_button=None`/`back_button=None`, `search_input` unless `search=True`,
+never just because they're hidden in the current view), plus `wrapper.list_action_buttons` from
+`list_actions=` and `wrapper.action_buttons` from `detail_actions=`/`chrome_actions=`. Its title row is built by the same
 [chrome style](#chrome-styling) as the other two wrappers. Unlike a naive refreshable, the title row is built exactly once in
 `render()` and only *updated* (text, visibility) on every list<->detail navigation, so styling
 applied once (`wrapper.title.classes(...)`) survives navigation instead of being wiped on the

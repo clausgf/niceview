@@ -33,10 +33,15 @@ class GridActionEventArguments(UiEventArguments):
     the same way Edit and Delete do.
     """
     wrapper: 'EditGridWrapper'
+    """The wrapper the action belongs to."""
     name: str
+    """The action's name, as declared in chrome_actions."""
     action: FormAction
+    """The FormAction itself (label, icon, on_click, ...)."""
     row_key: str | None
+    """Key of the selected row, or None when nothing is selected."""
     item: BaseModel | None
+    """The selected row's item, or None when nothing is selected."""
 
 
 class _EditGridWrapperInputs(typing_extensions.TypedDict, total=False):
@@ -50,9 +55,15 @@ class _EditGridWrapperInputs(typing_extensions.TypedDict, total=False):
     """Replaces the default Add action (create item_type() and open the create dialog). Sync or
     async — an async handler can ask for input via util.input_dialog() before creating anything."""
     delete_button: str | None
+    """Delete button label; '' for icon-only (default), None hides it."""
     add_button: str | None
+    """Add button label; '' for icon-only (default), None hides it."""
     edit_button: str | None
+    """Edit button label; '' for icon-only (default), None hides it — the default for an
+    inline-editable grid, which needs no separate dialog."""
     refresh_button: str | None
+    """Refresh button label; '' for icon-only (default when there's an adapter to reload from),
+    None hides it."""
     chrome_actions: dict[str, FormAction]
     """The application's own buttons in the title row, by name, left of niceview's own. Same
     FormAction as a form's `actions` — its `on_click` gets a GridActionEventArguments here."""
@@ -518,9 +529,16 @@ class EditGridWrapper():
 
 class _EditFormWrapperInputs(typing_extensions.TypedDict, total=False):
     title: str | None
+    """Form title; omitted/None/'' all show none — a form edits one item, so nothing is
+    auto-generated. Defaults from Meta.title."""
     description: str | None
+    """Markdown below the title row. Defaults from Meta.description."""
     save_button: str | None
+    """Save button label; '' for icon-only, None hides it. Shown by default when there's an
+    adapter (from_json/from_adapter); suppressed entirely by autosave."""
     refresh_button: str | None
+    """Refresh button label; '' for icon-only, None hides it. Shown by default when there's an
+    adapter (from_json/from_adapter)."""
     chrome_actions: dict[str, 'FormAction']
     """The application's own buttons in the title row, by name, left of Refresh and Save. Same
     FormAction as the form's `actions` — the one that is placed in the layout as '@name'."""
@@ -541,6 +559,8 @@ class _EditFormWrapperFactoryInputs(_EditFormWrapperInputs, _ModelFormOptionInpu
     options. Both halves declare chrome_style and chrome_text, with the same type and the same
     meaning — the factory hands them to both the wrapper and the form it wraps."""
     repositories: dict[type[BaseModel], CollectionAdapter]
+    """Repositories for modelselect fields (FK relationships), by field name or related model
+    type."""
 
 
 _FORM_WRAPPER_INPUT_KEYS = set(_EditFormWrapperInputs.__annotations__.keys())

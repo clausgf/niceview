@@ -6,13 +6,14 @@ context, no page/route of its own), so its tests wrap render() in a plain
 @ui.page like any other niceview widget.
 """
 import asyncio
+import datetime
 
 import pydantic
 import pytest
 from nicegui import ui
 from nicegui.testing import User
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 import niceview
 from niceview.dataadapter import ListAdapter, DirectoryAdapter, FileEntry
@@ -143,6 +144,82 @@ class TestModelListRender:
             ml.on_select('not callable')  # type: ignore
 
 
+ROOM_LABELS = {'meeting': 'Meeting room', 'lab': 'Lab', 'other': 'Other'}
+
+
+class Task(pydantic.BaseModel):
+    title: str = ''
+    kind: Annotated[
+        Literal['meeting', 'lab', 'other'],
+        niceview.Field(widget_type='ui.select', options=ROOM_LABELS),
+    ] = 'meeting'
+    tags: list[str] = []
+    starts_at: datetime.datetime = datetime.datetime(2024, 1, 15, 9, 30, tzinfo=datetime.timezone.utc)
+    done: bool = False
+    price: Annotated[float, niceview.Field(precision=2, prefix='$')] = 0.0
+
+
+class TestModelListDisplayValues:
+    async def test_choice_field_shows_its_label_not_the_raw_value(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelList.from_list(Task, [Task(title='Standup', kind='lab')],
+                                subtitle_fields=['kind']).render()
+
+        await user.open('/')
+        await user.should_see('Lab')
+        await user.should_not_see('lab')
+
+    async def test_list_field_is_joined_not_a_python_repr(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelList.from_list(Task, [Task(title='Standup', tags=['a', 'b'])],
+                                subtitle_fields=['tags']).render()
+
+        await user.open('/')
+        await user.should_see('a, b')
+        await user.should_not_see("['a', 'b']")
+
+    async def test_datetime_field_uses_local_tz(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelList.from_list(Task, [Task(title='Standup')],
+                                subtitle_fields=['starts_at'], local_tz='Europe/Berlin').render()
+
+        await user.open('/')
+        # 09:30 UTC in January (CET, UTC+1) is 10:30 local -- and no microseconds/repr noise.
+        await user.should_see('2024-01-15T10:30:00')
+
+    async def test_checkbox_field_shows_a_checkmark(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelList.from_list(Task, [Task(title='Standup', done=True)],
+                                subtitle_fields=['done']).render()
+
+        await user.open('/')
+        await user.should_see('✓')
+        await user.should_not_see('True')
+
+    async def test_checkbox_field_shows_a_cross_when_false(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelList.from_list(Task, [Task(title='Standup', done=False)],
+                                subtitle_fields=['done']).render()
+
+        await user.open('/')
+        await user.should_see('✗')
+        await user.should_not_see('False')
+
+    async def test_number_field_is_formatted_like_ui_number(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            ModelList.from_list(Task, [Task(title='Standup', price=4.5)],
+                                subtitle_fields=['price']).render()
+
+        await user.open('/')
+        await user.should_see('$4.5')
+
+
 # ---------------------------------------------------------------------------
 # DrillDownWrapper — list view
 # ---------------------------------------------------------------------------
@@ -255,6 +332,94 @@ class TestDrillDownWrapperListView:
 
         await user.open('/')
         await user.should_see(ui.button)
+
+    async def test_search_box_hidden_by_default(self, user: User) -> None:
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_list(Contact, []).render()
+
+        await user.open('/')
+        await user.should_not_see(ui.input)
+
+    async def test_search_box_visible_when_enabled(self, user: User) -> None:
+        captured: list[DrillDownWrapper] = []
+
+        @ui.page('/')
+        def page():
+            captured.append(DrillDownWrapper.from_list(Contact, [], search=True).render())
+
+        await user.open('/')
+        await user.should_see(ui.input)
+        assert captured[0].search_input is not None
+
+    async def test_search_filters_by_visible_field(self, user: User) -> None:
+        contacts = [Contact(name='Alice Müller', email='alice@example.com'),
+                   Contact(name='Bob Schmidt', email='bob@example.com')]
+
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_list(Contact, contacts, search=True).render()
+
+        await user.open('/')
+        user.find(ui.input).type('bob')
+        await user.should_see('Bob Schmidt')
+        await user.should_not_see('Alice Müller')
+
+    async def test_search_matches_a_non_title_field(self, user: User) -> None:
+        contacts = [Contact(name='Alice', email='alice@example.com'),
+                   Contact(name='Bob', email='bob@example.com')]
+
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_list(Contact, contacts, search=True).render()
+
+        await user.open('/')
+        user.find(ui.input).type('bob@')
+        await user.should_see('Bob')
+        await user.should_not_see('Alice')
+
+    async def test_search_is_case_insensitive_and_clearing_shows_all(self, user: User) -> None:
+        contacts = [Contact(name='Alice'), Contact(name='Bob')]
+
+        @ui.page('/')
+        def page():
+            DrillDownWrapper.from_list(Contact, contacts, search=True).render()
+
+        await user.open('/')
+        search = user.find(ui.input)
+        search.type('ALICE')
+        await user.should_see('Alice')
+        await user.should_not_see('Bob')
+        search.clear()
+        await user.should_see('Alice')
+        await user.should_see('Bob')
+
+    async def test_search_box_hidden_in_detail_view(self, user: User) -> None:
+        items = [Contact(name='Alice')]
+        adapter = ListAdapter(Contact, items)
+        key = adapter.key_from_item(items[0])
+        captured: list[DrillDownWrapper] = []
+
+        @ui.page('/')
+        def page():
+            captured.append(DrillDownWrapper.from_adapter(Contact, adapter, search=True).render().open(key))
+
+        await user.open('/')
+        assert captured[0].search_input is not None
+        assert captured[0].search_input.visible is False
+
+    async def test_search_sits_left_of_add(self, user: User) -> None:
+        captured: list[DrillDownWrapper] = []
+
+        @ui.page('/')
+        def page():
+            captured.append(DrillDownWrapper.from_list(Contact, [], search=True).render())
+
+        await user.open('/')
+        wrapper = captured[0]
+        # Built before the button group in _build_title_row, so it gets the lower element id --
+        # a simpler, structure-independent way to check DOM order than walking the tree.
+        assert wrapper.search_input.id < wrapper.add_button.id
 
 
 # ---------------------------------------------------------------------------

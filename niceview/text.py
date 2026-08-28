@@ -51,56 +51,93 @@ class ChromeText:
 
     # --- button tooltips ---------------------------------------------------
     add_tooltip: TextValue = 'Add a new item'
+    """Tooltip of the Add button."""
     edit_tooltip: TextValue = 'Edit item'
+    """Tooltip of the Edit button."""
     delete_tooltip: TextValue = 'Delete selected item'
     """The grid's Delete acts on the selected row."""
     delete_item_tooltip: TextValue = 'Delete this item'
     """The drill-down's Delete acts on the item that is open."""
     refresh_tooltip: TextValue = 'Refresh'
+    """Tooltip of the Refresh button."""
     save_tooltip: TextValue = 'Save'
+    """Tooltip of the Save button."""
     back_tooltip: TextValue = 'Back'
+    """Tooltip of the Back button."""
     search_placeholder: TextValue = 'Search'
+    """Placeholder of the search input (EditGridWrapper's search=True)."""
 
     # --- dialog labels -----------------------------------------------------
     ok_label: TextValue = 'OK'
+    """Confirm button label in a dialog."""
     cancel_label: TextValue = 'Cancel'
+    """Cancel button label in a dialog."""
     create_label: TextValue = 'Create'
+    """Confirm button label of the create dialog."""
     delete_label: TextValue = 'Delete'
+    """Confirm button label of a delete confirmation."""
 
     # --- dialogs -----------------------------------------------------------
     delete_selected_title: TextValue = 'Confirm Deletion'
+    """Title of the grid's delete-confirmation dialog."""
     delete_selected_message: TextValue = 'Are you sure you want to delete the selected item *{key}*?'
+    """Message of the grid's delete-confirmation dialog; {key} is the selected row's key."""
     delete_item_title: TextValue = 'Delete'
+    """Title of the drill-down's delete-confirmation dialog."""
     delete_item_message: TextValue = 'Delete this item? This cannot be undone.'
+    """Message of the drill-down's delete-confirmation dialog."""
     invalid_input: TextValue = 'Invalid input'
+    """Shown when a value fails validation."""
     unknown_selection: TextValue = 'Unknown selection — no longer in the list'
+    """Shown when the selected row is no longer in the collection."""
 
     # --- notifications -----------------------------------------------------
     item_created: TextValue = 'Item created'
+    """Notification after a successful create."""
     item_updated: TextValue = 'Item updated'
+    """Notification after a successful update."""
     item_deleted: TextValue = 'Item deleted'
+    """Notification after a successful delete."""
     create_cancelled: TextValue = 'Item creation cancelled'
+    """Notification when the create dialog is cancelled."""
     update_cancelled: TextValue = 'Item update cancelled'
+    """Notification when an update dialog is cancelled."""
     delete_cancelled: TextValue = 'Item deletion cancelled'
+    """Notification when a delete confirmation is cancelled."""
     create_error: TextValue = 'Error creating item: {error}'
+    """Notification when create fails; {error} is the exception."""
     update_error: TextValue = 'Error updating item: {error}'
+    """Notification when update fails; {error} is the exception."""
     delete_error: TextValue = 'Error deleting item {key}: {error}'
+    """Notification when a grid's delete fails; {key} and {error} name the row and exception."""
     delete_failed: TextValue = 'Error deleting item: {error}'
     """Deleting the open item in a drill-down, where the key is not worth naming again."""
     save_error: TextValue = 'Error saving change: {error}'
+    """Notification when an autosaving form's save fails; {error} is the exception."""
     select_row_first: TextValue = 'Please select a row first!'
+    """Notification when an action needs a selected row but none is selected."""
     select_row_to_delete: TextValue = 'Please select a row for deletion!'
+    """Notification when Delete is clicked with no row selected."""
     item_not_found: TextValue = 'Item with key {key} not found'
+    """Notification when {key} no longer exists in the collection."""
     row_not_found: TextValue = 'Row {key} not found — try again'
+    """Notification when a grid row's key no longer exists."""
     conflict: TextValue = 'This item was changed by another user. The list has been refreshed — please edit again.'
+    """Notification when a save loses an optimistic-lock conflict to another writer."""
     invalid_value: TextValue = 'Invalid value {value!r}: {errors}'
+    """Notification for an invalid value outside a form (e.g. an inline grid edit)."""
     validation_errors: TextValue = 'Cannot save form: validation errors present'
+    """Notification when Save is blocked by validation errors."""
     form_refreshed: TextValue = 'Form refreshed'
+    """Notification after Refresh reloads a form."""
     form_saved: TextValue = 'Form saved'
+    """Notification after a non-autosaving form saves."""
 
     # --- body labels -------------------------------------------------------
     no_items: TextValue = 'No items yet.'
+    """Shown in an empty list view."""
     detail_not_found: TextValue = 'Item {key!r} not found.'
+    """Shown in the detail view when {key} no longer exists."""
 
     # --- fields ------------------------------------------------------------
     required_marker: TextValue = ' *'

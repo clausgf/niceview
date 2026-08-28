@@ -10,16 +10,12 @@ Open work items and unresolved questions. Design decisions already taken live in
   - save button also provided
 - provide examples and tests for nested data structures
 - display collections in a responsive card grid in addition to grid/table
-- provide optional search and filtering mechanisms for the tables
-- Collections: allow querying specific subsets
-- Collections: analyze efficiency, caching, paging
+- **Collections: allow querying specific subsets, analyze efficiency/caching/paging**: everything
+  searchable today (`EditGridWrapper`'s `search=`, `DrillDownWrapper`'s `search=`) is client-side
+  only — it filters what is already loaded, not a query against the adapter. A real subset/paging
+  query needs this first; server-side search would then follow from it rather than being a
+  separate mechanism.
 - **Support dataclasses**: In addition to Pydantic models.
-- **Finish unifying Meta/kwargs across components**: `include`/`exclude`/`field_infos`/`field_order`
-  now flow consistently from `Meta` into `ModelForm`/`ModelGrid`/`ModelList`, but the coverage is
-  still uneven — e.g. `profile` is kwargs-only everywhere, grids/lists ignore `Meta.layout`, and
-  each component reads a different subset of options from `Meta` vs kwargs. Define one rule for
-  which options are Meta-sourceable and apply it uniformly (a shared `meta_option`-based resolver),
-  so every option a component accepts can be declared on the model or passed as a kwarg.
 - **Multi-key modelselect (n:m references)**: the plural of the key-select field — a `list[str]`
   of foreign keys into a CollectionAdapter, edited via a searchable multi-select showing the
   collection's labels. Distinct from `editgrid` (which embeds child objects, i.e. composition).
